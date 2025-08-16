@@ -205,7 +205,9 @@ public class DownloadService : IDownloadService
             using var httpClient = _httpClientFactory.CreateClient();
             try
             {
-                var ua = _settingsService.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)") ?? "Furchive/1.0 (by user@example.com)";
+                var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                var defaultUa = $"Furchive/{version} (by USERNAME)";
+                var ua = _settingsService.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
                 httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
             }
             catch { /* ignore UA parse issues */ }

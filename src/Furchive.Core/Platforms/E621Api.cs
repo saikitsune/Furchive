@@ -33,12 +33,15 @@ public class E621Api : IPlatformApi
         {
             // Test basic connectivity
             // e621 requires a valid User-Agent; ensure one is present even if not yet authenticated
-            if (string.IsNullOrWhiteSpace(_userAgent))
+        if (string.IsNullOrWhiteSpace(_userAgent))
             {
                 try
                 {
-                    _httpClient.DefaultRequestHeaders.UserAgent.Clear();
-                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Furchive/1.0 (https://github.com/saikitsune; contact: user@example.com)");
+            _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+            var username = Environment.UserName;
+            var defaultUa = $"Furchive/{version} (by {username})";
+            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { /* ignore */ }
             }
@@ -89,6 +92,10 @@ public class E621Api : IPlatformApi
         // Optional basic auth with username + api key
         credentials.TryGetValue("Username", out _username);
         credentials.TryGetValue("ApiKey", out _apiKey);
+        if (!string.IsNullOrEmpty(_apiKey))
+        {
+            _apiKey = _apiKey.Replace(" ", string.Empty).Trim();
+        }
         if (!string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_apiKey))
         {
             var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_username}:{_apiKey}"));
@@ -102,6 +109,18 @@ public class E621Api : IPlatformApi
     {
         try
         {
+            // Ensure UA header is present if not authenticated yet
+            if (string.IsNullOrWhiteSpace(_userAgent))
+            {
+                try
+                {
+                    _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
+                }
+                catch { }
+            }
             var tags = string.Join(" ", parameters.IncludeTags);
             var excludeTags = string.Join(" ", parameters.ExcludeTags.Select(tag => $"-{tag}"));
             var allTags = $"{tags} {excludeTags}".Trim();
@@ -146,6 +165,12 @@ public class E621Api : IPlatformApi
             var data = JsonSerializer.Deserialize<E621PostsResponse>(json, options) ?? new E621PostsResponse();
 
             var items = data.Posts.Select(MapPostToMediaItem).ToList();
+            var rawCount = data.Posts.Count; // Use unfiltered count for pagination determination
+            // If not authenticated with API key, drop items that lack a direct file URL (often require auth)
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                items = items.Where(i => !string.IsNullOrWhiteSpace(i.FullImageUrl)).ToList();
+            }
             // Client-side rating filter for multi-rating selections
             if (selectedRatings.Count > 0 && selectedRatings.Count < 3)
             {
@@ -157,7 +182,8 @@ public class E621Api : IPlatformApi
             {
                 Items = items,
                 CurrentPage = parameters.Page,
-                HasNextPage = items.Count >= limit,
+                // Determine next page based on server page size, not client-side filtering
+                HasNextPage = rawCount >= limit,
                 TotalCount = 0
             };
         }
@@ -175,6 +201,18 @@ public class E621Api : IPlatformApi
     {
         try
         {
+            // Ensure UA header is present if not authenticated yet
+            if (string.IsNullOrWhiteSpace(_userAgent))
+            {
+                try
+                {
+                    _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
+                }
+                catch { }
+            }
             var url = $"https://e621.net/posts/{id}.json";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -200,6 +238,18 @@ public class E621Api : IPlatformApi
     {
         try
         {
+            // Ensure UA header is present if not authenticated yet
+            if (string.IsNullOrWhiteSpace(_userAgent))
+            {
+                try
+                {
+                    _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
+                }
+                catch { }
+            }
             var url = $"https://e621.net/tags.json?search[name_matches]={Uri.EscapeDataString(query)}*&limit={limit}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));

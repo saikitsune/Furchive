@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Bundle Name="Furchive Setup" Version="1.0.3" Manufacturer="Furchive" UpgradeCode="7C7FC087-E34C-4F5E-B62D-8E181B59D2F2">
+  <Bundle Name="Furchive Setup" Version="1.0.5" Manufacturer="Furchive" UpgradeCode="7C7FC087-E34C-4F5E-B62D-8E181B59D2F2">
     <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.HyperlinkLicense" />
 
     <Chain>

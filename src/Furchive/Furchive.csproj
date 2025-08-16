@@ -8,8 +8,8 @@
   <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyTitle>Furchive - Furry Art Gallery Browser</AssemblyTitle>
-  <AssemblyVersion>1.0.3.0</AssemblyVersion>
-  <FileVersion>1.0.3.0</FileVersion>
+  <AssemblyVersion>1.0.5.0</AssemblyVersion>
+  <FileVersion>1.0.5.0</FileVersion>
     <Copyright>Copyright © 2025</Copyright>
   <ApplicationManifest>app.manifest</ApplicationManifest>
   <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>

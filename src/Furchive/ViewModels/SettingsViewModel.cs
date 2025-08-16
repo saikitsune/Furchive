@@ -33,8 +33,10 @@ public partial class SettingsViewModel : ObservableObject
         _thumbCache = thumbCache;
         _logger = logger;
 
-        // Load stored values
-        E621UserAgent = _settings.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)");
+    // Load stored values with dynamic UA default: Furchive/{version} (by {USERNAME})
+    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+    var defaultUa = $"Furchive/{version} (by USERNAME)";
+    E621UserAgent = _settings.GetSetting<string>("E621UserAgent", defaultUa);
         E621Username = _settings.GetSetting<string>("E621Username", null);
     E621ApiKey = _settings.GetSetting<string>("E621ApiKey", null);
 
@@ -58,7 +60,9 @@ public partial class SettingsViewModel : ObservableObject
         {
             await _settings.SetSettingAsync("E621UserAgent", E621UserAgent ?? string.Empty);
             await _settings.SetSettingAsync("E621Username", E621Username ?? string.Empty);
-            await _settings.SetSettingAsync("E621ApiKey", E621ApiKey ?? string.Empty);
+            // Trim whitespace/spaces from API key before saving
+            var apiKeyClean = (E621ApiKey ?? string.Empty).Replace(" ", string.Empty).Trim();
+            await _settings.SetSettingAsync("E621ApiKey", apiKeyClean);
             // Other platforms removed; nothing to persist for them
 
             // Downloads

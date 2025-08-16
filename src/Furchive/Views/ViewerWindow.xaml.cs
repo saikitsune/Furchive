@@ -457,7 +457,9 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
         using var client = new HttpClient();
         try
         {
-            var ua = _settings.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)") ?? "Furchive/1.0 (by user@example.com)";
+            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+            var defaultUa = $"Furchive/{version} (by USERNAME)";
+            var ua = _settings.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
             client.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
         }
         catch { }

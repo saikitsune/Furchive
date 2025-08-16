@@ -64,7 +64,7 @@ public partial class SettingsWindow : Window
             ["UserAgent"] = vm.E621UserAgent ?? string.Empty
         };
         if (!string.IsNullOrWhiteSpace(vm.E621Username)) creds["Username"] = vm.E621Username!;
-        if (!string.IsNullOrWhiteSpace(vm.E621ApiKey)) creds["ApiKey"] = vm.E621ApiKey!;
+    if (!string.IsNullOrWhiteSpace(vm.E621ApiKey)) creds["ApiKey"] = vm.E621ApiKey!.Replace(" ", string.Empty).Trim();
 
         await RunAuthHealthAsync(e621, creds, "e621");
     }

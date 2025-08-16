@@ -149,6 +149,11 @@ public class SettingsService : ISettingsService
 
     private async Task InitializeDefaultSettingsAsync()
     {
+    // Build a sensible default User-Agent using the running app's version and current username
+    string version;
+    try { version = (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version)?.ToString(3) ?? "1.0.0"; }
+    catch { version = "1.0.0"; }
+    var defaultUa = $"Furchive/{version} (by USERNAME)";
         var defaults = new Dictionary<string, object>
         {
             // Download Settings
@@ -170,7 +175,7 @@ public class SettingsService : ISettingsService
             ["EnableTagAutocomplete"] = true,
             
             // Authentication (empty by default)
-            ["E621UserAgent"] = "Furchive/1.0 (by user@example.com)",
+            ["E621UserAgent"] = defaultUa,
             ["E621Username"] = "",
             ["E621ApiKey"] = "",
             ["ThemeMode"] = "system",

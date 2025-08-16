@@ -1,7 +1,7 @@
 param(
   [string]$Configuration = "Release",
   [string]$Runtime = "win-x64",
-  [string]$Version = "1.0.3",
+  [string]$Version = "1.0.5",
   # Optional: override the download URL for the WebView2 runtime (e.g., to a GitHub Release asset)
   [string]$WebView2Url
 )
