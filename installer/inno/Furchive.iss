@@ -9,7 +9,8 @@ AppId={{4B1C5C5E-7E98-4B54-92B0-551F7AA7B3B0}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-DefaultDirName={autopf}\{#AppName}
+; Install per-user by default (no admin), under %LocalAppData%\Programs
+DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=output
 OutputBaseFilename=FurchiveSetup
@@ -17,8 +18,9 @@ Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 DisableProgramGroupPage=yes
-; Ensure elevation and capture an installation log for diagnostics
-PrivilegesRequired=admin
+; Do not require elevation; allow override if user chooses all-users while elevated
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 SetupLogging=yes
 SetupIconFile=..\..\assets\icon.ico
 
@@ -40,12 +42,13 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "A
 
 [Run]
 ; Install WebView2 runtime silently (idempotent)
-Filename: "{tmp}\\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/install /quiet /norestart /log ""{commonappdata}\\Furchive\\webview2-install.log"""; Flags: waituntilterminated runhidden; Check: NeedsWebView2
+Filename: "{tmp}\\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/install /quiet /norestart /log ""{localappdata}\\Furchive\\webview2-install.log"""; Flags: waituntilterminated runhidden; Check: NeedsWebView2
 ; Use ShellExecute so Windows honors the app's UAC manifest prompt
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent shellexec
 
 [Dirs]
-Name: "{commonappdata}\\Furchive"; Flags: uninsalwaysuninstall
+; Ensure user-writable app data folder exists for logs or caches
+Name: "{localappdata}\\Furchive"; Flags: uninsalwaysuninstall
 
 [Code]
 function NeedsWebView2(): Boolean;

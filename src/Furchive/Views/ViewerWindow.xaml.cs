@@ -237,7 +237,12 @@ public partial class ViewerWindow : Window
                 // Pass autoplay and mute via script and settings
                 var autoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
                 var startMuted = _settings.GetSetting<bool>("VideoStartMuted", false);
-                try { await web.EnsureCoreWebView2Async(); } catch { }
+                // Ensure WebView2 uses a user-writable data directory (fixes Program Files access issues)
+                try
+                {
+                    await EnsureWebView2InitializedAsync(web);
+                }
+                catch { }
                 // Don't use host-level mute so user can unmute via the video controls
                 try { if (web.CoreWebView2 != null) web.CoreWebView2.IsMuted = false; } catch { }
 
@@ -347,6 +352,36 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
             }
         }
         catch { }
+    }
+
+    private static async Task EnsureWebView2InitializedAsync(WebView2 web)
+    {
+        // If already initialized, nothing to do
+        if (web.CoreWebView2 != null) return;
+        // Always set a user data folder under LocalAppData to avoid write restrictions
+        var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                   "Furchive", "WebView2");
+        try { Directory.CreateDirectory(dataDir); } catch { }
+
+        // Prefer passing a CoreWebView2Environment to EnsureCoreWebView2Async
+        try
+        {
+            var env = await CoreWebView2Environment.CreateAsync(userDataFolder: dataDir);
+            await web.EnsureCoreWebView2Async(env);
+        }
+        catch
+        {
+            // Fallback to CreationProperties if environment creation failed
+            try
+            {
+                web.CreationProperties = new CoreWebView2CreationProperties
+                {
+                    UserDataFolder = dataDir
+                };
+            }
+            catch { }
+            try { await web.EnsureCoreWebView2Async(); } catch { }
+        }
     }
 
     private string GetTempPathFor(MediaItem item)
