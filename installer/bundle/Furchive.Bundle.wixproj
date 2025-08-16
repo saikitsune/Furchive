@@ -1,0 +1,10 @@
+<Project Sdk="WixToolset.Sdk/4.0.4">
+  <PropertyGroup>
+    <OutputName>FurchiveSetup</OutputName>
+    <Platform>x64</Platform>
+    <Description>Furchive bootstrapper</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Bundle.wxs" />
+  </ItemGroup>
+</Project>

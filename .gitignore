@@ -1,0 +1,85 @@
+ai/
+.vscode/
+docs/
+tests/
+**/installer/inno/output/
+
+# --- Standard .NET / Visual Studio build artifacts ---
+**/bin/
+**/obj/
+**/out/
+**/publish/
+**/artifacts/
+**/TestResults/
+
+# Debugging and profiling
+*.pidb
+*.svclog
+*.psess
+*.vsp
+*.vspx
+*.etl
+
+# Symbols (usually in bin/ but keep explicit)
+*.pdb
+
+# User-specific / IDE files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+*.sln.iml
+.ionide/
+
+# NuGet
+**/packages/*
+!**/packages/build/
+!**/packages/repositories.config
+*.nupkg
+*.snupkg
+project.lock.json
+nuget.config
+
+# Logs and caches
+*.log
+logs/
+Logs/
+**/.cache/
+
+# Coverage
+coverage/
+.coverage
+coverage*.json
+lcov.info
+TestResult.xml
+
+# Node (if any tooling pulls it in)
+node_modules/
+
+# OS-specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Temporary files
+*.tmp
+*.tmp.*
+*.bak
+*.orig
+*~
+
+# Rider / ReSharper
+_ReSharper*/
+.ReSharper*/
+*.DotSettings.user
+*.ncrunch* 
+
+# App configuration overrides (keep base appsettings.json)
+appsettings.*.json
+!appsettings.json
+installer/inno/MicrosoftEdgeWebView2RuntimeInstallerX64.exe
