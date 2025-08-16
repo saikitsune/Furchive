@@ -5,7 +5,6 @@ Furchive is a fast, modern gallery viewer, search, and download application for 
 
 ## Features
 
-- **Multi-Platform Support**: Browse and download from e621, FurAffinity, InkBunny, and Weasyl
 - **Unified Search**: Search across multiple platforms simultaneously
 - **Advanced Tag Management**: Include/exclude tags with autocomplete
 - **Download Queue**: Batch downloads with progress tracking, pause/resume functionality
