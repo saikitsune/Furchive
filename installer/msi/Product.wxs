@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="Furchive" Manufacturer="Furchive" Version="1.0.0" UpgradeCode="36F5D65A-7CA2-49CB-89D5-73C67C0C9A51" Language="1033" InstallerVersion="500">
+  <Package Name="Furchive" Manufacturer="Furchive" Version="1.0.3" UpgradeCode="36F5D65A-7CA2-49CB-89D5-73C67C0C9A51" Language="1033" InstallerVersion="500">
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."/>
     <MediaTemplate EmbedCab="yes"/>
 

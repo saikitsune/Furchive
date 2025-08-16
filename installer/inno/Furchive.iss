@@ -1,6 +1,6 @@
 ; Inno Setup script for Furchive
 #define AppName "Furchive"
-#define AppVersion "1.0.0"
+#define AppVersion "1.0.3"
 #define AppPublisher "Furchive"
 #define AppExeName "Furchive.exe"
 
@@ -18,9 +18,8 @@ Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 DisableProgramGroupPage=yes
-; Do not require elevation; allow override if user chooses all-users while elevated
+; Enforce per-user install only (no all-users option)
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
 SetupLogging=yes
 SetupIconFile=..\..\assets\icon.ico
 
@@ -35,7 +34,7 @@ Source: "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags:
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
-Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
