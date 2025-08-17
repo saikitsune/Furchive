@@ -96,12 +96,15 @@
                                  PreviewMouseLeftButtonUp="PoolsList_MouseUp"
                                  KeyDown="PoolsList_KeyDown">
                             <ListBox.Resources>
-                                <!-- Thicker vertical scrollbar specifically for the Pools list -->
+                                <!-- Themed, non-overlapping vertical scrollbar for Pools list -->
                                 <Style TargetType="ScrollBar">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                    <Setter Property="Opacity" Value="0.9"/>
                                     <Style.Triggers>
                                         <Trigger Property="Orientation" Value="Vertical">
-                                            <Setter Property="Width" Value="18"/>
-                                            <Setter Property="MinWidth" Value="18"/>
+                                            <Setter Property="Width" Value="16"/>
+                                            <Setter Property="MinWidth" Value="16"/>
                                         </Trigger>
                                     </Style.Triggers>
                                 </Style>
@@ -109,7 +112,9 @@
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="Height" Value="22"/>
-                                    <Setter Property="Padding" Value="0,0,4,0"/>
+                                    <!-- add right padding so text doesn’t hide under the vertical scrollbar -->
+                                    <Setter Property="Padding" Value="0,0,18,0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
@@ -118,11 +123,11 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="60"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding Id}" Foreground="Gray"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding PostCount}" HorizontalAlignment="Right" Foreground="Gray"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding PostCount}" Margin="0,0,4,0" HorizontalAlignment="Right" Foreground="Gray"/>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -391,7 +396,8 @@
 
         <!-- Resizers -->
     <GridSplitter Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="5" Background="Transparent" ShowsPreview="True" ResizeDirection="Columns" DragCompleted="ColumnSplitter_DragCompleted"/>
-    <GridSplitter Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="5" Background="Transparent" ShowsPreview="True" ResizeDirection="Columns" DragCompleted="ColumnSplitter_DragCompleted"/>
+    <!-- Right splitter: live resize and clear animations on drag start so new width applies immediately -->
+    <GridSplitter Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="5" Background="Transparent" ShowsPreview="False" ResizeDirection="Columns" DragStarted="ColumnSplitter_DragStarted" DragCompleted="ColumnSplitter_DragCompleted"/>
         </Grid>
 
     <!-- Horizontal Splitter between main content and downloads -->

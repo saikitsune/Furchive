@@ -71,7 +71,7 @@ public partial class SettingsViewModel : ObservableObject
     // Downloads
     var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
     DefaultDownloadDirectory = _settings.GetSetting<string>("DefaultDownloadDirectory", fallback) ?? fallback;
-    FilenameTemplate = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+    FilenameTemplate = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}";
     PoolFilenameTemplate = _settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
     ConcurrentDownloads = Math.Clamp(_settings.GetSetting<int>("ConcurrentDownloads", 3), 1, 4);
     GalleryScale = Math.Clamp(_settings.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);

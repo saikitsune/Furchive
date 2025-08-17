@@ -206,8 +206,9 @@ public class DownloadService : IDownloadService
             try
             {
                 var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                var defaultUa = $"Furchive/{version} (by USERNAME)";
-                var ua = _settingsService.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
+                var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+                var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim();
+                var ua = $"Furchive/{version} (by {uname})";
                 httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
                 // Provide Referer expected by e621 CDN
                 try { httpClient.DefaultRequestHeaders.Referrer = new Uri("https://e621.net/"); } catch { }
@@ -272,7 +273,7 @@ public class DownloadService : IDownloadService
         var hasPoolContext = mediaItem.TagCategories != null && (mediaItem.TagCategories.ContainsKey("page_number") || mediaItem.TagCategories.ContainsKey("pool_name"));
         var template = hasPoolContext
             ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
-            : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
+            : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}");
         var useOriginalFilename = _settingsService.GetSetting<bool>("UseOriginalFilename", false);
 
         if (useOriginalFilename && !string.IsNullOrEmpty(mediaItem.Title))
@@ -344,8 +345,9 @@ public class DownloadService : IDownloadService
         try
         {
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-            var defaultUa = $"Furchive/{version} (by USERNAME)";
-            var ua = _settingsService.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
+            var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+            var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim();
+            var ua = $"Furchive/{version} (by {uname})";
             client.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
             // Some CDNs expect a Referer; provide e621 to avoid 403 on direct file access
             try { client.DefaultRequestHeaders.Referrer = new Uri("https://e621.net/"); } catch { }

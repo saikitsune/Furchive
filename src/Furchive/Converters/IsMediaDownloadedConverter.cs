@@ -17,13 +17,13 @@ public class IsMediaDownloadedConverter : IValueConverter
         {
             if (value is not MediaItem item) return false;
             var settings = App.Services?.GetService(typeof(ISettingsService)) as ISettingsService;
-            var defaultDir = settings?.GetSetting<string>("DefaultDownloadDirectory",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads"))
-                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
+            var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
+            var defaultDir = settings?.GetSetting<string>("DefaultDownloadDirectory", fallback)
+                ?? fallback;
             var hasPoolContext = item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"));
             var template = hasPoolContext
                 ? (settings?.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
-                : (settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
+                : (settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}");
             static string Sanitize(string s)
             {
                 var invalid = Path.GetInvalidFileNameChars();

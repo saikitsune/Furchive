@@ -20,15 +20,16 @@ namespace Furchive.Views;
 public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _downloadsRefreshTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
-    private double _desiredPreviewWidth = 350; // remembers last non-zero preview width
+    private double _desiredPreviewWidth = 333; // remembers last non-zero preview width
+    private bool _isResizingPreview;
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
-        DataContext = viewModel;
+    // Load persisted UI sizes first so initial selection uses saved widths
+    TryLoadPanelSizes();
+    DataContext = viewModel;
     // React to selection changes to animate preview pane
     viewModel.PropertyChanged += ViewModelOnPropertyChanged;
-        // Load persisted UI sizes
-        TryLoadPanelSizes();
         // Ensure preview starts hidden when nothing selected
         AnimatePreviewPane();
         _downloadsRefreshTimer.Tick += (_, __) =>
@@ -56,8 +57,16 @@ public partial class MainWindow : Window
         {
             if (FindName("PreviewColumn") is not ColumnDefinition col) return;
             bool hasSelection = (DataContext as MainViewModel)?.SelectedMedia != null;
+            if (_isResizingPreview)
+            {
+                // If user is actively dragging the splitter, don't fight the user; just ensure it stays visible/hidden
+                col.BeginAnimation(ColumnDefinition.WidthProperty, null);
+                    col.Width = new GridLength(hasSelection ? Math.Max(250, col.ActualWidth) : 0);
+                return;
+            }
+            // When app starts, ActualWidth may be 0 though we have a saved width; prefer the saved width for target
             double target = hasSelection ? Math.Max(250, _desiredPreviewWidth) : 0;
-            double from = col.ActualWidth;
+            double from = col.ActualWidth <= 0 && hasSelection ? target : col.ActualWidth;
 
             var anim = new GridLengthAnimation
             {
@@ -92,7 +101,7 @@ public partial class MainWindow : Window
             {
                 tagCol.Width = new GridLength(tagWidth);
             }
-            var prevWidth = settings.GetSetting<double>("PreviewPanelWidth", 350);
+            var prevWidth = settings.GetSetting<double>("PreviewPanelWidth", 333);
             if (prevWidth > 200 && prevWidth < 1000 && FindName("PreviewColumn") is ColumnDefinition prevCol)
             {
                 prevCol.Width = new GridLength(prevWidth);
@@ -390,15 +399,31 @@ public partial class MainWindow : Window
             }
             if (FindName("PreviewColumn") is ColumnDefinition prev)
             {
-                    _desiredPreviewWidth = Math.Max(250, prev.ActualWidth);
-                    _ = settings.SetSettingAsync("PreviewPanelWidth", _desiredPreviewWidth);
+                _desiredPreviewWidth = Math.Max(250, prev.ActualWidth);
+                _ = settings.SetSettingAsync("PreviewPanelWidth", _desiredPreviewWidth);
             }
         }
         catch { }
+        finally { _isResizingPreview = false; }
     }
 
     private void RowSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
     {
         SaveDownloadsPanelHeight();
+    }
+
+    private void ColumnSplitter_DragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+    {
+        _isResizingPreview = true;
+        try
+        {
+            if (FindName("PreviewColumn") is ColumnDefinition prev)
+            {
+                // Stop any running animation and take control for live-resize
+                prev.BeginAnimation(ColumnDefinition.WidthProperty, null);
+                _desiredPreviewWidth = Math.Max(250, prev.ActualWidth);
+            }
+        }
+        catch { }
     }
 }
