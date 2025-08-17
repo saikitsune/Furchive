@@ -151,11 +151,11 @@ public partial class MainViewModel : ObservableObject
         // Check platform health on startup
         _ = Task.Run(CheckPlatformHealthAsync);
 
-        // Load pools cache and then refresh if stale
+        // Load pools cache and schedule incremental updates
         _ = Task.Run(async () =>
         {
             try { await LoadPoolsFromCacheAsync(); } catch { }
-            try { await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools refresh failed"); }
+            try { await StartOrKickIncrementalAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools incremental scheduler failed"); }
         });
 
         // Listen for pools cache rebuilds from Settings
@@ -458,19 +458,13 @@ public partial class MainViewModel : ObservableObject
 
     private async Task RefreshPoolsIfStaleAsync()
     {
+        // Deprecated full-stale refresh path retained only for initial cache build
         try
         {
             var file = GetPoolsCacheFilePath();
-            var stale = true;
-            if (File.Exists(file))
+            if (File.Exists(file) && Pools.Any())
             {
-                var info = new FileInfo(file);
-                stale = (DateTime.UtcNow - info.LastWriteTimeUtc) > TimeSpan.FromHours(24);
-            }
-            if (!stale && Pools.Any())
-            {
-                // Perform a quick incremental check in background to keep fresh without full reload
-                _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromHours(6)));
+                // If cache exists, we no longer do a full reload here
                 return;
             }
 
@@ -512,8 +506,8 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsPoolsLoading = false;
-            // Ensure periodic incremental updates are scheduled after a full refresh
-            _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromHours(6)));
+            // After initial full refresh, schedule periodic incremental updates
+            _ = Task.Run(() => StartOrKickIncrementalAsync());
         }
     }
 
@@ -571,9 +565,27 @@ public partial class MainViewModel : ObservableObject
             // Schedule next incremental refresh
             _ = Task.Delay(interval).ContinueWith(async _ =>
             {
-                await IncrementalUpdatePoolsAsync(interval);
+                await StartOrKickIncrementalAsync();
             });
         }
+    }
+
+    private async Task StartOrKickIncrementalAsync()
+    {
+        // If cache doesn't exist or in-memory list is empty, do a one-time full cache build
+        try
+        {
+            var file = GetPoolsCacheFilePath();
+            if (!File.Exists(file) || !Pools.Any())
+            {
+                await RefreshPoolsIfStaleAsync();
+            }
+        }
+        catch { }
+
+        // Read interval from settings with sane defaults
+        var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360));
+        await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes));
     }
 
     [RelayCommand]

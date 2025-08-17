@@ -34,6 +34,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _poolsCachedCount;
     [ObservableProperty] private DateTime? _poolsLastCachedAt;
     [ObservableProperty] private string _poolsCacheFilePath = string.Empty;
+    [ObservableProperty] private int _poolsUpdateIntervalMinutes;
 
     public SettingsViewModel(ISettingsService settings, IThumbnailCacheService thumbCache, ILogger<SettingsViewModel> logger, IUnifiedApiService api)
     {
@@ -63,6 +64,10 @@ public partial class SettingsViewModel : ObservableObject
     VideoStartMuted = _settings.GetSetting<bool>("VideoStartMuted", false);
         // Pools cache info
         RefreshPoolsCacheInfo();
+
+    // Pools incremental update interval (minutes)
+    var defaultInterval = 360; // 6 hours
+    PoolsUpdateIntervalMinutes = Math.Max(5, _settings.GetSetting<int>("PoolsUpdateIntervalMinutes", defaultInterval));
     }
 
     [RelayCommand]
@@ -85,6 +90,10 @@ public partial class SettingsViewModel : ObservableObject
             // Playback
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted);
+
+            // Pools update interval
+            var interval = PoolsUpdateIntervalMinutes <= 0 ? 360 : PoolsUpdateIntervalMinutes;
+            await _settings.SetSettingAsync("PoolsUpdateIntervalMinutes", interval);
         }
         catch (Exception ex)
         {

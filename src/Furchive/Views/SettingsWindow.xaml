@@ -114,6 +114,13 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                     <Button Content="Refresh Info" Command="{Binding RefreshPoolsCacheInfoCommand}" Margin="0,0,8,0"/>
                     <Button Content="Refresh Pools Cache" Command="{Binding RebuildPoolsCacheCommand}"/>
                 </StackPanel>
+
+                <!-- Update interval setting -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock Text="Update every (minutes):" VerticalAlignment="Center" Width="160"/>
+                    <TextBox Width="100" Text="{Binding PoolsUpdateIntervalMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="(min 5)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- Moved Temp (Viewer) section below Cache -->
