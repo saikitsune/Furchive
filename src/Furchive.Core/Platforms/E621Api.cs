@@ -20,6 +20,7 @@ public class E621Api : IPlatformApi
     private string? _userAgent;
     private string? _username;
     private string? _apiKey;
+    private string? _authQuery; // cached query string like login=USER&api_key=KEY
 
     public E621Api(HttpClient httpClient, ILogger<E621Api> logger)
     {
@@ -100,6 +101,11 @@ public class E621Api : IPlatformApi
         {
             var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_username}:{_apiKey}"));
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+            _authQuery = $"login={Uri.EscapeDataString(_username)}&api_key={Uri.EscapeDataString(_apiKey)}";
+        }
+        else
+        {
+            _authQuery = null;
         }
 
         return Task.FromResult(!string.IsNullOrWhiteSpace(_userAgent));
@@ -153,6 +159,7 @@ public class E621Api : IPlatformApi
             // Keep per-request modest to reduce UI/network spikes
             var limit = Math.Clamp(parameters.Limit, 1, 100);
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={parameters.Page}";
+            url = AppendAuth(url);
 
             _logger.LogInformation("e621 search: tags=\"{Tags}\", page={Page}, limit={Limit}", tagQuery, parameters.Page, limit);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -214,6 +221,7 @@ public class E621Api : IPlatformApi
                 catch { }
             }
             var url = $"https://e621.net/posts/{id}.json";
+            url = AppendAuth(url);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             var resp = await _httpClient.SendAsync(req);
@@ -251,6 +259,7 @@ public class E621Api : IPlatformApi
                 catch { }
             }
             var url = $"https://e621.net/tags.json?search[name_matches]={Uri.EscapeDataString(query)}*&limit={limit}";
+            url = AppendAuth(url);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             var resp = await _httpClient.SendAsync(req);
@@ -296,6 +305,7 @@ public class E621Api : IPlatformApi
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=name";
+                url = AppendAuth(url);
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 var resp = await _httpClient.SendAsync(req, cancellationToken);
@@ -333,6 +343,7 @@ public class E621Api : IPlatformApi
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=name";
+                url = AppendAuth(url);
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 var resp = await _httpClient.SendAsync(req, cancellationToken);
@@ -384,6 +395,7 @@ public class E621Api : IPlatformApi
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=updated_desc";
+                url = AppendAuth(url);
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 var resp = await _httpClient.SendAsync(req, cancellationToken);
@@ -429,6 +441,7 @@ public class E621Api : IPlatformApi
             var perPage = Math.Clamp(limit, 1, 100);
             var tagQuery = $"pool:{poolId} order:pool"; // order in pool sequence
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={perPage}&page={(offset / perPage) + 1}";
+            url = AppendAuth(url);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             var resp = await _httpClient.SendAsync(req, cancellationToken);
@@ -465,6 +478,7 @@ public class E621Api : IPlatformApi
             EnsureUserAgent();
             // First, fetch the pool metadata to get ordered post IDs
             var poolUrl = $"https://e621.net/pools/{poolId}.json";
+            poolUrl = AppendAuth(poolUrl);
             using (var req = new HttpRequestMessage(HttpMethod.Get, poolUrl))
             {
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -488,6 +502,7 @@ public class E621Api : IPlatformApi
                     var idsParam = string.Join(",", slice);
                     var tags = $"id:{idsParam}"; // OR list of ids
                     var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tags)}&limit={slice.Count}";
+                    url = AppendAuth(url);
                     using var r = new HttpRequestMessage(HttpMethod.Get, url);
                     r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                     var pr = await _httpClient.SendAsync(r, cancellationToken);
@@ -549,6 +564,12 @@ public class E621Api : IPlatformApi
             }
             catch { }
         }
+    }
+
+    private string AppendAuth(string url)
+    {
+        if (string.IsNullOrWhiteSpace(_authQuery)) return url;
+        return url.Contains("?") ? $"{url}&{_authQuery}" : $"{url}?{_authQuery}";
     }
 
     private int GetRateLimitFromHeaders(System.Net.Http.Headers.HttpResponseHeaders headers)
