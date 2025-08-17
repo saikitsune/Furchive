@@ -204,11 +204,8 @@ public partial class MainViewModel : ObservableObject
             try { await StartOrKickIncrementalAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools incremental scheduler failed"); }
         });
 
-        // Try to restore last session shortly after startup
-        _ = Task.Run(async () =>
-        {
-            try { await RestoreLastSessionAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Restore last session failed"); }
-        });
+    // Try to restore last session shortly after startup (on UI context to avoid cross-thread collection updates)
+    _ = RestoreLastSessionAsync();
 
         // Listen for pools cache rebuilds from Settings
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) =>
@@ -405,84 +402,116 @@ public partial class MainViewModel : ObservableObject
 
     private async Task PerformSearchAsync(int page, bool reset)
     {
-        IsSearching = true;
-        StatusMessage = "Searching...";
-        if (reset) SearchResults.Clear();
-
-        // Ensure e621 authentication is applied before querying, so auth-only posts have file urls
-        await EnsureE621AuthAsync();
-
-        var sources = new List<string>();
-        if (IsE621Enabled) sources.Add("e621");
-        if (!sources.Any())
+        // Always reset IsSearching even if an exception occurs
+        try
         {
-            // Fallback to e621 by default
-            sources.Add("e621");
-        }
-
-        // Build include/exclude tags from explicit lists and search box
-        var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
-        var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
-        var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
-
-        // Ratings from UI filter
-        var ratings = RatingFilterIndex switch
-        {
-            0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, // All
-            1 => new List<ContentRating> { ContentRating.Explicit },
-            2 => new List<ContentRating> { ContentRating.Questionable },
-            3 => new List<ContentRating> { ContentRating.Safe },
-            _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }
-        };
-
-        var searchParams = new SearchParameters
-        {
-            IncludeTags = includeTags,
-            ExcludeTags = excludeTags,
-            Sources = sources,
-            Ratings = ratings,
-            Sort = Furchive.Core.Models.SortOrder.Newest,
-            Page = page,
-            Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50)
-        };
-
-        var result = await _apiService.SearchAsync(searchParams);
-
-        foreach (var item in result.Items)
-        {
-            // Defensive: ensure gallery preview is never blank
-            if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl))
+            if (App.Current.Dispatcher.CheckAccess())
             {
-                item.PreviewUrl = item.FullImageUrl;
+                IsSearching = true;
+                StatusMessage = "Searching...";
+                if (reset) SearchResults.Clear();
             }
-            SearchResults.Add(item);
-        }
-
-        CurrentPage = page;
-        HasNextPage = result.HasNextPage;
-        TotalCount = result.TotalCount;
-        OnPropertyChanged(nameof(CanGoPrev));
-        OnPropertyChanged(nameof(CanGoNext));
-        OnPropertyChanged(nameof(PageInfo));
-
-        if (result.Errors.Any())
-        {
-            var keys = string.Join(", ", result.Errors.Keys);
-            StatusMessage = $"Found {result.Items.Count} items with errors: {keys}";
-            foreach (var kv in result.Errors)
+            else
             {
-                _logger.LogError("Search source error: {Source}: {Error}", kv.Key, kv.Value);
+                await App.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    IsSearching = true;
+                    StatusMessage = "Searching...";
+                    if (reset) SearchResults.Clear();
+                });
             }
+
+            // Ensure e621 authentication is applied before querying, so auth-only posts have file urls
+            await EnsureE621AuthAsync();
+
+            var sources = new List<string>();
+            if (IsE621Enabled) sources.Add("e621");
+            if (!sources.Any())
+            {
+                // Fallback to e621 by default
+                sources.Add("e621");
+            }
+
+            // Build include/exclude tags from explicit lists and search box
+            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
+            var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+
+            // Ratings from UI filter
+            var ratings = RatingFilterIndex switch
+            {
+                0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, // All
+                1 => new List<ContentRating> { ContentRating.Explicit },
+                2 => new List<ContentRating> { ContentRating.Questionable },
+                3 => new List<ContentRating> { ContentRating.Safe },
+                _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }
+            };
+
+            var searchParams = new SearchParameters
+            {
+                IncludeTags = includeTags,
+                ExcludeTags = excludeTags,
+                Sources = sources,
+                Ratings = ratings,
+                Sort = Furchive.Core.Models.SortOrder.Newest,
+                Page = page,
+                Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50)
+            };
+
+            var result = await _apiService.SearchAsync(searchParams);
+
+            // Add results on UI thread
+            if (App.Current.Dispatcher.CheckAccess())
+            {
+                foreach (var item in result.Items)
+                {
+                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl))
+                    {
+                        item.PreviewUrl = item.FullImageUrl;
+                    }
+                    SearchResults.Add(item);
+                }
+                CurrentPage = page;
+                HasNextPage = result.HasNextPage;
+                TotalCount = result.TotalCount;
+                OnPropertyChanged(nameof(CanGoPrev));
+                OnPropertyChanged(nameof(CanGoNext));
+                OnPropertyChanged(nameof(PageInfo));
+            }
+            else
+            {
+                await App.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    foreach (var item in result.Items)
+                    {
+                        if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl))
+                        {
+                            item.PreviewUrl = item.FullImageUrl;
+                        }
+                        SearchResults.Add(item);
+                    }
+                    CurrentPage = page;
+                    HasNextPage = result.HasNextPage;
+                    TotalCount = result.TotalCount;
+                    OnPropertyChanged(nameof(CanGoPrev));
+                    OnPropertyChanged(nameof(CanGoNext));
+                    OnPropertyChanged(nameof(PageInfo));
+                });
+            }
+
+            var status = result.Errors.Any()
+                ? $"Found {result.Items.Count} items with errors: {string.Join(", ", result.Errors.Keys)}"
+                : $"Found {result.Items.Count} items";
+            if (App.Current.Dispatcher.CheckAccess()) StatusMessage = status;
+            else await App.Current.Dispatcher.InvokeAsync(() => StatusMessage = status);
+            // Persist last session after a search completes
+            try { await PersistLastSessionAsync(); } catch { }
         }
-        else
+        finally
         {
-            StatusMessage = $"Found {result.Items.Count} items";
+            if (App.Current.Dispatcher.CheckAccess()) IsSearching = false;
+            else await App.Current.Dispatcher.InvokeAsync(() => IsSearching = false);
         }
-
-    IsSearching = false;
-
-    // Persist last session after a search completes
-    try { await PersistLastSessionAsync(); } catch { }
     }
 
     // Ensure e621 API is authenticated with current settings (UA, username, api key)
