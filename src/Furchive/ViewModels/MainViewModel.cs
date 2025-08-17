@@ -42,6 +42,7 @@ public partial class MainViewModel : ObservableObject
     partial void OnSelectedMediaChanged(MediaItem? value)
     {
         OnPropertyChanged(nameof(IsSelectedDownloaded));
+    _ = EnsurePreviewPoolInfoAsync(value);
     }
 
     [ObservableProperty]
@@ -68,6 +69,16 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private int? _currentPoolId = null;
+
+    // Preview pool context (shown even when not in pool mode if detectable)
+    [ObservableProperty]
+    private string _previewPoolName = string.Empty;
+
+    public string PreviewPoolDisplayName => !string.IsNullOrWhiteSpace(PreviewPoolName)
+        ? PreviewPoolName
+        : (SelectedPool?.Name ?? string.Empty);
+
+    public bool PreviewPoolVisible => IsPoolMode || !string.IsNullOrWhiteSpace(PreviewPoolName) || SelectedPool != null;
 
     public ObservableCollection<PoolInfo> Pools { get; } = new();
     public ObservableCollection<PoolInfo> FilteredPools { get; } = new();
@@ -547,6 +558,35 @@ public partial class MainViewModel : ObservableObject
             if (!string.IsNullOrWhiteSpace(euser)) creds["Username"] = euser;
             if (!string.IsNullOrWhiteSpace(ekey)) creds["ApiKey"] = ekey;
             await _e621Platform.AuthenticateAsync(creds);
+        }
+        catch { }
+    }
+
+    private async Task EnsurePreviewPoolInfoAsync(MediaItem? item)
+    {
+        try
+        {
+            if (item == null)
+            {
+                PreviewPoolName = string.Empty;
+                OnPropertyChanged(nameof(PreviewPoolDisplayName));
+                OnPropertyChanged(nameof(PreviewPoolVisible));
+                return;
+            }
+            // Prefer pool_name from TagCategories if present
+            if (item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var names) && names.Count > 0)
+            {
+                PreviewPoolName = names[0];
+                OnPropertyChanged(nameof(PreviewPoolDisplayName));
+                OnPropertyChanged(nameof(PreviewPoolVisible));
+                return;
+            }
+            // Otherwise try to fetch details and infer; placeholder since MediaItem lacks pool metadata in details across sources
+            // For now, leave as empty if not available
+            await Task.CompletedTask;
+            PreviewPoolName = string.Empty;
+            OnPropertyChanged(nameof(PreviewPoolDisplayName));
+            OnPropertyChanged(nameof(PreviewPoolVisible));
         }
         catch { }
     }
@@ -1077,8 +1117,19 @@ public partial class MainViewModel : ObservableObject
                 }
             }
             if (toQueue.Any())
-                await _downloadService.QueueMultipleDownloadsAsync(toQueue, downloadPath);
-            StatusMessage = $"Queued {SearchResults.Count} downloads";
+            {
+                if (IsPoolMode && CurrentPoolId.HasValue)
+                {
+                    // Queue as an aggregate pool download job
+                    var label = SelectedPool?.Name ?? PreviewPoolName ?? "Pool";
+                    await _downloadService.QueueAggregateDownloadsAsync("pool", toQueue, downloadPath, label);
+                }
+                else
+                {
+                    await _downloadService.QueueMultipleDownloadsAsync(toQueue, downloadPath);
+                }
+            }
+            StatusMessage = IsPoolMode ? $"Queued pool downloads ({SearchResults.Count} items)" : $"Queued {SearchResults.Count} downloads";
         }
         catch (Exception ex)
         {

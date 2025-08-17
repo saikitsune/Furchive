@@ -303,6 +303,24 @@
                                 <TextBlock Text="{Binding Title}" Style="{StaticResource SubHeaderTextStyle}" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding Artist}" FontStyle="Italic" Margin="0,0,0,5"/>
                                 <TextBlock Text="{Binding Source}" FontSize="10" Foreground="Gray" Margin="0,0,0,5"/>
+
+                                <!-- Pool context and actions (if available) -->
+                                <StackPanel Margin="0,6,0,8"
+                                            Visibility="{Binding DataContext.PreviewPoolVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Pool:" FontWeight="SemiBold"/>
+                                        <TextBlock Text=" "/>
+                                        <TextBlock Text="{Binding DataContext.PreviewPoolDisplayName, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" Width="160"/>
+                                        <TextBlock Text=" (" Foreground="Gray"/>
+                                        <TextBlock Text="{Binding DataContext.SelectedPool.Id, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="Gray"/>
+                                        <TextBlock Text=")" Foreground="Gray"/>
+                                        <TextBlock Text="  •  Page: " Margin="6,0,0,0" Foreground="Gray"/>
+                                        <TextBlock Text="{Binding TagCategories[page_number][0]}" Foreground="Gray"/>
+                                    </StackPanel>
+                                    <Button Content="View Pool" Width="100" Margin="0,6,0,0"
+                                            Command="{Binding DataContext.LoadSelectedPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            IsEnabled="{Binding DataContext.SelectedPool, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToBooleanConverter}}"/>
+                                </StackPanel>
                                 
                                 <!-- Description -->
                                 <TextBlock Text="Description:" FontWeight="SemiBold" Margin="0,10,0,5"/>
@@ -470,15 +488,39 @@
                             <GridViewColumn Header="Path" Width="360">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding DestinationPath}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DestinationPath}"/>
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding DestinationPath}"/>
+                                                    <Setter Property="ToolTip" Value="{Binding DestinationPath}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                            <Setter Property="Text" Value="{Binding GroupType, StringFormat=Group: {0}}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
-                            <GridViewColumn Header="Actions" Width="140">
+                            <GridViewColumn Header="Actions" Width="160">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                            <Button Content="Open" Width="56" Margin="0,0,6,0" Click="OpenDownloadedFile_Click"/>
+                                            <!-- Hide Open for aggregate jobs (e.g., pooled downloads) -->
+                                            <Button Content="Open" Width="56" Margin="0,0,6,0" Click="OpenDownloadedFile_Click">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
                                             <Button Content="Folder" Width="60" Click="OpenDownloadedFolder_Click"/>
                                         </StackPanel>
                                     </DataTemplate>

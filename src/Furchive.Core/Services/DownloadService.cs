@@ -3,6 +3,7 @@ using Furchive.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Net.Http;
+using System.Globalization;
 
 namespace Furchive.Core.Services;
 
@@ -39,6 +40,55 @@ public class DownloadService : IDownloadService
 
         // Start processing downloads
         _ = Task.Run(ProcessDownloadQueueAsync);
+    }
+
+    // Create an aggregate job with children for grouped (e.g., pool) downloads
+    public async Task<string> QueueAggregateDownloadsAsync(string groupType, List<MediaItem> mediaItems, string destinationPath, string? groupLabel = null)
+    {
+        var aggregate = new DownloadJob
+        {
+            IsAggregate = true,
+            GroupType = groupType,
+            MediaItem = new MediaItem { Title = $"{CultureInfo.CurrentCulture.TextInfo.ToTitleCase(groupType)}: {(string.IsNullOrWhiteSpace(groupLabel) ? (mediaItems.FirstOrDefault()?.Artist ?? "Group") : groupLabel)} ({mediaItems.Count} items)", Source = mediaItems.FirstOrDefault()?.Source ?? "e621" },
+            DestinationPath = System.IO.Path.Combine(destinationPath, $"{groupType}-download"),
+            Status = DownloadStatus.Queued
+        };
+        _downloadJobs[aggregate.Id] = aggregate;
+        DownloadStatusChanged?.Invoke(this, aggregate);
+
+        foreach (var item in mediaItems)
+        {
+            var childId = await QueueDownloadAsync(item, destinationPath);
+            aggregate.ChildrenIds.Add(childId);
+            if (_downloadJobs.TryGetValue(childId, out var child))
+                child.ParentId = aggregate.Id;
+        }
+
+        // Hook into updates to recompute aggregate progress
+        DownloadProgressUpdated += (s, job) => AggregateUpdate(job);
+        DownloadStatusChanged += (s, job) => AggregateUpdate(job);
+
+        return aggregate.Id;
+
+        void AggregateUpdate(DownloadJob job)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(job.ParentId)) return;
+                if (!_downloadJobs.TryGetValue(job.ParentId, out var parent) || !parent.IsAggregate) return;
+                var children = parent.ChildrenIds.Select(id => _downloadJobs.TryGetValue(id, out var j) ? j : null).Where(j => j != null)!.ToList();
+                parent.TotalBytes = children.Sum(c => c!.TotalBytes);
+                parent.BytesDownloaded = children.Sum(c => c!.BytesDownloaded);
+                // Aggregate status: Failed if any failed, Cancelled if any cancelled and none downloading, Completed if all completed, else Downloading/Queued
+                if (children.Any(c => c!.Status == DownloadStatus.Failed)) parent.Status = DownloadStatus.Failed;
+                else if (children.All(c => c!.Status == DownloadStatus.Completed)) parent.Status = DownloadStatus.Completed;
+                else if (children.Any(c => c!.Status == DownloadStatus.Downloading)) parent.Status = DownloadStatus.Downloading;
+                else if (children.All(c => c!.Status == DownloadStatus.Queued)) parent.Status = DownloadStatus.Queued;
+                else if (children.Any(c => c!.Status == DownloadStatus.Cancelled)) parent.Status = DownloadStatus.Cancelled;
+                DownloadStatusChanged?.Invoke(this, parent);
+            }
+            catch { }
+        }
     }
 
     public Task<string> QueueDownloadAsync(MediaItem mediaItem, string destinationPath)

@@ -142,6 +142,12 @@ public interface IDownloadService
     Task<List<string>> QueueMultipleDownloadsAsync(List<MediaItem> mediaItems, string destinationPath);
 
     /// <summary>
+    /// Queue a grouped aggregate download (e.g., a pool) and its children.
+    /// Returns the aggregate job ID.
+    /// </summary>
+    Task<string> QueueAggregateDownloadsAsync(string groupType, List<MediaItem> mediaItems, string destinationPath, string? groupLabel = null);
+
+    /// <summary>
     /// Get all download jobs
     /// </summary>
     Task<List<DownloadJob>> GetDownloadJobsAsync();
