@@ -38,9 +38,10 @@
 
             <Style x:Key="ToolbarButtonStyle" TargetType="Button">
                 <Setter Property="Margin" Value="2"/>
-                <Setter Property="Padding" Value="10,6"/>
+                <Setter Property="Padding" Value="10,4"/>
                 <Setter Property="MinWidth" Value="64"/>
-                <Setter Property="Height" Value="30"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
             </Style>
 
             <Style x:Key="TagButtonStyle" TargetType="Button">

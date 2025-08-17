@@ -260,6 +260,12 @@ public partial class MainViewModel : ObservableObject
             }
             catch { }
         });
+
+        // Listen for soft refresh requests from Settings window
+        WeakReferenceMessenger.Default.Register<PoolsSoftRefreshRequestedMessage>(this, async (_, __) =>
+        {
+            try { await SoftRefreshPoolsAsync(); } catch { }
+        });
     }
 
     public bool IsSelectedDownloaded

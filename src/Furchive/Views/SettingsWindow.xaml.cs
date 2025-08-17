@@ -7,6 +7,8 @@ using ModernWpf;
 using Furchive.Core.Interfaces;
 using System.Diagnostics;
 using WinForms = System.Windows.Forms;
+using CommunityToolkit.Mvvm.Messaging;
+using Furchive.Messages;
 
 namespace Furchive.Views;
 
@@ -122,5 +124,11 @@ public partial class SettingsWindow : Window
         {
             vm.DefaultDownloadDirectory = dlg.SelectedPath;
         }
+    }
+
+    private void SoftRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        // Broadcast a soft refresh request; MainViewModel listens and triggers incremental update
+        WeakReferenceMessenger.Default.Send(new PoolsSoftRefreshRequestedMessage());
     }
 }

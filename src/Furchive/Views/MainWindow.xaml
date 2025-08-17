@@ -80,7 +80,6 @@
                             <TextBlock Text="Pools" Style="{StaticResource SubHeaderTextStyle}"/>
                             <TextBlock Text=" " Width="6"/>
                             <TextBlock Text="{Binding PoolsStatusText}" VerticalAlignment="Center" Foreground="Gray"/>
-                            <Button Content="Soft Refresh" Margin="10,0,0,0" Command="{Binding SoftRefreshPoolsCommand}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBox Width="210" Text="{Binding PoolSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search pools by name or ID"/>
@@ -257,11 +256,13 @@
                     <StackPanel>
                         <ContentControl x:Name="previewPane">
                             <StackPanel>
-                <!-- Actions moved above preview image -->
-                <Button Content="Open Viewer" Margin="0,0,0,6" Click="OpenViewer_Click"
-                    IsEnabled="{Binding Id, Converter={StaticResource NullToBooleanConverter}}"/>
-                <Button Content="Open in Browser" Margin="0,0,0,10" Click="OpenInBrowser_Click"
-                    IsEnabled="{Binding SourceUrl, Converter={StaticResource NullToBooleanConverter}}"/>
+                <!-- Actions moved above preview image (now side-by-side) -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Button Content="Open Viewer" Click="OpenViewer_Click"
+                        IsEnabled="{Binding Id, Converter={StaticResource NullToBooleanConverter}}"/>
+                    <Button Content="Open in Browser" Margin="6,0,0,0" Click="OpenInBrowser_Click"
+                        IsEnabled="{Binding SourceUrl, Converter={StaticResource NullToBooleanConverter}}"/>
+                </StackPanel>
                                 <!-- Preview Image (click to open viewer) -->
                                 <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCacheConverter}}" MaxHeight="300" Stretch="Uniform" Margin="0,0,0,10" MouseLeftButtonUp="OpenViewer_Click" Cursor="Hand"/>
                                 

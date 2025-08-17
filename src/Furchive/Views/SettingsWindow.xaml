@@ -124,12 +124,14 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                     <Button Content="Refresh Info" Command="{Binding RefreshPoolsCacheInfoCommand}" Margin="0,0,8,0"/>
-                    <Button Content="Recache Pools" Command="{Binding RebuildPoolsCacheCommand}"/>
+                    <Button Content="Recache Pools" Command="{Binding RebuildPoolsCacheCommand}" Margin="0,0,8,0"/>
+                    <Button Content="Soft Refresh" Click="SoftRefresh_Click"/>
                 </StackPanel>
 
                 <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="0,6,0,0">
                     Pools are cached locally for fast lookup. A background incremental update runs periodically.
-                    Use Recache Pools to rebuild from scratch. Pools marked deleted or with no visible posts are excluded.
+                    Use Recache Pools to rebuild from scratch. Soft Refresh triggers the incremental update immediately.
+                    Pools marked deleted or with no visible posts are excluded.
                 </TextBlock>
 
                 <!-- Update interval setting -->
