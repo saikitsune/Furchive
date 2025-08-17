@@ -14,6 +14,7 @@ $repo = Split-Path -Parent $root
 $appProj = Join-Path $repo 'src/Furchive/Furchive.csproj'
 $publishDir = Join-Path $repo 'src/Furchive/publish'
 $iss = Join-Path $root 'inno/Furchive.iss'
+${outDir} = Join-Path $root 'inno/output'
 
 # Determine effective version from the csproj if not supplied (or if supplied value doesn't match project)
 function Get-ProjectVersion([string]$csprojPath) {
@@ -35,6 +36,13 @@ if (-not [string]::IsNullOrWhiteSpace($Version) -and ($Version -ne $projectVersi
   Write-Warning "Provided -Version '$Version' differs from project version '$projectVersion'. Using project version to keep installer in sync."
 }
 Write-Host "Using version $effectiveVersion (project: $projectVersion)"
+
+# Ensure clean publish directory to avoid stale files
+if (Test-Path $publishDir) {
+  Write-Host "Cleaning publish directory $publishDir ..."
+  Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+New-Item -ItemType Directory -Force -Path $publishDir | Out-Null
 
 Write-Host "Publishing app ($Configuration, $Runtime) to $publishDir..."
 & dotnet publish $appProj -c $Configuration -r $Runtime --self-contained true -p:PublishTrimmed=false -p:Version=$effectiveVersion -o $publishDir
@@ -59,8 +67,21 @@ $innoc = ${env:INNOSETUP} ; if (-not $innoc) { $innoc = 'C:\Program Files (x86)\
 if (-not (Test-Path $innoc)) { $innoc = 'C:\Program Files\Inno Setup 6\ISCC.exe' }
 if (-not (Test-Path $innoc)) { throw "Inno Setup compiler not found. Install Inno Setup 6 and ensure ISCC.exe is in default path or set INNOSETUP env var to ISCC.exe" }
 
+# Ensure output directory exists and delete existing installer to force overwrite with fresh timestamp
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$targetOut = Join-Path $outDir ("FurchiveSetup-" + $effectiveVersion + ".exe")
+$fallbackOut = Join-Path $outDir 'FurchiveSetup.exe'
+if (Test-Path $targetOut) {
+  Write-Host "Removing existing $targetOut ..."
+  Remove-Item -LiteralPath $targetOut -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $fallbackOut) {
+  Write-Host "Removing existing $fallbackOut ..."
+  Remove-Item -LiteralPath $fallbackOut -Force -ErrorAction SilentlyContinue
+}
+
 & "$innoc" $iss /Qp "/DAppVersion=$effectiveVersion"
 
-$outfile = Join-Path (Join-Path $root 'inno/output') ("FurchiveSetup-" + $effectiveVersion + ".exe")
-if (-not (Test-Path $outfile)) { $outfile = Join-Path (Join-Path $root 'inno/output') 'FurchiveSetup.exe' }
+$outfile = $targetOut
+if (-not (Test-Path $outfile)) { $outfile = $fallbackOut }
 Write-Host "Installer built. See $outfile"
