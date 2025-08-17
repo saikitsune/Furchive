@@ -508,7 +508,7 @@ public partial class MainViewModel : ObservableObject
     private async Task LoadSelectedPoolAsync()
     {
         var pool = SelectedPool;
-        if (pool == null) return;
+    if (pool == null || IsSearching) return; // guard against concurrent loads
         try
         {
             IsSearching = true;

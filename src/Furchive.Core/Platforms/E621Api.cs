@@ -430,6 +430,8 @@ public class E621Api : IPlatformApi
 
                 // Fetch posts by explicit IDs in batches using the `ids=` parameter (multiple id: tags would AND and return nothing).
                 var result = new List<MediaItem>(ids.Count);
+                var idsSet = new HashSet<int>(ids);
+                var seen = new HashSet<int>();
                 const int batchSize = 100; // conservative
                 for (int i = 0; i < ids.Count; i += batchSize)
                 {
@@ -447,6 +449,8 @@ public class E621Api : IPlatformApi
                     var mapped = data.Posts.Select(MapPostToMediaItem).ToList();
                     if (string.IsNullOrWhiteSpace(_apiKey))
                         mapped = mapped.Where(m => !string.IsNullOrWhiteSpace(m.FullImageUrl)).ToList();
+                    // Strictly keep only posts whose IDs are in the requested slice (defensive against any stray matches)
+                    mapped = mapped.Where(m => int.TryParse(m.Id, out var mid) && slice.Contains(mid)).ToList();
                     // Preserve pool order for this batch
                     var orderMap = slice.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
                     mapped.Sort((a, b) =>
@@ -455,18 +459,26 @@ public class E621Api : IPlatformApi
                         if (!int.TryParse(b.Id, out var bi)) bi = int.MinValue;
                         return orderMap.GetValueOrDefault(ai, int.MaxValue).CompareTo(orderMap.GetValueOrDefault(bi, int.MaxValue));
                     });
-                    result.AddRange(mapped);
+                    // Deduplicate across batches
+                    foreach (var m in mapped)
+                    {
+                        if (int.TryParse(m.Id, out var mid) && seen.Add(mid))
+                            result.Add(m);
+                    }
                     await Task.Delay(100, cancellationToken);
                 }
                 // Final sort by full pool order
                 var fullOrder = ids.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
-                result.Sort((a, b) =>
+                // Build final list strictly in pool order from the deduped results
+                var byId = result.Where(m => int.TryParse(m.Id, out _))
+                                  .GroupBy(m => int.Parse(m.Id))
+                                  .ToDictionary(g => g.Key, g => g.First());
+                var ordered = new List<MediaItem>(byId.Count);
+                foreach (var id in ids)
                 {
-                    if (!int.TryParse(a.Id, out var ai)) ai = int.MinValue;
-                    if (!int.TryParse(b.Id, out var bi)) bi = int.MinValue;
-                    return fullOrder.GetValueOrDefault(ai, int.MaxValue).CompareTo(fullOrder.GetValueOrDefault(bi, int.MaxValue));
-                });
-                return result;
+                    if (byId.TryGetValue(id, out var item)) ordered.Add(item);
+                }
+                return ordered;
             }
         }
         catch (Exception ex)
