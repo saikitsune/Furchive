@@ -9,6 +9,8 @@ using Furchive.Core.Models;
 using System.Windows.Threading;
 using System.IO;
 using System.ComponentModel;
+using System.Windows.Media.Animation;
+using Furchive.Infrastructure;
 
 namespace Furchive.Views;
 
@@ -18,12 +20,17 @@ namespace Furchive.Views;
 public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _downloadsRefreshTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private double _desiredPreviewWidth = 350; // remembers last non-zero preview width
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
         DataContext = viewModel;
+    // React to selection changes to animate preview pane
+    viewModel.PropertyChanged += ViewModelOnPropertyChanged;
         // Load persisted UI sizes
         TryLoadPanelSizes();
+        // Ensure preview starts hidden when nothing selected
+        AnimatePreviewPane();
         _downloadsRefreshTimer.Tick += (_, __) =>
         {
             if (DataContext is MainViewModel vm)
@@ -33,6 +40,35 @@ public partial class MainWindow : Window
             }
         };
         _downloadsRefreshTimer.Start();
+    }
+
+    private void ViewModelOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.SelectedMedia))
+        {
+            AnimatePreviewPane();
+        }
+    }
+
+    private void AnimatePreviewPane()
+    {
+        try
+        {
+            if (FindName("PreviewColumn") is not ColumnDefinition col) return;
+            bool hasSelection = (DataContext as MainViewModel)?.SelectedMedia != null;
+            double target = hasSelection ? Math.Max(250, _desiredPreviewWidth) : 0;
+            double from = col.ActualWidth;
+
+            var anim = new GridLengthAnimation
+            {
+                From = new GridLength(from),
+                To = new GridLength(target),
+                Duration = new Duration(TimeSpan.FromMilliseconds(160)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+            };
+            col.BeginAnimation(ColumnDefinition.WidthProperty, anim, HandoffBehavior.SnapshotAndReplace);
+        }
+        catch { }
     }
 
     private void TryLoadPanelSizes()
@@ -60,6 +96,7 @@ public partial class MainWindow : Window
             if (prevWidth > 200 && prevWidth < 1000 && FindName("PreviewColumn") is ColumnDefinition prevCol)
             {
                 prevCol.Width = new GridLength(prevWidth);
+                    _desiredPreviewWidth = prevWidth;
             }
         }
         catch { }
@@ -198,6 +235,26 @@ public partial class MainWindow : Window
         OpenViewer_Click(sender, new RoutedEventArgs());
     }
 
+    private void GalleryListView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // If clicking on blank space within the WrapPanel area, clear selection
+        if (sender is System.Windows.Controls.ListView lv)
+        {
+            var dep = e.OriginalSource as DependencyObject;
+            // Walk up to see if we clicked inside a ListViewItem
+            while (dep != null && dep is not System.Windows.Controls.ListViewItem)
+            {
+                dep = System.Windows.Media.VisualTreeHelper.GetParent(dep);
+            }
+            if (dep is not System.Windows.Controls.ListViewItem)
+            {
+                // Blank area: clear selection
+                lv.SelectedItem = null;
+                e.Handled = false; // allow scrollbars etc.
+            }
+        }
+    }
+
     private void OpenDownloads_Click(object sender, RoutedEventArgs e)
     {
         var settings = App.Services?.GetService(typeof(ISettingsService)) as ISettingsService;
@@ -333,7 +390,8 @@ public partial class MainWindow : Window
             }
             if (FindName("PreviewColumn") is ColumnDefinition prev)
             {
-                _ = settings.SetSettingAsync("PreviewPanelWidth", prev.ActualWidth);
+                    _desiredPreviewWidth = Math.Max(250, prev.ActualWidth);
+                    _ = settings.SetSettingAsync("PreviewPanelWidth", _desiredPreviewWidth);
             }
         }
         catch { }
