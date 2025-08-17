@@ -429,7 +429,11 @@ public partial class MainViewModel : ObservableObject
                     App.Current.Dispatcher.Invoke(() =>
                     {
                         Pools.Clear();
-                        foreach (var p in cache.Items) Pools.Add(p);
+                        foreach (var p in cache.Items)
+                        {
+                            if (!p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase))
+                                Pools.Add(p);
+                        }
                         ApplyPoolsFilter();
                         PoolsStatusText = $"{Pools.Count} pools";
                     });
@@ -470,6 +474,8 @@ public partial class MainViewModel : ObservableObject
                     : $"({PoolsProgressCurrent}) updating…";
             });
             var list = await _apiService.GetPoolsAsync("e621", progress);
+            // Filter out deleted pools by name prefix
+            list = list.Where(p => !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase)).ToList();
             App.Current.Dispatcher.Invoke(() =>
             {
                 Pools.Clear();

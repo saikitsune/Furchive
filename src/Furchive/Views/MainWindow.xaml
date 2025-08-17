@@ -81,24 +81,30 @@
                             <TextBox Width="210" Text="{Binding PoolSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search pools by name or ID"/>
                             <Button Content="Filter" Margin="6,0,0,0" Command="{Binding RunPoolsFilterCommand}"/>
                         </StackPanel>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="130">
-                            <ListBox x:Name="poolsList" ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}" Height="Auto" SelectionChanged="PoolsList_SelectionChanged">
-                                <ListBox.ItemContainerStyle>
-                                    <Style TargetType="ListBoxItem">
-                                        <Setter Property="Height" Value="24"/>
-                                    </Style>
-                                </ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="{Binding Id}" Width="60" Foreground="Gray"/>
-                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Width="170"/>
-                                            <TextBlock Text="{Binding PostCount}" Width="40" HorizontalAlignment="Right" Foreground="Gray"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </ScrollViewer>
+                        <ListBox x:Name="poolsList"
+                                 ItemsSource="{Binding FilteredPools}"
+                                 SelectedItem="{Binding SelectedPool}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 MaxHeight="150"
+                                 SelectionChanged="PoolsList_SelectionChanged"
+                                 PreviewMouseLeftButtonUp="PoolsList_MouseUp"
+                                 KeyDown="PoolsList_KeyDown">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Height" Value="22"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="0,1,10,1">
+                                        <TextBlock Text="{Binding Id}" Width="60" Foreground="Gray"/>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Width="170"/>
+                                        <TextBlock Text="{Binding PostCount}" Width="40" HorizontalAlignment="Right" Foreground="Gray"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                         <Separator Margin="0,6,0,10"/>
 
                         <TextBlock Text="Include Tags" Style="{StaticResource SubHeaderTextStyle}"/>

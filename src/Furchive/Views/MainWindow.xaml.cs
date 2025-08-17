@@ -228,6 +228,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PoolsList_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            vm.LoadSelectedPoolCommand.Execute(null);
+        }
+    }
+
+    private void PoolsList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && DataContext is MainViewModel vm)
+        {
+            vm.LoadSelectedPoolCommand.Execute(null);
+        }
+    }
+
     private bool _downloadsSortDesc = true;
     private string? _downloadsSortPath;
     private void DownloadGridHeader_Click(object sender, RoutedEventArgs e)

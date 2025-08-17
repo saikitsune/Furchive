@@ -24,11 +24,8 @@ function Get-ProjectVersion([string]$csprojPath) {
     if (-not $fileVer) { return '1.0.0' }
     $ver = ($fileVer | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($ver)) { return '1.0.0' }
-    # Convert 4-part version (e.g., 1.0.5.0) to 3-part for installer (1.0.5)
-    $parts = $ver.Split('.')
-    if ($parts.Length -ge 3) { return ($parts[0..2] -join '.') }
-    elseif ($parts.Length -eq 2) { return "$ver.0" }
-    else { return $ver }
+  # Use full version as-is (supports 4-part), suitable for VersionInfo and output filename
+  return $ver
   } catch { return '1.0.0' }
 }
 
@@ -64,4 +61,6 @@ if (-not (Test-Path $innoc)) { throw "Inno Setup compiler not found. Install Inn
 
 & "$innoc" $iss /Qp "/DAppVersion=$effectiveVersion"
 
-Write-Host "Installer built. See installer/inno/output/FurchiveSetup.exe"
+$outfile = Join-Path (Join-Path $root 'inno/output') ("FurchiveSetup-" + $effectiveVersion + ".exe")
+if (-not (Test-Path $outfile)) { $outfile = Join-Path (Join-Path $root 'inno/output') 'FurchiveSetup.exe' }
+Write-Host "Installer built. See $outfile"
