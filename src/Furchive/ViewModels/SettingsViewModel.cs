@@ -30,6 +30,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _videoStartMuted = false;
     [ObservableProperty] private long _tempUsedBytes;
     [ObservableProperty] private string _tempPath = string.Empty;
+    [ObservableProperty] private int _concurrentDownloads;
+    [ObservableProperty] private double _galleryScale; // 1.0 default
 
     [ObservableProperty] private int _poolsCachedCount;
     [ObservableProperty] private DateTime? _poolsLastCachedAt;
@@ -58,6 +60,8 @@ public partial class SettingsViewModel : ObservableObject
     DefaultDownloadDirectory = _settings.GetSetting<string>("DefaultDownloadDirectory", fallback) ?? fallback;
     FilenameTemplate = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
     PoolFilenameTemplate = _settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
+    ConcurrentDownloads = Math.Clamp(_settings.GetSetting<int>("ConcurrentDownloads", 3), 1, 4);
+    GalleryScale = Math.Clamp(_settings.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
 
     // Playback
     VideoAutoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
@@ -86,6 +90,8 @@ public partial class SettingsViewModel : ObservableObject
             await _settings.SetSettingAsync("DefaultDownloadDirectory", DefaultDownloadDirectory ?? string.Empty);
             await _settings.SetSettingAsync("FilenameTemplate", FilenameTemplate ?? string.Empty);
             await _settings.SetSettingAsync("PoolFilenameTemplate", PoolFilenameTemplate ?? string.Empty);
+            await _settings.SetSettingAsync("ConcurrentDownloads", Math.Clamp(ConcurrentDownloads, 1, 4));
+            await _settings.SetSettingAsync("GalleryScale", Math.Clamp(GalleryScale, 0.75, 1.5));
 
             // Playback
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay);

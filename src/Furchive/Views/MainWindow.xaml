@@ -34,8 +34,12 @@
                     <ComboBoxItem Content="Safe"/>
                 </ComboBox>
 
-        <Button x:Name="searchButton" Content="Search" Command="{Binding SearchCommand}" 
+    <Button x:Name="searchButton" Content="Search" Command="{Binding SearchCommand}" 
                         Style="{StaticResource ToolbarButtonStyle}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBooleanConverter}}"/>
+
+    <Button x:Name="favoritesButton" Content="Favorites" Command="{Binding FavoritesCommand}"
+        Style="{StaticResource ToolbarButtonStyle}" Margin="6,0,0,0"
+        Visibility="{Binding ShowFavoritesButton, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
         <!-- Pagination Controls in Toolbar -->
         <Separator Margin="10,0"/>
@@ -199,9 +203,14 @@
                     </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="180" Height="210" Margin="5" BorderBrush="Gray" BorderThickness="1">
+                <Border Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                    Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}"
+                    Margin="5" BorderBrush="Gray" BorderThickness="1">
                                 <StackPanel>
-                                    <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCacheConverter}}" Width="170" Height="170" Stretch="UniformToFill"/>
+                    <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCacheConverter}}"
+                       Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                       Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                       Stretch="UniformToFill"/>
                                     <Grid Margin="2,0,2,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -310,6 +319,11 @@
                                                                         </Style.Triggers>
                                                                     </Style>
                                                                 </Button.Style>
+                                                            <Button.InputBindings>
+                                                                <MouseBinding Gesture="RightClick"
+                                                                              Command="{Binding DataContext.AddExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                              CommandParameter="{Binding}"/>
+                                                            </Button.InputBindings>
                                                             </Button>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
@@ -423,11 +437,11 @@
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
-                            <GridViewColumn Header="Actions" Width="130">
+                            <GridViewColumn Header="Actions" Width="140">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                            <Button Content="Open" Width="48" Margin="0,0,6,0" Click="OpenDownloadedFile_Click"/>
+                                            <Button Content="Open" Width="56" Margin="0,0,6,0" Click="OpenDownloadedFile_Click"/>
                                             <Button Content="Folder" Width="60" Click="OpenDownloadedFolder_Click"/>
                                         </StackPanel>
                                     </DataTemplate>

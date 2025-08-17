@@ -121,6 +121,27 @@ public partial class MainViewModel : ObservableObject
     public bool CanGoNext => HasNextPage;
     public string PageInfo => $"Page {CurrentPage}{(TotalCount > 0 ? $" • {TotalCount} total" : string.Empty)}";
 
+    // Gallery sizing: base 180x210 tile with scale factor from settings (0.75 - 1.5)
+    public double GalleryTileWidth => 180 * GalleryScale;
+    public double GalleryTileHeight => 210 * GalleryScale;
+    public double GalleryImageSize => 170 * GalleryScale;
+    private double _galleryScale = 1.0;
+    public double GalleryScale
+    {
+        get => _galleryScale;
+        set
+        {
+            if (Math.Abs(_galleryScale - value) > 0.0001)
+            {
+                _galleryScale = value;
+                OnPropertyChanged(nameof(GalleryScale));
+                OnPropertyChanged(nameof(GalleryTileWidth));
+                OnPropertyChanged(nameof(GalleryTileHeight));
+                OnPropertyChanged(nameof(GalleryImageSize));
+            }
+        }
+    }
+
     public MainViewModel(
         IUnifiedApiService apiService,
         IDownloadService downloadService,
@@ -149,6 +170,11 @@ public partial class MainViewModel : ObservableObject
 
         // Load initial settings
         LoadSettings();
+    // Initialize gallery scale
+    GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
+
+    // Compute Favorites visibility
+    UpdateFavoritesVisibility();
 
         // Authenticate platforms from stored settings
         _ = Task.Run(() => AuthenticatePlatformsAsync(platformApis));
@@ -172,7 +198,7 @@ public partial class MainViewModel : ObservableObject
                 // No stale check; the sender just rebuilt the cache
                 App.Current.Dispatcher.Invoke(() =>
                 {
-                    PoolsStatusText = $"{Pools.Count} pools";
+                    ApplyPoolsFilter();
                 });
             }
             catch (Exception ex)
@@ -455,6 +481,7 @@ public partial class MainViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(PoolSearch))
             {
                 foreach (var p in Pools.Take(1000)) FilteredPools.Add(p);
+                PoolsStatusText = $"{FilteredPools.Count} pools";
                 return;
             }
             var q = PoolSearch.Trim();
@@ -471,6 +498,7 @@ public partial class MainViewModel : ObservableObject
                 }
                 if (FilteredPools.Count >= 1000) break; // safety cap
             }
+            PoolsStatusText = $"{FilteredPools.Count} pools";
         }
         catch { }
     }
@@ -997,6 +1025,32 @@ public partial class MainViewModel : ObservableObject
             foreach (var s in list) SavedSearches.Add(s);
         }
         catch { }
+
+        // Ensure Favorites visibility follows settings
+        UpdateFavoritesVisibility();
+    }
+
+    // Favorites support
+    [ObservableProperty]
+    private bool _showFavoritesButton;
+
+    private void UpdateFavoritesVisibility()
+    {
+        var user = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+        var key = _settingsService.GetSetting<string>("E621ApiKey", "") ?? "";
+        ShowFavoritesButton = !string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(key);
+    }
+
+    [RelayCommand]
+    private async Task FavoritesAsync()
+    {
+        var user = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+        if (string.IsNullOrWhiteSpace(user)) return;
+        // Set search to fav:USERNAME and run
+        SearchQuery = $"fav:{user}";
+        IncludeTags.Clear();
+        ExcludeTags.Clear();
+        await SearchAsync();
     }
 
     [RelayCommand]

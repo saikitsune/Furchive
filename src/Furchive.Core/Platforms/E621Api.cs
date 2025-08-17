@@ -316,7 +316,9 @@ public class E621Api : IPlatformApi
                 var json = await resp.Content.ReadAsStringAsync(cancellationToken);
                 var pools = JsonSerializer.Deserialize<List<E621Pool>>(json, options) ?? new();
                 if (pools.Count == 0) break;
-                all.AddRange(pools.Select(p => new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount }));
+                all.AddRange(pools
+                    .Where(p => (p.Name ?? string.Empty).StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) == false && p.PostCount > 0)
+                    .Select(p => new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount }));
                 current = all.Count;
                 if (pools.Count < limit) break;
                 page++;
@@ -367,7 +369,9 @@ public class E621Api : IPlatformApi
                 var json = await resp.Content.ReadAsStringAsync(cancellationToken);
                 var pools = JsonSerializer.Deserialize<List<E621Pool>>(json, options) ?? new();
                 if (pools.Count == 0) break;
-                all.AddRange(pools.Select(p => new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount }));
+                all.AddRange(pools
+                    .Where(p => (p.Name ?? string.Empty).StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) == false && p.PostCount > 0)
+                    .Select(p => new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount }));
                 progress?.Report((all.Count, total));
                 if (pools.Count < limit) break;
                 page++;
@@ -637,8 +641,15 @@ public class E621Api : IPlatformApi
             ["invalid"] = new(),
             ["lore"] = new()
         };
-        // Define warning flags once to reuse for artist filtering and meta-only enforcement
-        var warningFlags = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "sound_warning", "third-party_edit", "epilepsy_warning" };
+        // Define tags that must live under meta only (never under artist/general)
+        var warningFlags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "sound_warning",
+            "third-party_edit",
+            "epilepsy_warning",
+            // Ensure Conditional_DNP is treated as meta, not artist
+            "conditional_dnp"
+        };
         if (p.Tags != null)
         {
             void addTo(string key, IEnumerable<string>? arr)

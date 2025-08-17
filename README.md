@@ -28,7 +28,7 @@ Furchive is a fast, modern gallery viewer, search, and download application focu
 
 ### From Installer (Windows)
 
-Download the latest `FurchiveSetup-<version>.exe` from `installer/inno/output/` (or your release site) and run it. The installer will:
+Download the latest `FurchiveSetup-<version>.exe` from [Releases](https://github.com/saikitsune/Furchive/releases) and run it. The installer will:
 - Install per-user under `%LOCALAPPDATA%\Programs\Furchive` (no admin required)
 - Install Microsoft Edge WebView2 Runtime if missing
  - Detect .NET 8 Desktop Runtime; if not found, prompt to install a compatible .NET version

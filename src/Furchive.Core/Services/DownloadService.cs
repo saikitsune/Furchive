@@ -34,8 +34,8 @@ public class DownloadService : IDownloadService
         _logger = logger;
 
         // Initialize semaphore with concurrent download limit from settings
-        var concurrentDownloads = _settingsService.GetSetting<int>("ConcurrentDownloads", 3);
-        _downloadSemaphore = new SemaphoreSlim(concurrentDownloads, concurrentDownloads);
+    var concurrentDownloads = Math.Clamp(_settingsService.GetSetting<int>("ConcurrentDownloads", 3), 1, 4);
+    _downloadSemaphore = new SemaphoreSlim(concurrentDownloads, concurrentDownloads);
 
         // Start processing downloads
         _ = Task.Run(ProcessDownloadQueueAsync);
