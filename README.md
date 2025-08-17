@@ -87,6 +87,12 @@ dotnet run --project src/Furchive
 - Monitor progress in the download queue
 - Pause, resume, or cancel downloads as needed
 
+### Pools Cache and Updates
+
+- On first run (or when no cache exists), Furchive builds a full pools cache from e621.
+- After that, it updates the cache incrementally on a schedule (configurable in Settings, default 6 hours).
+- The "Refresh Pools Cache" button in Settings deletes the cache file and triggers a fresh rebuild.
+
 ### Keyboard Shortcuts
 
 - **Enter**: Execute search (in search box or tag editor)
@@ -175,12 +181,6 @@ Furchive/
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Pools Cache and Updates
-
-- On first run (or when no cache exists), Furchive builds a full pools cache from e621.
-- After that, it updates the cache incrementally on a schedule (configurable in Settings, default 6 hours).
-- The "Refresh Pools Cache" button in Settings deletes the cache file and triggers a fresh rebuild.
 
 ## Disclaimer
 
