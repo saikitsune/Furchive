@@ -490,20 +490,20 @@ public class E621Api : IPlatformApi
                 var ids = pool.PostIds ?? new List<int>();
                 if (ids.Count == 0) return new List<MediaItem>();
 
-                // Fetch posts by explicit IDs in batches using the official `ids` query parameter.
-                // Note: Using tags like id:1,2,3 would AND the tags and return nothing. Ranges (id:1..100) aren't equivalent either.
+                // Fetch posts by explicit IDs in batches using the tags query with order:custom.
+                // Danbooru/e621 support "order:custom id:1,2,3" to return exactly those posts in the provided order.
                 var result = new List<MediaItem>(ids.Count);
                 var idsSet = new HashSet<int>(ids);
                 var seen = new HashSet<int>();
-                const int batchSize = 100; // conservative
+                const int batchSize = 100; // conservative; within typical limits
                 for (int i = 0; i < ids.Count; i += batchSize)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var slice = ids.Skip(i).Take(batchSize).ToList();
                     var idsParam = string.Join(",", slice);
-                    // The ids param accepts a comma-separated list of post IDs and returns matching posts.
-                    // Limit is optional here; the API returns up to the listed ids.
-                    var url = $"https://e621.net/posts.json?ids={idsParam}";
+                    // Use tags query to request these IDs in custom order; set limit to slice count.
+                    var tagQuery = $"order:custom id:{idsParam}";
+                    var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={slice.Count}";
                     url = AppendAuthAndFilter(url, isPostsList: true);
                     using var r = new HttpRequestMessage(HttpMethod.Get, url);
                     r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -514,16 +514,12 @@ public class E621Api : IPlatformApi
                     var mapped = data.Posts.Select(MapPostToMediaItem).ToList();
                     if (string.IsNullOrWhiteSpace(_apiKey))
                         mapped = mapped.Where(m => !string.IsNullOrWhiteSpace(m.FullImageUrl)).ToList();
-                    // Strictly keep only posts whose IDs are in the requested slice (defensive against any stray matches)
-                    mapped = mapped.Where(m => int.TryParse(m.Id, out var mid) && slice.Contains(mid)).ToList();
-                    // Preserve pool order for this batch
+                    // Defensive: keep only posts whose IDs are in the slice and maintain slice order
                     var orderMap = slice.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
-                    mapped.Sort((a, b) =>
-                    {
-                        if (!int.TryParse(a.Id, out var ai)) ai = int.MinValue;
-                        if (!int.TryParse(b.Id, out var bi)) bi = int.MinValue;
-                        return orderMap.GetValueOrDefault(ai, int.MaxValue).CompareTo(orderMap.GetValueOrDefault(bi, int.MaxValue));
-                    });
+                    mapped = mapped
+                        .Where(m => int.TryParse(m.Id, out var mid) && orderMap.ContainsKey(mid))
+                        .OrderBy(m => orderMap[int.Parse(m.Id)])
+                        .ToList();
                     // Deduplicate across batches
                     foreach (var m in mapped)
                     {

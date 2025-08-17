@@ -641,7 +641,15 @@ public partial class MainViewModel : ObservableObject
                 items[i].TagCategories["pool_name"] = new List<string> { poolName };
                 items[i].TagCategories["page_number"] = new List<string> { pageNum };
             }
-            foreach (var item in items) SearchResults.Add(item);
+            foreach (var item in items)
+            {
+                // Defensive: ensure preview has something to show in gallery
+                if (string.IsNullOrWhiteSpace(item.PreviewUrl))
+                {
+                    if (!string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
+                }
+                SearchResults.Add(item);
+            }
             HasNextPage = false; // single logical page for full-pool view
             TotalCount = items.Count;
             OnPropertyChanged(nameof(CanGoPrev));

@@ -203,6 +203,22 @@ public partial class ViewerWindow : Window
             overlayProgress.IsIndeterminate = true;
             overlayProgress.Value = 0;
 
+            // Ensure we have a usable URL (fallback to API details if missing)
+            if (string.IsNullOrWhiteSpace(item.FullImageUrl))
+            {
+                try
+                {
+                    var details = await _api.GetMediaDetailsAsync(item.Source, item.Id);
+                    if (details != null && !string.IsNullOrWhiteSpace(details.FullImageUrl))
+                    {
+                        item.FullImageUrl = details.FullImageUrl;
+                        item.PreviewUrl = string.IsNullOrWhiteSpace(item.PreviewUrl) ? (details.PreviewUrl ?? details.FullImageUrl) : item.PreviewUrl;
+                        item.FileExtension = string.IsNullOrWhiteSpace(item.FileExtension) ? details.FileExtension : item.FileExtension;
+                    }
+                }
+                catch { }
+            }
+
             // If already downloaded to final location, prefer that; else use temp path
             var localPath = GetDownloadedPathIfExists(item);
             if (string.IsNullOrEmpty(localPath))
