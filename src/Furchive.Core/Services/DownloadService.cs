@@ -209,11 +209,14 @@ public class DownloadService : IDownloadService
                 var defaultUa = $"Furchive/{version} (by USERNAME)";
                 var ua = _settingsService.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
                 httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
+                // Provide Referer expected by e621 CDN
+                try { httpClient.DefaultRequestHeaders.Referrer = new Uri("https://e621.net/"); } catch { }
             }
             catch { /* ignore UA parse issues */ }
             httpClient.Timeout = TimeSpan.FromSeconds(_settingsService.GetSetting<int>("NetworkTimeoutSeconds", 30));
 
-            using var response = await httpClient.GetAsync(details.FullImageUrl, HttpCompletionOption.ResponseHeadersRead, _cancellationTokenSource.Token);
+            var absUrl = NormalizeUrl(details.FullImageUrl);
+            using var response = await httpClient.GetAsync(absUrl, HttpCompletionOption.ResponseHeadersRead, _cancellationTokenSource.Token);
             response.EnsureSuccessStatusCode();
 
             job.TotalBytes = response.Content.Headers.ContentLength ?? 0;
@@ -333,5 +336,52 @@ public class DownloadService : IDownloadService
         _cancellationTokenSource.Cancel();
         _downloadSemaphore?.Dispose();
         _cancellationTokenSource?.Dispose();
+    }
+
+    private async Task DownloadToFileAsync(string url, string destinationPath, Action<double>? progress, CancellationToken ct)
+    {
+        using var client = new HttpClient();
+        try
+        {
+            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+            var defaultUa = $"Furchive/{version} (by USERNAME)";
+            var ua = _settingsService.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
+            // Some CDNs expect a Referer; provide e621 to avoid 403 on direct file access
+            try { client.DefaultRequestHeaders.Referrer = new Uri("https://e621.net/"); } catch { }
+        }
+        catch { }
+        var abs = NormalizeUrl(url);
+        using var response = await client.GetAsync(abs, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+        var total = response.Content.Headers.ContentLength ?? -1L;
+        await using var source = await response.Content.ReadAsStreamAsync(ct);
+        await using var dest = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+        var buffer = new byte[8192];
+        long read = 0;
+        int n;
+        while ((n = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
+        {
+            await dest.WriteAsync(buffer.AsMemory(0, n), ct);
+            read += n;
+            if (total > 0 && progress != null)
+            {
+                var pct = (double)read / total * 100.0;
+                progress(pct);
+            }
+        }
+    }
+
+    private static string NormalizeUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) throw new ArgumentException("URL is empty");
+        var u = url.Trim();
+        if (u.StartsWith("//")) return "https:" + u;
+        if (Uri.TryCreate(u, UriKind.Absolute, out _)) return u;
+        if (u.StartsWith("/data/", StringComparison.OrdinalIgnoreCase))
+            return "https://static1.e621.net" + u;
+        if (u.StartsWith("/", StringComparison.OrdinalIgnoreCase))
+            return "https://e621.net" + u;
+        return "https://e621.net/" + u.TrimStart('/');
     }
 }

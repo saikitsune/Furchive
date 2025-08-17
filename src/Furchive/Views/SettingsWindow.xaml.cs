@@ -63,8 +63,8 @@ public partial class SettingsWindow : Window
         {
             ["UserAgent"] = vm.E621UserAgent ?? string.Empty
         };
-        if (!string.IsNullOrWhiteSpace(vm.E621Username)) creds["Username"] = vm.E621Username!;
-    if (!string.IsNullOrWhiteSpace(vm.E621ApiKey)) creds["ApiKey"] = vm.E621ApiKey!.Replace(" ", string.Empty).Trim();
+    if (!string.IsNullOrWhiteSpace(vm.E621Username)) creds["Username"] = vm.E621Username!.Trim();
+    if (!string.IsNullOrWhiteSpace(vm.E621ApiKey)) creds["ApiKey"] = vm.E621ApiKey!.Trim();
 
         await RunAuthHealthAsync(e621, creds, "e621");
     }
@@ -81,14 +81,9 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            if (ok)
-            {
-                System.Windows.MessageBox.Show($"{name} authentication looks good. Rate limit remaining: {health.RateLimitRemaining}", name, MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            else
-            {
-                System.Windows.MessageBox.Show($"{name} authentication failed. Check your credentials and try again.", name, MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            var authState = health.IsAuthenticated ? "authenticated" : (ok ? "credentials set" : "unauthenticated");
+            var icon = health.IsAuthenticated ? MessageBoxImage.Information : MessageBoxImage.Warning;
+            System.Windows.MessageBox.Show($"{name} {authState}. Rate limit remaining: {health.RateLimitRemaining}", name, MessageBoxButton.OK, icon);
         }
         catch (Exception ex)
         {

@@ -77,8 +77,8 @@ public partial class SettingsViewModel : ObservableObject
         {
             await _settings.SetSettingAsync("E621UserAgent", E621UserAgent ?? string.Empty);
             await _settings.SetSettingAsync("E621Username", E621Username ?? string.Empty);
-            // Trim whitespace/spaces from API key before saving
-            var apiKeyClean = (E621ApiKey ?? string.Empty).Replace(" ", string.Empty).Trim();
+            // Trim leading/trailing whitespace, but do NOT remove internal spaces
+            var apiKeyClean = (E621ApiKey ?? string.Empty).Trim();
             await _settings.SetSettingAsync("E621ApiKey", apiKeyClean);
             // Other platforms removed; nothing to persist for them
 

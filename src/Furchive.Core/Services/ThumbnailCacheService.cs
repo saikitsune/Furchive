@@ -36,7 +36,8 @@ public class ThumbnailCacheService : IThumbnailCacheService
 
     public async Task<string> GetOrAddAsync(string thumbnailUrl, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(thumbnailUrl)) throw new ArgumentException("Invalid thumbnail URL", nameof(thumbnailUrl));
+    if (string.IsNullOrWhiteSpace(thumbnailUrl)) throw new ArgumentException("Invalid thumbnail URL", nameof(thumbnailUrl));
+    var url = NormalizeUrl(thumbnailUrl);
 
     var fileName = HashToFileName(thumbnailUrl) + ".img";
         var path = Path.Combine(_cacheRoot, fileName);
@@ -44,7 +45,15 @@ public class ThumbnailCacheService : IThumbnailCacheService
 
         try
         {
-            using var resp = await _httpClient.GetAsync(thumbnailUrl, cancellationToken);
+            // Set minimal headers (best effort)
+            try
+            {
+                _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Furchive/1.0 (thumbnail)");
+                try { _httpClient.DefaultRequestHeaders.Referrer = new Uri("https://e621.net/"); } catch { }
+            }
+            catch { }
+            using var resp = await _httpClient.GetAsync(url, cancellationToken);
             resp.EnsureSuccessStatusCode();
             await using var fs = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read);
             await resp.Content.CopyToAsync(fs, cancellationToken);
@@ -55,6 +64,16 @@ public class ThumbnailCacheService : IThumbnailCacheService
             _logger.LogWarning(ex, "Failed to cache thumbnail {Url}", thumbnailUrl);
             throw;
         }
+    }
+
+    private static string NormalizeUrl(string input)
+    {
+        var u = input.Trim();
+        if (u.StartsWith("//")) return "https:" + u;
+        if (Uri.TryCreate(u, UriKind.Absolute, out _)) return u;
+        if (u.StartsWith("/data/", StringComparison.OrdinalIgnoreCase)) return "https://static1.e621.net" + u;
+        if (u.StartsWith("/", StringComparison.OrdinalIgnoreCase)) return "https://e621.net" + u;
+        return "https://e621.net/" + u.TrimStart('/');
     }
 
     public string? TryGetCachedPath(string thumbnailUrl)

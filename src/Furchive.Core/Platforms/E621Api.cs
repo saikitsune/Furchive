@@ -46,7 +46,8 @@ public class E621Api : IPlatformApi
                 }
                 catch { /* ignore */ }
             }
-            using var request = new HttpRequestMessage(HttpMethod.Get, "https://e621.net/posts.json?limit=1&tags=solo");
+            var healthUrl = AppendAuth("https://e621.net/posts.json?limit=1&tags=solo");
+            using var request = new HttpRequestMessage(HttpMethod.Get, healthUrl);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             var response = await _httpClient.SendAsync(request);
             
@@ -54,7 +55,7 @@ public class E621Api : IPlatformApi
             {
                 Source = PlatformName,
                 IsAvailable = response.IsSuccessStatusCode,
-                IsAuthenticated = !string.IsNullOrWhiteSpace(_userAgent) && !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_apiKey) ? true : !string.IsNullOrWhiteSpace(_userAgent),
+                IsAuthenticated = !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_apiKey),
                 RateLimitRemaining = GetRateLimitFromHeaders(response.Headers),
                 LastChecked = DateTime.UtcNow
             };
@@ -95,7 +96,7 @@ public class E621Api : IPlatformApi
         credentials.TryGetValue("ApiKey", out _apiKey);
         if (!string.IsNullOrEmpty(_apiKey))
         {
-            _apiKey = _apiKey.Replace(" ", string.Empty).Trim();
+            _apiKey = _apiKey.Trim();
         }
         if (!string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_apiKey))
         {
@@ -108,7 +109,9 @@ public class E621Api : IPlatformApi
             _authQuery = null;
         }
 
-        return Task.FromResult(!string.IsNullOrWhiteSpace(_userAgent));
+    // Report success only when credentials for auth are present, not just UA
+    var hasCreds = !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_apiKey);
+    return Task.FromResult(hasCreds);
     }
 
     public async Task<SearchResult> SearchAsync(SearchParameters parameters)
@@ -605,6 +608,23 @@ public class E621Api : IPlatformApi
 
     private static MediaItem MapPostToMediaItem(E621Post p)
     {
+        static string NormalizeMediaUrl(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+            var u = url.Trim();
+            // Handle scheme-relative URLs like //static1.e621.net/...
+            if (u.StartsWith("//")) return "https:" + u;
+            // Handle common relative paths returned by some clients
+            if (u.StartsWith("/data/", StringComparison.OrdinalIgnoreCase))
+                return "https://static1.e621.net" + u; // media files are hosted on static CDN
+            if (u.StartsWith("/posts/", StringComparison.OrdinalIgnoreCase))
+                return "https://e621.net" + u; // site page
+            // If already absolute, keep it
+            if (Uri.TryCreate(u, UriKind.Absolute, out _)) return u;
+            // Fallback: try to treat as path under main site
+            return "https://e621.net/" + u.TrimStart('/');
+        }
+
         var tags = new List<string>();
         var categories = new Dictionary<string, List<string>>
         {
@@ -661,14 +681,20 @@ public class E621Api : IPlatformApi
             _ => ContentRating.Safe
         };
 
-    return new MediaItem
+        // Build preview and full URLs, normalizing to absolute https
+        var previewUrl = NormalizeMediaUrl(p.Preview?.Url);
+        if (string.IsNullOrWhiteSpace(previewUrl)) previewUrl = NormalizeMediaUrl(p.Sample?.Url);
+        if (string.IsNullOrWhiteSpace(previewUrl)) previewUrl = NormalizeMediaUrl(p.File?.Url);
+        var fullUrl = NormalizeMediaUrl(p.File?.Url);
+
+        return new MediaItem
         {
             Id = p.Id.ToString(),
             Source = "e621",
             Title = $"Post {p.Id}",
             Artist = artist,
-            PreviewUrl = p.Preview?.Url ?? p.Sample?.Url ?? p.File?.Url ?? string.Empty,
-            FullImageUrl = p.File?.Url ?? string.Empty,
+            PreviewUrl = previewUrl,
+            FullImageUrl = fullUrl,
             SourceUrl = $"https://e621.net/posts/{p.Id}",
             TagCategories = categories,
             Rating = rating,

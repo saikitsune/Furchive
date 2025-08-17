@@ -232,7 +232,8 @@ public partial class ViewerWindow : Window
             }
             else
             {
-        await DownloadToFileAsync(item.FullImageUrl, localPath, p =>
+                var remoteUrl = string.IsNullOrWhiteSpace(item.FullImageUrl) ? item.PreviewUrl : item.FullImageUrl;
+                await DownloadToFileAsync(remoteUrl, localPath, p =>
                 {
                     Dispatcher.Invoke(() =>
                     {
@@ -495,9 +496,12 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
             var defaultUa = $"Furchive/{version} (by USERNAME)";
             var ua = _settings.GetSetting<string>("E621UserAgent", defaultUa) ?? defaultUa;
             client.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
+            // Some CDNs expect a Referer; provide e621 to avoid 403 on direct file access
+            try { client.DefaultRequestHeaders.Referrer = new Uri("https://e621.net/"); } catch { }
         }
         catch { }
-        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        var abs = NormalizeUrl(url);
+        using var response = await client.GetAsync(abs, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         var total = response.Content.Headers.ContentLength ?? -1L;
         await using var source = await response.Content.ReadAsStreamAsync(ct);
@@ -517,7 +521,18 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
         }
     }
 
-    private void Timer_Tick(object? sender, EventArgs e) { }
+    private static string NormalizeUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) throw new ArgumentException("URL is empty");
+        var u = url.Trim();
+        if (u.StartsWith("//")) return "https:" + u;
+        if (Uri.TryCreate(u, UriKind.Absolute, out _)) return u;
+        if (u.StartsWith("/data/", StringComparison.OrdinalIgnoreCase))
+            return "https://static1.e621.net" + u;
+        if (u.StartsWith("/", StringComparison.OrdinalIgnoreCase))
+            return "https://e621.net" + u;
+        return "https://e621.net/" + u.TrimStart('/');
+    }
 
     private string GetObjectFit()
     {

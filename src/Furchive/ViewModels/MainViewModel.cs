@@ -23,6 +23,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly string _cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
+    private readonly IPlatformApi? _e621Platform; // keep a handle to re-auth when settings change
 
     [ObservableProperty]
     private string _searchQuery = string.Empty;
@@ -136,6 +137,10 @@ public partial class MainViewModel : ObservableObject
     foreach (var p in platformApis)
         {
             _apiService.RegisterPlatform(p);
+            if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase))
+            {
+                _e621Platform = p;
+            }
         }
 
         // Subscribe to download events
@@ -250,7 +255,7 @@ public partial class MainViewModel : ObservableObject
     {
     var ua = _settingsService.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)") ?? "Furchive/1.0 (by user@example.com)";
     var euser = _settingsService.GetSetting<string>("E621Username", "") ?? "";
-    var ekey = _settingsService.GetSetting<string>("E621ApiKey", "") ?? "";
+    var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? "";
 
         foreach (var p in platformApis)
         {
@@ -344,6 +349,9 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = "Searching...";
         if (reset) SearchResults.Clear();
 
+        // Ensure e621 authentication is applied before querying, so auth-only posts have file urls
+        await EnsureE621AuthAsync();
+
         var sources = new List<string>();
         if (IsE621Enabled) sources.Add("e621");
         if (!sources.Any())
@@ -382,6 +390,11 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var item in result.Items)
         {
+            // Defensive: ensure gallery preview is never blank
+            if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl))
+            {
+                item.PreviewUrl = item.FullImageUrl;
+            }
             SearchResults.Add(item);
         }
 
@@ -407,6 +420,23 @@ public partial class MainViewModel : ObservableObject
         }
 
         IsSearching = false;
+    }
+
+    // Ensure e621 API is authenticated with current settings (UA, username, api key)
+    private async Task EnsureE621AuthAsync()
+    {
+        try
+        {
+            if (_e621Platform == null) return;
+            var ua = _settingsService.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)") ?? "Furchive/1.0 (by user@example.com)";
+            var euser = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+            var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? "";
+            var creds = new Dictionary<string, string> { ["UserAgent"] = ua };
+            if (!string.IsNullOrWhiteSpace(euser)) creds["Username"] = euser;
+            if (!string.IsNullOrWhiteSpace(ekey)) creds["ApiKey"] = ekey;
+            await _e621Platform.AuthenticateAsync(creds);
+        }
+        catch { }
     }
 
     // Pools logic
@@ -628,6 +658,7 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = $"Loading pool {pool.Id} ({pool.Name})...";
             SearchResults.Clear();
             CurrentPage = 1;
+            await EnsureE621AuthAsync();
             // Pool mode loads ALL posts in pool order; ignore per-page setting
             IsPoolMode = true;
             CurrentPoolId = pool.Id;
