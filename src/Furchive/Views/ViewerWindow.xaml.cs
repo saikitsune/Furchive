@@ -101,7 +101,7 @@ public partial class ViewerWindow : Window
     private async void Download_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MediaItem item) return;
-        var defaultDir = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+    var defaultDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
         var path = _settings.GetSetting<string>("DefaultDownloadDirectory", defaultDir) ?? defaultDir;
         // If we already have a temp local copy for this item, move it instead of redownloading
         try
@@ -132,7 +132,7 @@ public partial class ViewerWindow : Window
 
     private void OpenDownloads_Click(object sender, RoutedEventArgs e)
     {
-        var defaultDir = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+    var defaultDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
         var path = _settings.GetSetting<string>("DefaultDownloadDirectory", defaultDir) ?? defaultDir;
         try { Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true }); } catch { }
     }
@@ -460,8 +460,8 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
         try
         {
             var defaultDir = _settings.GetSetting<string>("DefaultDownloadDirectory",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ??
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ??
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
             var hasPoolContext = item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"));
             var template = hasPoolContext
                 ? (_settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")

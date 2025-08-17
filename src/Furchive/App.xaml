@@ -38,14 +38,15 @@
 
             <Style x:Key="ToolbarButtonStyle" TargetType="Button">
                 <Setter Property="Margin" Value="2"/>
-                <Setter Property="Padding" Value="8,4"/>
-                <Setter Property="MinWidth" Value="60"/>
+                <Setter Property="Padding" Value="10,6"/>
+                <Setter Property="MinWidth" Value="64"/>
+                <Setter Property="Height" Value="30"/>
             </Style>
 
             <Style x:Key="TagButtonStyle" TargetType="Button">
-                <Setter Property="Margin" Value="2"/>
-                <Setter Property="Padding" Value="6,2"/>
-                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Margin" Value="3,2"/>
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="FontSize" Value="12"/>
                 <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
                 <!-- Use a TextBlock as content to avoid underscore being treated as an access key -->
                 <Setter Property="ContentTemplate">

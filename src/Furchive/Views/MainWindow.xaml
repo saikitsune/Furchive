@@ -80,6 +80,7 @@
                             <TextBlock Text="Pools" Style="{StaticResource SubHeaderTextStyle}"/>
                             <TextBlock Text=" " Width="6"/>
                             <TextBlock Text="{Binding PoolsStatusText}" VerticalAlignment="Center" Foreground="Gray"/>
+                            <Button Content="Soft Refresh" Margin="10,0,0,0" Command="{Binding SoftRefreshPoolsCommand}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBox Width="210" Text="{Binding PoolSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search pools by name or ID"/>
@@ -250,12 +251,17 @@
             </Grid>
 
             <!-- Preview Pane -->
-            <Border Grid.Column="2" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
+        <Border Grid.Column="2" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
                     BorderBrush="{DynamicResource SystemControlBackgroundBaseMediumBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer Margin="10" DataContext="{Binding SelectedMedia}">
                     <StackPanel>
                         <ContentControl x:Name="previewPane">
                             <StackPanel>
+                <!-- Actions moved above preview image -->
+                <Button Content="Open Viewer" Margin="0,0,0,6" Click="OpenViewer_Click"
+                    IsEnabled="{Binding Id, Converter={StaticResource NullToBooleanConverter}}"/>
+                <Button Content="Open in Browser" Margin="0,0,0,10" Click="OpenInBrowser_Click"
+                    IsEnabled="{Binding SourceUrl, Converter={StaticResource NullToBooleanConverter}}"/>
                                 <!-- Preview Image (click to open viewer) -->
                                 <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCacheConverter}}" MaxHeight="300" Stretch="Uniform" Margin="0,0,0,10" MouseLeftButtonUp="OpenViewer_Click" Cursor="Hand"/>
                                 
@@ -280,54 +286,55 @@
                                     </TextBlock>
                                 </StackPanel>
                                 
-                                <!-- Tags grouped by category -->
+                                <!-- Tags grouped by category with fixed-height scroll per section -->
                                 <TextBlock Text="Tags:" FontWeight="SemiBold" Margin="0,0,0,5"/>
                                 <ItemsControl ItemsSource="{Binding TagCategories, Converter={StaticResource FilterAndOrderCategoriesConverter}}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Margin="0,4,0,6">
                                                 <TextBlock Text="{Binding Key, Converter={StaticResource CategoryKeyToHeaderConverter}}" FontWeight="SemiBold" FontSize="12"/>
-                                                <ItemsControl ItemsSource="{Binding Value}">
-                                                    <ItemsControl.ItemsPanel>
-                                                        <ItemsPanelTemplate>
-                                                            <WrapPanel/>
-                                                        </ItemsPanelTemplate>
-                                                    </ItemsControl.ItemsPanel>
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                <Button Content="{Binding}" Margin="2,1"
-                                                                    Command="{Binding DataContext.AddIncludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                    CommandParameter="{Binding}">
-                                                                <Button.Style>
-                                                                    <Style TargetType="Button" BasedOn="{StaticResource TagButtonStyle}">
-                                                                        <Setter Property="FontWeight" Value="Normal"/>
-                                    <!-- Color the tag text (Foreground) to match category -->
-                                    <Setter Property="Foreground" Value="{Binding Path=DataContext.Key, Converter={StaticResource CategoryToBrushConverter}, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
-                                    <Setter Property="BorderBrush" Value="{Binding Path=DataContext.Key, Converter={StaticResource CategoryToBrushConverter}, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
-                                    <Setter Property="BorderThickness" Value="1"/>
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Value="True">
-                                                                                <DataTrigger.Binding>
-                                                                                    <MultiBinding Converter="{StaticResource StringEqualsConverter}" ConverterCulture="en-US" Mode="OneWay">
-                                                                                        <Binding Path="."/>
-                                                                                        <Binding Path="DataContext.Artist" RelativeSource="{RelativeSource AncestorType=ItemsControl}"/>
-                                                                                    </MultiBinding>
-                                                                                </DataTrigger.Binding>
-                                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                        <Setter Property="Background" Value="#10FFD700"/>
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </Button.Style>
-                                                            <Button.InputBindings>
-                                                                <MouseBinding Gesture="RightClick"
-                                                                              Command="{Binding DataContext.AddExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                              CommandParameter="{Binding}"/>
-                                                            </Button.InputBindings>
-                                                            </Button>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="100">
+                                                    <ItemsControl ItemsSource="{Binding Value}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <WrapPanel/>
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Button Content="{Binding}" Margin="2,1"
+                                                                        Command="{Binding DataContext.AddIncludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                        CommandParameter="{Binding}">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button" BasedOn="{StaticResource TagButtonStyle}">
+                                                                            <Setter Property="FontWeight" Value="Normal"/>
+                                                                            <Setter Property="Foreground" Value="{Binding Path=DataContext.Key, Converter={StaticResource CategoryToBrushConverter}, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                                                            <Setter Property="BorderBrush" Value="{Binding Path=DataContext.Key, Converter={StaticResource CategoryToBrushConverter}, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Value="True">
+                                                                                    <DataTrigger.Binding>
+                                                                                        <MultiBinding Converter="{StaticResource StringEqualsConverter}" ConverterCulture="en-US" Mode="OneWay">
+                                                                                            <Binding Path="."/>
+                                                                                            <Binding Path="DataContext.Artist" RelativeSource="{RelativeSource AncestorType=ItemsControl}"/>
+                                                                                        </MultiBinding>
+                                                                                    </DataTrigger.Binding>
+                                                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                                                    <Setter Property="Background" Value="#10FFD700"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                    <Button.InputBindings>
+                                                                        <MouseBinding Gesture="RightClick"
+                                                                                      Command="{Binding DataContext.AddExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                      CommandParameter="{Binding}"/>
+                                                                    </Button.InputBindings>
+                                                                </Button>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -347,11 +354,7 @@
                                     <TextBlock Text="{Binding Height}" FontSize="10"/>
                                 </StackPanel>
 
-                <!-- Open Full Viewer -->
-                <Button Content="Open Viewer" Margin="0,10,0,0" Click="OpenViewer_Click"
-                    IsEnabled="{Binding Id, Converter={StaticResource NullToBooleanConverter}}"/>
-        <Button Content="Open in Browser" Margin="0,6,0,0" Click="OpenInBrowser_Click"
-            IsEnabled="{Binding SourceUrl, Converter={StaticResource NullToBooleanConverter}}"/>
+                <!-- Action buttons moved above -->
                             </StackPanel>
                         </ContentControl>
                     </StackPanel>

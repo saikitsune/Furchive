@@ -181,7 +181,7 @@ public partial class MainWindow : Window
     private void OpenDownloads_Click(object sender, RoutedEventArgs e)
     {
         var settings = App.Services?.GetService(typeof(ISettingsService)) as ISettingsService;
-        var defaultDir = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+    var defaultDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
         var path = settings?.GetSetting<string>("DefaultDownloadDirectory", defaultDir) ?? defaultDir;
         try { Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true }); } catch { }
     }

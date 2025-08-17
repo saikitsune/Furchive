@@ -157,7 +157,7 @@ public class SettingsService : ISettingsService
         var defaults = new Dictionary<string, object>
         {
             // Download Settings
-            ["DefaultDownloadDirectory"] = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads", "Furchive"),
+            ["DefaultDownloadDirectory"] = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"),
             ["FilenameTemplate"] = "{source}/{artist}/{id}_{safeTitle}.{ext}",
             ["PoolFilenameTemplate"] = "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}",
             ["ConcurrentDownloads"] = 3,

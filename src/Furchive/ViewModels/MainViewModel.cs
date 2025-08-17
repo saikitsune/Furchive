@@ -91,6 +91,9 @@ public partial class MainViewModel : ObservableObject
     public string DownloadAllLabel => IsPoolMode ? "Download Pool" : "Download All";
     partial void OnIsPoolModeChanged(bool value) => OnPropertyChanged(nameof(DownloadAllLabel));
 
+    // Track pools known to be empty (no visible posts). We'll exclude them from UI once detected.
+    private HashSet<int> _excludedPoolIds = new();
+
     // Saved searches
     public partial class SavedSearch
     {
@@ -120,6 +123,18 @@ public partial class MainViewModel : ObservableObject
     public bool CanGoPrev => CurrentPage > 1;
     public bool CanGoNext => HasNextPage;
     public string PageInfo => $"Page {CurrentPage}{(TotalCount > 0 ? $" • {TotalCount} total" : string.Empty)}";
+
+    // Last session persistence
+    private sealed class LastSession
+    {
+        public bool IsPoolMode { get; set; }
+        public int? PoolId { get; set; }
+        public string? SearchQuery { get; set; }
+        public List<string> Include { get; set; } = new();
+        public List<string> Exclude { get; set; } = new();
+        public int RatingFilterIndex { get; set; }
+        public int Page { get; set; } = 1;
+    }
 
     // Gallery sizing: base 180x210 tile with scale factor from settings (0.75 - 1.5)
     public double GalleryTileWidth => 180 * GalleryScale;
@@ -189,6 +204,12 @@ public partial class MainViewModel : ObservableObject
             try { await StartOrKickIncrementalAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools incremental scheduler failed"); }
         });
 
+        // Try to restore last session shortly after startup
+        _ = Task.Run(async () =>
+        {
+            try { await RestoreLastSessionAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Restore last session failed"); }
+        });
+
         // Listen for pools cache rebuilds from Settings
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) =>
         {
@@ -229,6 +250,19 @@ public partial class MainViewModel : ObservableObject
                 _logger.LogWarning(ex, "Failed to rebuild pools cache on request");
             }
         });
+
+        // Live-apply settings that affect shell UI
+        WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) =>
+        {
+            try
+            {
+                // Update Favorites visibility when username/api key changed
+                UpdateFavoritesVisibility();
+                // Apply gallery scale live
+                GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", GalleryScale), 0.75, 1.5);
+            }
+            catch { }
+        });
     }
 
     public bool IsSelectedDownloaded
@@ -238,8 +272,8 @@ public partial class MainViewModel : ObservableObject
             var item = SelectedMedia;
             if (item == null) return false;
             var defaultDir = _settingsService.GetSetting<string>("DefaultDownloadDirectory",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ??
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ??
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
             // Try to predict final path using filename template
             var hasPoolContext = (item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"))) || IsPoolMode;
             var template = hasPoolContext
@@ -445,7 +479,10 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = $"Found {result.Items.Count} items";
         }
 
-        IsSearching = false;
+    IsSearching = false;
+
+    // Persist last session after a search completes
+    try { await PersistLastSessionAsync(); } catch { }
     }
 
     // Ensure e621 API is authenticated with current settings (UA, username, api key)
@@ -691,6 +728,31 @@ public partial class MainViewModel : ObservableObject
             IsPoolMode = true;
             CurrentPoolId = pool.Id;
             var items = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
+            // If pool has no visible items, exclude it from UI and cache
+            if (items == null || items.Count == 0)
+            {
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    _excludedPoolIds.Add(pool.Id);
+                    var toRemove = Pools.FirstOrDefault(p => p.Id == pool.Id);
+                    if (toRemove != null) Pools.Remove(toRemove);
+                    ApplyPoolsFilter();
+                    PoolsStatusText = $"{Pools.Count} pools";
+                });
+                // Persist updated cache without this pool
+                try
+                {
+                    var file = GetPoolsCacheFilePath();
+                    Directory.CreateDirectory(_cacheDir);
+                    var now = DateTime.UtcNow;
+                    var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
+                    await File.WriteAllTextAsync(file, json);
+                    _poolsCacheLastSavedUtc = now;
+                }
+                catch { }
+                StatusMessage = "Pool appears empty or unavailable.";
+                return;
+            }
             // Annotate items with pool context for filename templating
             var poolName = pool.Name;
             for (int i = 0; i < items.Count; i++)
@@ -715,6 +777,9 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CanGoNext));
             OnPropertyChanged(nameof(PageInfo));
             StatusMessage = $"Loaded pool {pool.Id}: {SearchResults.Count} items";
+
+            // Persist last session after successful pool load
+            try { await PersistLastSessionAsync(); } catch { }
         }
         catch (Exception ex)
         {
@@ -730,10 +795,103 @@ public partial class MainViewModel : ObservableObject
     await Task.CompletedTask;
     }
 
+    // Pools soft refresh: trigger an immediate incremental update
+    [RelayCommand]
+    private async Task SoftRefreshPoolsAsync()
+    {
+        try
+        {
+            var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360));
+            await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Soft refresh pools failed");
+        }
+    }
+
     private sealed class PoolsCache
     {
         public List<PoolInfo> Items { get; set; } = new();
         public DateTime SavedAt { get; set; }
+    }
+
+    private async Task PersistLastSessionAsync()
+    {
+        try
+        {
+            var session = new LastSession
+            {
+                IsPoolMode = IsPoolMode,
+                PoolId = CurrentPoolId,
+                SearchQuery = SearchQuery,
+                Include = IncludeTags.ToList(),
+                Exclude = ExcludeTags.ToList(),
+                RatingFilterIndex = RatingFilterIndex,
+                Page = CurrentPage
+            };
+            var json = JsonSerializer.Serialize(session);
+            await _settingsService.SetSettingAsync("LastSession", json);
+        }
+        catch { }
+    }
+
+    private async Task RestoreLastSessionAsync()
+    {
+        try
+        {
+            var json = _settingsService.GetSetting<string>("LastSession", null);
+            if (string.IsNullOrWhiteSpace(json)) return;
+            var session = JsonSerializer.Deserialize<LastSession>(json);
+            if (session == null) return;
+
+            // Apply ratings and tags
+            RatingFilterIndex = session.RatingFilterIndex;
+            SearchQuery = session.SearchQuery ?? string.Empty;
+            IncludeTags.Clear(); foreach (var t in session.Include ?? new()) IncludeTags.Add(t);
+            ExcludeTags.Clear(); foreach (var t in session.Exclude ?? new()) ExcludeTags.Add(t);
+
+            if (session.IsPoolMode && session.PoolId.HasValue)
+            {
+                // Load the pool directly
+                CurrentPoolId = session.PoolId;
+                IsPoolMode = true;
+                SelectedPool = Pools.FirstOrDefault(p => p.Id == session.PoolId.Value);
+                // Fire the load without requiring selection
+                await EnsureE621AuthAsync();
+                var items = await _apiService.GetAllPoolPostsAsync("e621", session.PoolId.Value);
+                if (items != null && items.Count > 0)
+                {
+                    SearchResults.Clear();
+                    var poolName = SelectedPool?.Name ?? (items.FirstOrDefault()?.TagCategories?.GetValueOrDefault("pool_name")?.FirstOrDefault() ?? "");
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        var pageNum = (i + 1).ToString("D5");
+                        items[i].TagCategories ??= new Dictionary<string, List<string>>();
+                        items[i].TagCategories["pool_name"] = new List<string> { poolName };
+                        items[i].TagCategories["page_number"] = new List<string> { pageNum };
+                        if (string.IsNullOrWhiteSpace(items[i].PreviewUrl) && !string.IsNullOrWhiteSpace(items[i].FullImageUrl))
+                            items[i].PreviewUrl = items[i].FullImageUrl;
+                        SearchResults.Add(items[i]);
+                    }
+                    CurrentPage = 1;
+                    HasNextPage = false;
+                    TotalCount = items.Count;
+                    OnPropertyChanged(nameof(CanGoPrev));
+                    OnPropertyChanged(nameof(CanGoNext));
+                    OnPropertyChanged(nameof(PageInfo));
+                    StatusMessage = $"Restored last pool: {session.PoolId}";
+                    return;
+                }
+            }
+
+            // Otherwise restore a normal search and page
+            await PerformSearchAsync(Math.Max(1, session.Page), reset: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to restore last session");
+        }
     }
 
     public static (IEnumerable<string> include, IEnumerable<string> exclude) ParseQuery(string? query)
@@ -820,8 +978,8 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", 
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ?? 
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? 
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
             // If in temp, move instead of queueing a new download
             var tempPath = GetTempPathFor(SelectedMedia);
             var finalPath = GenerateFinalPath(SelectedMedia, downloadPath);
@@ -851,8 +1009,8 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", 
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ?? 
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? 
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
             var toQueue = new List<MediaItem>();
             foreach (var m in SearchResults)
             {

@@ -652,6 +652,22 @@ public class E621Api : IPlatformApi
         };
         if (p.Tags != null)
         {
+            // Capture original tags across all categories before any cleaning to ensure we can enforce meta-only flags
+            var originalAll = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void addOriginal(IEnumerable<string>? arr)
+            {
+                if (arr == null) return;
+                foreach (var t in arr) originalAll.Add(t);
+            }
+            addOriginal(p.Tags.General);
+            addOriginal(p.Tags.Species);
+            addOriginal(p.Tags.Character);
+            addOriginal(p.Tags.Copyright);
+            addOriginal(p.Tags.Artist);
+            addOriginal(p.Tags.Invalid);
+            addOriginal(p.Tags.Lore);
+            addOriginal(p.Tags.Meta);
+
             void addTo(string key, IEnumerable<string>? arr)
             {
                 if (arr == null) return;
@@ -677,8 +693,8 @@ public class E621Api : IPlatformApi
                     if (!string.Equals(key, "meta", StringComparison.OrdinalIgnoreCase))
                         categories[key].RemoveAll(x => string.Equals(x, t, StringComparison.OrdinalIgnoreCase));
                 }
-                // If they occur anywhere, make sure they exist under meta
-                if (!categories["meta"].Contains(t) && tags.Contains(t))
+                // If they occur anywhere in the ORIGINAL tag sets, make sure they exist under meta
+                if (!categories["meta"].Contains(t) && originalAll.Contains(t))
                     categories["meta"].Add(t);
             }
         }

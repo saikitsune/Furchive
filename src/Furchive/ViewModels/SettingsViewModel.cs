@@ -56,7 +56,7 @@ public partial class SettingsViewModel : ObservableObject
     RefreshTempInfo();
 
     // Downloads
-    var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads", "Furchive");
+    var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
     DefaultDownloadDirectory = _settings.GetSetting<string>("DefaultDownloadDirectory", fallback) ?? fallback;
     FilenameTemplate = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
     PoolFilenameTemplate = _settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
@@ -100,6 +100,9 @@ public partial class SettingsViewModel : ObservableObject
             // Pools update interval
             var interval = PoolsUpdateIntervalMinutes <= 0 ? 360 : PoolsUpdateIntervalMinutes;
             await _settings.SetSettingAsync("PoolsUpdateIntervalMinutes", interval);
+
+            // Notify the rest of the app that settings have changed so UI can live-refresh
+            WeakReferenceMessenger.Default.Send(new SettingsSavedMessage());
         }
         catch (Exception ex)
         {
