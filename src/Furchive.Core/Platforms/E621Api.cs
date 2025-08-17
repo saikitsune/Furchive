@@ -556,6 +556,59 @@ public class E621Api : IPlatformApi
         }
     }
 
+    public async Task<(int poolId, string poolName, int pageNumber)?> GetPoolContextForPostAsync(string postId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            // Fetch post details which include pools[] ids
+            var url = AppendAuth($"https://e621.net/posts/{postId}.json");
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await _httpClient.SendAsync(req, cancellationToken);
+            resp.EnsureSuccessStatusCode();
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var wrapper = JsonSerializer.Deserialize<E621PostWrapper>(json, options);
+            var post = wrapper?.Post;
+            if (post == null) return null;
+
+            // e621 post JSON contains pool IDs under relationships or pools (depending on API evolution).
+            // We'll make a second request to pool details to compute index when possible.
+            var postPools = post.Pools ?? post.Relationships?.Pools;
+            if (postPools == null || postPools.Count == 0)
+                return null;
+
+            // Prefer the first pool id as primary context
+            var poolId = postPools[0];
+            // Get pool details to compute the page index of this post inside the pool
+            var poolUrl = AppendAuth($"https://e621.net/pools/{poolId}.json");
+            using var preq = new HttpRequestMessage(HttpMethod.Get, poolUrl);
+            preq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var presp = await _httpClient.SendAsync(preq, cancellationToken);
+            presp.EnsureSuccessStatusCode();
+            var pjson = await presp.Content.ReadAsStringAsync(cancellationToken);
+            var pool = JsonSerializer.Deserialize<E621PoolDetail>(pjson, options);
+            if (pool == null) return null;
+
+            var pageNumber = 0;
+            if (pool.PostIds != null)
+            {
+                var pid = int.TryParse(postId, out var parsed) ? parsed : -1;
+                var idx = pool.PostIds.FindIndex(x => x == pid);
+                if (idx >= 0) pageNumber = idx + 1; // 1-based index
+            }
+
+            var name = pool.Name ?? $"Pool {poolId}";
+            return (poolId, name, pageNumber);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "GetPoolContextForPostAsync failed for post {PostId}", postId);
+            return null;
+        }
+    }
+
     private void EnsureUserAgent()
     {
         if (string.IsNullOrWhiteSpace(_userAgent))
@@ -758,6 +811,10 @@ public class E621Api : IPlatformApi
         [JsonPropertyName("sample")] public E621Sample? Sample { get; set; }
         [JsonPropertyName("fav_count")] public int FavCount { get; set; }
         [JsonPropertyName("score")] public E621Score? Score { get; set; }
+    // Some API variants return pools array directly on the post
+    [JsonPropertyName("pools")] public List<int>? Pools { get; set; }
+    // Some variants nest relationships -> pools
+    [JsonPropertyName("relationships")] public E621Relationships? Relationships { get; set; }
     }
 
     private sealed class E621File
@@ -794,6 +851,11 @@ public class E621Api : IPlatformApi
         [JsonPropertyName("invalid")] public List<string>? Invalid { get; set; }
         [JsonPropertyName("lore")] public List<string>? Lore { get; set; }
         [JsonPropertyName("meta")] public List<string>? Meta { get; set; }
+    }
+
+    private sealed class E621Relationships
+    {
+        [JsonPropertyName("pools")] public List<int>? Pools { get; set; }
     }
 
     private sealed class E621Tag

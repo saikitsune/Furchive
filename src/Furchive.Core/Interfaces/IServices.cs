@@ -68,6 +68,12 @@ public interface IPlatformApi
     /// Ignores page/limit and returns the whole set.
     /// </summary>
     Task<List<MediaItem>> GetAllPoolPostsAsync(int poolId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Try to get pool context (pool id, name, and page number within the pool) for a given post id.
+    /// Returns null if the post does not belong to any pool or the platform doesn't support it.
+    /// </summary>
+    Task<(int poolId, string poolName, int pageNumber)?> GetPoolContextForPostAsync(string postId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

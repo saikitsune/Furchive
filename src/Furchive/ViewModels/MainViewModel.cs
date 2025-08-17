@@ -78,7 +78,7 @@ public partial class MainViewModel : ObservableObject
         ? PreviewPoolName
         : (SelectedPool?.Name ?? string.Empty);
 
-    public bool PreviewPoolVisible => IsPoolMode || !string.IsNullOrWhiteSpace(PreviewPoolName) || SelectedPool != null;
+    public bool PreviewPoolVisible => IsPoolMode || !string.IsNullOrWhiteSpace(PreviewPoolName);
 
     public ObservableCollection<PoolInfo> Pools { get; } = new();
     public ObservableCollection<PoolInfo> FilteredPools { get; } = new();
@@ -581,9 +581,31 @@ public partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(PreviewPoolVisible));
                 return;
             }
-            // Otherwise try to fetch details and infer; placeholder since MediaItem lacks pool metadata in details across sources
-            // For now, leave as empty if not available
-            await Task.CompletedTask;
+            // Otherwise try to fetch pool context from platform (e621)
+            if (_e621Platform != null && string.Equals(item.Source, "e621", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var ctx = await _e621Platform.GetPoolContextForPostAsync(item.Id);
+                    if (ctx.HasValue)
+                    {
+                        var (poolId, poolName, pageNumber) = ctx.Value;
+                        item.TagCategories ??= new Dictionary<string, List<string>>();
+                        item.TagCategories["pool_id"] = new List<string> { poolId.ToString() };
+                        item.TagCategories["pool_name"] = new List<string> { poolName };
+                        if (pageNumber > 0)
+                            item.TagCategories["page_number"] = new List<string> { pageNumber.ToString("D5") };
+                        // Also set SelectedPool if it matches cached list, so View Pool is enabled
+                        var sp = Pools.FirstOrDefault(p => p.Id == poolId);
+                        if (sp != null) SelectedPool = sp;
+                        PreviewPoolName = poolName;
+                        OnPropertyChanged(nameof(PreviewPoolDisplayName));
+                        OnPropertyChanged(nameof(PreviewPoolVisible));
+                        return;
+                    }
+                }
+                catch { }
+            }
             PreviewPoolName = string.Empty;
             OnPropertyChanged(nameof(PreviewPoolDisplayName));
             OnPropertyChanged(nameof(PreviewPoolVisible));
@@ -1178,6 +1200,8 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var jobs = await _downloadService.GetDownloadJobsAsync();
+            // Hide child jobs in UI when they belong to an aggregate
+            jobs = jobs.Where(j => string.IsNullOrEmpty(j.ParentId)).ToList();
             var map = DownloadQueue.ToDictionary(j => j.Id);
             var incomingIds = new HashSet<string>(jobs.Select(j => j.Id));
             // Update existing or add new
@@ -1230,6 +1254,11 @@ public partial class MainViewModel : ObservableObject
     {
         App.Current.Dispatcher.Invoke(() =>
         {
+            if (!string.IsNullOrEmpty(job.ParentId))
+            {
+                // Hide child jobs from UI list
+                return;
+            }
             var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id);
             if (existing != null)
             {
@@ -1256,6 +1285,7 @@ public partial class MainViewModel : ObservableObject
     {
         App.Current.Dispatcher.Invoke(() =>
         {
+            if (!string.IsNullOrEmpty(job.ParentId)) return; // hide child jobs
             var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id);
             if (existing != null)
             {

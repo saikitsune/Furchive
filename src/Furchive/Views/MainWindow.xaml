@@ -450,9 +450,22 @@
                                 <GridViewColumn.Header>
                                     <GridViewColumnHeader Content="Title" Tag="MediaItem.Title" Click="DownloadGridHeader_Click"/>
                                 </GridViewColumn.Header>
-                                <GridViewColumn.DisplayMemberBinding>
-                                    <Binding Path="MediaItem.Title"/>
-                                </GridViewColumn.DisplayMemberBinding>
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding MediaItem.Title}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                            <Setter Property="Text" Value="{Binding MediaItem.Title}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
                             </GridViewColumn>
                             <GridViewColumn Width="100">
                                 <GridViewColumn.Header>
@@ -481,7 +494,18 @@
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding TotalBytes, Converter={StaticResource BytesToStringConverter}}"/>
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding TotalBytes, Converter={StaticResource BytesToStringConverter}}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                            <Setter Property="Text" Value="{Binding ChildrenIds.Count, StringFormat={}{0} items}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>

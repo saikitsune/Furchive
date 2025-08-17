@@ -77,8 +77,16 @@ public class DownloadService : IDownloadService
                 if (string.IsNullOrEmpty(job.ParentId)) return;
                 if (!_downloadJobs.TryGetValue(job.ParentId, out var parent) || !parent.IsAggregate) return;
                 var children = parent.ChildrenIds.Select(id => _downloadJobs.TryGetValue(id, out var j) ? j : null).Where(j => j != null)!.ToList();
-                parent.TotalBytes = children.Sum(c => c!.TotalBytes);
-                parent.BytesDownloaded = children.Sum(c => c!.BytesDownloaded);
+                // Prefer a count-based aggregation to reflect whole-group progress without relying on unknown content-lengths
+                var totalItems = Math.Max(1, children.Count);
+                var completed = children.Count(c => c!.Status == DownloadStatus.Completed);
+                var inProgressFraction = children
+                    .Where(c => c!.Status == DownloadStatus.Downloading && c.TotalBytes > 0)
+                    .Sum(c => (double)c!.BytesDownloaded / c!.TotalBytes);
+                var progress = Math.Clamp((completed + inProgressFraction) / totalItems, 0.0, 1.0);
+                // Synthesize bytes to drive ProgressPercent while keeping Size column independent
+                parent.TotalBytes = totalItems * 1000;
+                parent.BytesDownloaded = (long)(progress * parent.TotalBytes);
                 // Aggregate status: Failed if any failed, Cancelled if any cancelled and none downloading, Completed if all completed, else Downloading/Queued
                 if (children.Any(c => c!.Status == DownloadStatus.Failed)) parent.Status = DownloadStatus.Failed;
                 else if (children.All(c => c!.Status == DownloadStatus.Completed)) parent.Status = DownloadStatus.Completed;
