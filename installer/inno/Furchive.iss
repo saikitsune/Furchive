@@ -1,7 +1,7 @@
 ; Inno Setup script for Furchive
 #define AppName "Furchive"
 #ifndef AppVersion
-#define AppVersion "1.0.7.2"
+#define AppVersion "1.0.7.3"
 #endif
 #define AppPublisher "Furchive"
 #define AppExeName "Furchive.exe"

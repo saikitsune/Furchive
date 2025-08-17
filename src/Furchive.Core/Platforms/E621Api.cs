@@ -428,15 +428,15 @@ public class E621Api : IPlatformApi
                 var ids = pool.PostIds ?? new List<int>();
                 if (ids.Count == 0) return new List<MediaItem>();
 
-                // e621 posts.json can accept multiple id: terms. Batch to respect URL length.
+                // Fetch posts by explicit IDs in batches using the `ids=` parameter (multiple id: tags would AND and return nothing).
                 var result = new List<MediaItem>(ids.Count);
                 const int batchSize = 100; // conservative
                 for (int i = 0; i < ids.Count; i += batchSize)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var slice = ids.Skip(i).Take(batchSize).ToList();
-                    var tags = string.Join(" ", slice.Select(id => $"id:{id}"));
-                    var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tags)}&limit={slice.Count}";
+                    var idsParam = string.Join(",", slice);
+                    var url = $"https://e621.net/posts.json?ids={idsParam}&limit={slice.Count}";
                     using var r = new HttpRequestMessage(HttpMethod.Get, url);
                     r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                     var pr = await _httpClient.SendAsync(r, cancellationToken);
@@ -448,13 +448,23 @@ public class E621Api : IPlatformApi
                         mapped = mapped.Where(m => !string.IsNullOrWhiteSpace(m.FullImageUrl)).ToList();
                     // Preserve pool order for this batch
                     var orderMap = slice.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
-                    mapped.Sort((a, b) => orderMap[int.Parse(a.Id)].CompareTo(orderMap[int.Parse(b.Id)]));
+                    mapped.Sort((a, b) =>
+                    {
+                        if (!int.TryParse(a.Id, out var ai)) ai = int.MinValue;
+                        if (!int.TryParse(b.Id, out var bi)) bi = int.MinValue;
+                        return orderMap.GetValueOrDefault(ai, int.MaxValue).CompareTo(orderMap.GetValueOrDefault(bi, int.MaxValue));
+                    });
                     result.AddRange(mapped);
                     await Task.Delay(100, cancellationToken);
                 }
                 // Final sort by full pool order
                 var fullOrder = ids.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
-                result.Sort((a, b) => fullOrder[int.Parse(a.Id)].CompareTo(fullOrder[int.Parse(b.Id)]));
+                result.Sort((a, b) =>
+                {
+                    if (!int.TryParse(a.Id, out var ai)) ai = int.MinValue;
+                    if (!int.TryParse(b.Id, out var bi)) bi = int.MinValue;
+                    return fullOrder.GetValueOrDefault(ai, int.MaxValue).CompareTo(fullOrder.GetValueOrDefault(bi, int.MaxValue));
+                });
                 return result;
             }
         }
