@@ -159,7 +159,7 @@ public class E621Api : IPlatformApi
             // Keep per-request modest to reduce UI/network spikes
             var limit = Math.Clamp(parameters.Limit, 1, 100);
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={parameters.Page}";
-            url = AppendAuth(url);
+            url = AppendAuthAndFilter(url, isPostsList: true);
 
             _logger.LogInformation("e621 search: tags=\"{Tags}\", page={Page}, limit={Limit}", tagQuery, parameters.Page, limit);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -441,7 +441,7 @@ public class E621Api : IPlatformApi
             var perPage = Math.Clamp(limit, 1, 100);
             var tagQuery = $"pool:{poolId} order:pool"; // order in pool sequence
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={perPage}&page={(offset / perPage) + 1}";
-            url = AppendAuth(url);
+            url = AppendAuthAndFilter(url, isPostsList: true);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             var resp = await _httpClient.SendAsync(req, cancellationToken);
@@ -490,7 +490,8 @@ public class E621Api : IPlatformApi
                 var ids = pool.PostIds ?? new List<int>();
                 if (ids.Count == 0) return new List<MediaItem>();
 
-                // Fetch posts by explicit IDs in batches using the `ids=` parameter (multiple id: tags would AND and return nothing).
+                // Fetch posts by explicit IDs in batches using the official `ids` query parameter.
+                // Note: Using tags like id:1,2,3 would AND the tags and return nothing. Ranges (id:1..100) aren't equivalent either.
                 var result = new List<MediaItem>(ids.Count);
                 var idsSet = new HashSet<int>(ids);
                 var seen = new HashSet<int>();
@@ -500,9 +501,10 @@ public class E621Api : IPlatformApi
                     cancellationToken.ThrowIfCancellationRequested();
                     var slice = ids.Skip(i).Take(batchSize).ToList();
                     var idsParam = string.Join(",", slice);
-                    var tags = $"id:{idsParam}"; // OR list of ids
-                    var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tags)}&limit={slice.Count}";
-                    url = AppendAuth(url);
+                    // The ids param accepts a comma-separated list of post IDs and returns matching posts.
+                    // Limit is optional here; the API returns up to the listed ids.
+                    var url = $"https://e621.net/posts.json?ids={idsParam}";
+                    url = AppendAuthAndFilter(url, isPostsList: true);
                     using var r = new HttpRequestMessage(HttpMethod.Get, url);
                     r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                     var pr = await _httpClient.SendAsync(r, cancellationToken);
@@ -570,6 +572,17 @@ public class E621Api : IPlatformApi
     {
         if (string.IsNullOrWhiteSpace(_authQuery)) return url;
         return url.Contains("?") ? $"{url}&{_authQuery}" : $"{url}?{_authQuery}";
+    }
+
+    // When authenticated, disable account-level filters that may hide posts (e.g., safe filter) by setting filter_id=0 on list endpoints
+    private string AppendAuthAndFilter(string url, bool isPostsList)
+    {
+        var u = AppendAuth(url);
+        if (isPostsList && !string.IsNullOrWhiteSpace(_apiKey))
+        {
+            u = u.Contains("?") ? $"{u}&filter_id=0" : $"{u}?filter_id=0";
+        }
+        return u;
     }
 
     private int GetRateLimitFromHeaders(System.Net.Http.Headers.HttpResponseHeaders headers)
