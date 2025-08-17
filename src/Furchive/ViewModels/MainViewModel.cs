@@ -594,10 +594,40 @@ public partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(PreviewPoolVisible));
                 return;
             }
-            // Prefer pool_name from TagCategories if present
-            if (item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var names) && names.Count > 0)
+            // Prefer pool context already present on the item (from search/details enrichment)
+            if (item.TagCategories != null &&
+                (item.TagCategories.ContainsKey("pool_name") || item.TagCategories.ContainsKey("pool_id")))
             {
-                PreviewPoolName = names[0];
+                // Set preview name from tag first
+                if (item.TagCategories.TryGetValue("pool_name", out var names) && names.Count > 0)
+                {
+                    PreviewPoolName = names[0];
+                }
+                else
+                {
+                    PreviewPoolName = string.Empty;
+                }
+
+                // Try to set SelectedPool so the View Pool button enables and ID shows
+                try
+                {
+                    PoolInfo? pool = null;
+                    if (item.TagCategories.TryGetValue("pool_id", out var ids) && ids.Count > 0 && int.TryParse(ids[0], out var pid))
+                    {
+                        pool = Pools.FirstOrDefault(p => p.Id == pid) ?? new PoolInfo { Id = pid, Name = PreviewPoolName ?? string.Empty };
+                    }
+                    else if (!string.IsNullOrWhiteSpace(PreviewPoolName))
+                    {
+                        pool = Pools.FirstOrDefault(p => string.Equals(p.Name, PreviewPoolName, StringComparison.OrdinalIgnoreCase))
+                            ?? new PoolInfo { Id = 0, Name = PreviewPoolName };
+                    }
+                    if (pool != null)
+                    {
+                        SelectedPool = pool;
+                    }
+                }
+                catch { }
+
                 OnPropertyChanged(nameof(PreviewPoolDisplayName));
                 OnPropertyChanged(nameof(PreviewPoolVisible));
                 return;
@@ -617,7 +647,7 @@ public partial class MainViewModel : ObservableObject
                         if (pageNumber > 0)
                             item.TagCategories["page_number"] = new List<string> { pageNumber.ToString("D5") };
                         // Also set SelectedPool if it matches cached list, so View Pool is enabled
-                        var sp = Pools.FirstOrDefault(p => p.Id == poolId);
+                        var sp = Pools.FirstOrDefault(p => p.Id == poolId) ?? new PoolInfo { Id = poolId, Name = poolName };
                         if (sp != null) SelectedPool = sp;
                         PreviewPoolName = poolName;
                         OnPropertyChanged(nameof(PreviewPoolDisplayName));
