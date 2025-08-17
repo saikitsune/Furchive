@@ -83,3 +83,4 @@ _ReSharper*/
 appsettings.*.json
 !appsettings.json
 installer/inno/MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+installer/inno/DotNetDesktopRuntimeInstallerX64.exe
