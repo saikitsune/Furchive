@@ -220,6 +220,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PoolsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && e.AddedItems != null && e.AddedItems.Count > 0)
+        {
+            vm.LoadSelectedPoolCommand.Execute(null);
+        }
+    }
+
     private bool _downloadsSortDesc = true;
     private string? _downloadsSortPath;
     private void DownloadGridHeader_Click(object sender, RoutedEventArgs e)

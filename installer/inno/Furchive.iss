@@ -1,6 +1,8 @@
 ; Inno Setup script for Furchive
 #define AppName "Furchive"
-#define AppVersion "1.0.5"
+#ifndef AppVersion
+#define AppVersion "1.0.7"
+#endif
 #define AppPublisher "Furchive"
 #define AppExeName "Furchive.exe"
 
@@ -9,11 +11,14 @@ AppId={{4B1C5C5E-7E98-4B54-92B0-551F7AA7B3B0}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+VersionInfoVersion={#AppVersion}
+VersionInfoProductName={#AppName}
+VersionInfoCompany={#AppPublisher}
 ; Install per-user by default (no admin), under %LocalAppData%\Programs
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=output
-OutputBaseFilename=FurchiveSetup
+OutputBaseFilename=FurchiveSetup-{#AppVersion}
 Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64

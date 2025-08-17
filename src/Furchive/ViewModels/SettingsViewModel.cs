@@ -4,6 +4,8 @@ using Furchive.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.IO;
 using System;
+using CommunityToolkit.Mvvm.Messaging;
+using Furchive.Messages;
 
 namespace Furchive.ViewModels;
 
@@ -12,6 +14,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly IThumbnailCacheService _thumbCache;
     private readonly ILogger<SettingsViewModel> _logger;
+    private readonly IUnifiedApiService _api;
 
     [ObservableProperty] private string? _e621UserAgent;
     [ObservableProperty] private string? _e621Username;
@@ -27,11 +30,16 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private long _tempUsedBytes;
     [ObservableProperty] private string _tempPath = string.Empty;
 
-    public SettingsViewModel(ISettingsService settings, IThumbnailCacheService thumbCache, ILogger<SettingsViewModel> logger)
+    [ObservableProperty] private int _poolsCachedCount;
+    [ObservableProperty] private DateTime? _poolsLastCachedAt;
+    [ObservableProperty] private string _poolsCacheFilePath = string.Empty;
+
+    public SettingsViewModel(ISettingsService settings, IThumbnailCacheService thumbCache, ILogger<SettingsViewModel> logger, IUnifiedApiService api)
     {
         _settings = settings;
         _thumbCache = thumbCache;
         _logger = logger;
+        _api = api;
 
     // Load stored values with dynamic UA default: Furchive/{version} (by {USERNAME})
     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
@@ -51,6 +59,8 @@ public partial class SettingsViewModel : ObservableObject
     // Playback
     VideoAutoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
     VideoStartMuted = _settings.GetSetting<bool>("VideoStartMuted", false);
+        // Pools cache info
+        RefreshPoolsCacheInfo();
     }
 
     [RelayCommand]
@@ -113,6 +123,67 @@ public partial class SettingsViewModel : ObservableObject
             TempUsedBytes = total;
         }
         catch { TempUsedBytes = 0; }
+    }
+
+    private static string GetPoolsCachePath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
+        return Path.Combine(dir, "e621_pools.json");
+    }
+
+    [RelayCommand]
+    private void RefreshPoolsCacheInfo()
+    {
+        try
+        {
+            PoolsCacheFilePath = GetPoolsCachePath();
+            PoolsCachedCount = 0;
+            PoolsLastCachedAt = null;
+            if (File.Exists(PoolsCacheFilePath))
+            {
+                using var fs = File.OpenRead(PoolsCacheFilePath);
+                using var doc = System.Text.Json.JsonDocument.Parse(fs);
+                if (doc.RootElement.TryGetProperty("Items", out var items) && items.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    PoolsCachedCount = items.GetArrayLength();
+                }
+                if (doc.RootElement.TryGetProperty("SavedAt", out var saved))
+                {
+                    if (saved.ValueKind == System.Text.Json.JsonValueKind.String && DateTime.TryParse(saved.GetString(), out var dt))
+                        PoolsLastCachedAt = dt;
+                }
+            }
+        }
+        catch { /* ignore parse errors */ }
+    }
+
+    [RelayCommand]
+    private async Task RebuildPoolsCacheAsync()
+    {
+        try
+        {
+            var path = GetPoolsCachePath();
+            var dir = Path.GetDirectoryName(path)!;
+            Directory.CreateDirectory(dir);
+            // Delete old cache
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+
+            // Re-fetch and write cache
+            var list = await _api.GetPoolsAsync("e621");
+            var cache = new { Items = list, SavedAt = DateTime.UtcNow };
+            var json = System.Text.Json.JsonSerializer.Serialize(cache);
+            await File.WriteAllTextAsync(path, json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to rebuild pools cache");
+        }
+        finally
+        {
+            RefreshPoolsCacheInfo();
+            // Broadcast a lightweight notification so MainViewModel can refresh its sidebar
+            WeakReferenceMessenger.Default.Send<PoolsCacheRebuiltMessage>(new());
+        }
     }
 
     [RelayCommand]
