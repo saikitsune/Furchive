@@ -77,6 +77,17 @@ public class UnifiedApiService : IUnifiedApiService
         }
     }
 
+    public async Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(string source, DateTime sinceUtc, CancellationToken cancellationToken = default)
+    {
+        if (!_platforms.TryGetValue(source, out var api)) return new List<PoolInfo>();
+        try { return await api.GetPoolsUpdatedSinceAsync(sinceUtc, cancellationToken); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPoolsUpdatedSince failed for {Source}", source);
+            return new List<PoolInfo>();
+        }
+    }
+
     public async Task<List<MediaItem>> GetAllPoolPostsAsync(string source, int poolId, CancellationToken cancellationToken = default)
     {
         if (!_platforms.TryGetValue(source, out var api)) return new List<MediaItem>();

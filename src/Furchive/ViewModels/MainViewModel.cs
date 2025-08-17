@@ -446,6 +446,7 @@ public partial class MainViewModel : ObservableObject
                         ApplyPoolsFilter();
                         PoolsStatusText = $"{Pools.Count} pools";
                     });
+                    _poolsCacheLastSavedUtc = cache.SavedAt == default ? DateTime.UtcNow.AddDays(-7) : cache.SavedAt;
                 }
             }
         }
@@ -466,7 +467,12 @@ public partial class MainViewModel : ObservableObject
                 var info = new FileInfo(file);
                 stale = (DateTime.UtcNow - info.LastWriteTimeUtc) > TimeSpan.FromHours(24);
             }
-            if (!stale && Pools.Any()) return;
+            if (!stale && Pools.Any())
+            {
+                // Perform a quick incremental check in background to keep fresh without full reload
+                _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromHours(6)));
+                return;
+            }
 
             IsPoolsLoading = true;
             PoolsProgressCurrent = 0;
@@ -494,8 +500,10 @@ public partial class MainViewModel : ObservableObject
             });
 
             Directory.CreateDirectory(_cacheDir);
-            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = DateTime.UtcNow });
+            var now = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
             await File.WriteAllTextAsync(file, json);
+            _poolsCacheLastSavedUtc = now;
         }
         catch (Exception ex)
         {
@@ -504,6 +512,67 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsPoolsLoading = false;
+            // Ensure periodic incremental updates are scheduled after a full refresh
+            _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromHours(6)));
+        }
+    }
+
+    // Track last time cache saved to support incremental API query
+    private DateTime _poolsCacheLastSavedUtc = DateTime.MinValue;
+
+    private async Task IncrementalUpdatePoolsAsync(TimeSpan interval)
+    {
+        try
+        {
+            // If we have never saved, skip incremental and do nothing
+            var since = _poolsCacheLastSavedUtc == DateTime.MinValue
+                ? DateTime.UtcNow.AddDays(-7)
+                : _poolsCacheLastSavedUtc;
+
+            var updates = await _apiService.GetPoolsUpdatedSinceAsync("e621", since);
+            if (updates == null || updates.Count == 0) return;
+
+            // Merge into existing in-memory list
+            App.Current.Dispatcher.Invoke(() =>
+            {
+                var map = Pools.ToDictionary(p => p.Id);
+                foreach (var u in updates)
+                {
+                    if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0)
+                    {
+                        map[u.Id] = u; // upsert
+                    }
+                    else
+                    {
+                        map.Remove(u.Id); // remove deleted/empty
+                    }
+                }
+                Pools.Clear();
+                foreach (var p in map.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+                    Pools.Add(p);
+                ApplyPoolsFilter();
+                PoolsStatusText = $"{Pools.Count} pools";
+            });
+
+            // Persist merged cache
+            var file = GetPoolsCacheFilePath();
+            Directory.CreateDirectory(_cacheDir);
+            var now = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
+            await File.WriteAllTextAsync(file, json);
+            _poolsCacheLastSavedUtc = now;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Incremental pool update failed");
+        }
+        finally
+        {
+            // Schedule next incremental refresh
+            _ = Task.Delay(interval).ContinueWith(async _ =>
+            {
+                await IncrementalUpdatePoolsAsync(interval);
+            });
         }
     }
 

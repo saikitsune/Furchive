@@ -53,6 +53,12 @@ public interface IPlatformApi
     Task<List<PoolInfo>> GetPoolsAsync(IProgress<(int current, int? total)>? progress, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Get pools that have changed since the given UTC timestamp (best-effort).
+    /// Implementations may fetch the most recently updated pages and stop when older than 'sinceUtc'.
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(DateTime sinceUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Get posts in a specific pool, ordered by pool order.
     /// </summary>
     Task<SearchResult> GetPoolPostsAsync(int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default);
@@ -108,6 +114,11 @@ public interface IUnifiedApiService
     /// Get posts in a pool from a specific source.
     /// </summary>
     Task<SearchResult> GetPoolPostsAsync(string source, int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get pools updated since the given UTC timestamp from a specific source.
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(string source, DateTime sinceUtc, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get all posts in a pool (original order) from a specific source.

@@ -370,6 +370,54 @@ public class E621Api : IPlatformApi
         }
     }
 
+    public async Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(DateTime sinceUtc, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            var updated = new List<PoolInfo>();
+            int page = 1;
+            const int limit = 320;
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            // Query most recently updated pools first, stop when older than threshold.
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=updated_desc";
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var resp = await _httpClient.SendAsync(req, cancellationToken);
+                resp.EnsureSuccessStatusCode();
+                var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+                var pools = JsonSerializer.Deserialize<List<E621Pool>>(json, options) ?? new();
+                if (pools.Count == 0) break;
+                // If the last item on this page is older than sinceUtc, we can stop after processing items newer than sinceUtc on this page
+                var pageOlder = pools.All(p => (p.UpdatedAt ?? DateTime.MinValue) < sinceUtc);
+                foreach (var p in pools)
+                {
+                    var u = p.UpdatedAt ?? DateTime.MinValue;
+                    if (u >= sinceUtc)
+                    {
+                        updated.Add(new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount });
+                    }
+                }
+                if (pageOlder || pools.Count < limit) break;
+                page++;
+                await Task.Delay(150, cancellationToken);
+            }
+            // Deduplicate by Id and return; order doesn't matter for incremental set
+            return updated
+                .GroupBy(p => p.Id)
+                .Select(g => g.First())
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPoolsUpdatedSince failed for e621");
+            return new List<PoolInfo>();
+        }
+    }
+
     public async Task<SearchResult> GetPoolPostsAsync(int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default)
     {
         try
@@ -677,6 +725,7 @@ public class E621Api : IPlatformApi
         [JsonPropertyName("id")] public int Id { get; set; }
         [JsonPropertyName("name")] public string? Name { get; set; }
         [JsonPropertyName("post_count")] public int PostCount { get; set; }
+    [JsonPropertyName("updated_at")] public DateTime? UpdatedAt { get; set; }
     }
 
     private sealed class E621PoolDetail
