@@ -436,7 +436,8 @@ public class E621Api : IPlatformApi
                     cancellationToken.ThrowIfCancellationRequested();
                     var slice = ids.Skip(i).Take(batchSize).ToList();
                     var idsParam = string.Join(",", slice);
-                    var url = $"https://e621.net/posts.json?ids={idsParam}&limit={slice.Count}";
+                    var tags = $"id:{idsParam}"; // OR list of ids
+                    var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tags)}&limit={slice.Count}";
                     using var r = new HttpRequestMessage(HttpMethod.Get, url);
                     r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                     var pr = await _httpClient.SendAsync(r, cancellationToken);
