@@ -67,7 +67,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="TagColumn" Width="300"/> <!-- Tag Editor -->
                 <ColumnDefinition x:Name="GalleryColumn" Width="*"/>   <!-- Gallery -->
-                <ColumnDefinition x:Name="PreviewColumn" Width="350"/> <!-- Preview Pane -->
+                <ColumnDefinition x:Name="PreviewColumn" Width="{Binding SelectedMedia, Converter={StaticResource NullToGridLengthConverter}, ConverterParameter=350}"/> <!-- Preview Pane collapses when no selection -->
             </Grid.ColumnDefinitions>
 
             <!-- Left Column: Pools + Tag Management Panel -->
@@ -90,6 +90,7 @@
                                  SelectedItem="{Binding SelectedPool}"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 Padding="0,0,14,0"
                                  MaxHeight="150"
                                  SelectionChanged="PoolsList_SelectionChanged"
                                  PreviewMouseLeftButtonUp="PoolsList_MouseUp"
@@ -97,15 +98,21 @@
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="Height" Value="22"/>
+                                    <Setter Property="Padding" Value="0,0,4,0"/>
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Margin="0,1,10,1">
-                                        <TextBlock Text="{Binding Id}" Width="60" Foreground="Gray"/>
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Width="170"/>
-                                        <TextBlock Text="{Binding PostCount}" Width="40" HorizontalAlignment="Right" Foreground="Gray"/>
-                                    </StackPanel>
+                                    <Grid Margin="0,1,0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="60"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="40"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Id}" Foreground="Gray"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding PostCount}" HorizontalAlignment="Right" Foreground="Gray"/>
+                                    </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -207,10 +214,16 @@
                     Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}"
                     Margin="5" BorderBrush="Gray" BorderThickness="1">
                                 <StackPanel>
-                    <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCacheConverter}}"
-                       Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                       Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                       Stretch="UniformToFill"/>
+                    <Grid Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                          Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}">
+                        <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCacheConverter}}"
+                               Stretch="UniformToFill"/>
+                        <!-- Play overlay for gif/video -->
+                        <Border Background="#80000000" CornerRadius="16" Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding FileExtension, Converter={StaticResource FileTypePlayOverlayVisibilityConverter}}">
+                            <Polygon Points="8,6 8,26 24,16" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
                                     <Grid Margin="2,0,2,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -250,9 +263,10 @@
             </Grid>
 
             <!-- Preview Pane -->
-        <Border Grid.Column="2" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
+    <Border Grid.Column="2" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
                     BorderBrush="{DynamicResource SystemControlBackgroundBaseMediumBrush}" BorderThickness="1,0,0,0">
-                <ScrollViewer Margin="10" DataContext="{Binding SelectedMedia}">
+        <Border Visibility="{Binding SelectedMedia, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToVisibilityConverter}}">
+        <ScrollViewer Margin="10" DataContext="{Binding SelectedMedia}">
                     <StackPanel>
                         <ContentControl x:Name="previewPane">
                             <StackPanel>
@@ -274,6 +288,17 @@
                                 <!-- Description -->
                                 <TextBlock Text="Description:" FontWeight="SemiBold" Margin="0,10,0,5"/>
                                 <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <!-- Moved metadata under description -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                                    <TextBlock Text="Score: " FontSize="10"/>
+                                    <TextBlock Text="{Binding Score}" FontSize="10"/>
+                                    <TextBlock Text=" | Favs: " FontSize="10" Margin="10,0,0,0"/>
+                                    <TextBlock Text="{Binding FavoriteCount}" FontSize="10"/>
+                                    <TextBlock Text=" | Size: " FontSize="10" Margin="10,0,0,0"/>
+                                    <TextBlock Text="{Binding Width}" FontSize="10"/>
+                                    <TextBlock Text="×" FontSize="10"/>
+                                    <TextBlock Text="{Binding Height}" FontSize="10"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <TextBlock Text="✔" Foreground="Green" FontWeight="Bold">
                                         <TextBlock.Visibility>
@@ -341,25 +366,14 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 
-                                <!-- Metadata -->
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <TextBlock Text="Score: " FontSize="10"/>
-                                    <TextBlock Text="{Binding Score}" FontSize="10"/>
-                                    <TextBlock Text=" | Favs: " FontSize="10" Margin="10,0,0,0"/>
-                                    <TextBlock Text="{Binding FavoriteCount}" FontSize="10"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Size: " FontSize="10"/>
-                                    <TextBlock Text="{Binding Width}" FontSize="10"/>
-                                    <TextBlock Text="×" FontSize="10"/>
-                                    <TextBlock Text="{Binding Height}" FontSize="10"/>
-                                </StackPanel>
+                                <!-- Metadata moved above -->
 
                 <!-- Action buttons moved above -->
                             </StackPanel>
                         </ContentControl>
                     </StackPanel>
                 </ScrollViewer>
+                </Border>
             </Border>
 
         <!-- Resizers -->

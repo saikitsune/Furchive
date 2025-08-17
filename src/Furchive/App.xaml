@@ -22,6 +22,9 @@
             <local:FilterAndOrderCategoriesConverter x:Key="FilterAndOrderCategoriesConverter"/>
             <local:CategoryToBrushConverter x:Key="CategoryToBrushConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+            <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <local:FileTypePlayOverlayVisibilityConverter x:Key="FileTypePlayOverlayVisibilityConverter"/>
+            <local:NullToGridLengthConverter x:Key="NullToGridLengthConverter"/>
 
             <!-- Global Styles -->
             <Style x:Key="HeaderTextStyle" TargetType="TextBlock">

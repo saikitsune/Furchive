@@ -16,9 +16,23 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IUnifiedApiService _api;
 
-    [ObservableProperty] private string? _e621UserAgent;
+    // No longer user-editable UA; compute from version + username
     [ObservableProperty] private string? _e621Username;
     [ObservableProperty] private string? _e621ApiKey;
+    public string ComputedUserAgent
+    {
+        get
+        {
+            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+            var user = string.IsNullOrWhiteSpace(E621Username) ? "Anon" : E621Username!.Trim();
+            return $"Furchive/{version} (by {user})";
+        }
+    }
+
+    partial void OnE621UsernameChanged(string? value)
+    {
+        OnPropertyChanged(nameof(ComputedUserAgent));
+    }
     // Removed other platforms (FurAffinity, InkBunny, Weasyl)
 
     [ObservableProperty] private long _cacheUsedBytes;
@@ -48,8 +62,6 @@ public partial class SettingsViewModel : ObservableObject
 
     // Load stored values with dynamic UA default: Furchive/{version} (by {USERNAME})
     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-    var defaultUa = $"Furchive/{version} (by USERNAME)";
-    E621UserAgent = _settings.GetSetting<string>("E621UserAgent", defaultUa);
         E621Username = _settings.GetSetting<string>("E621Username", null);
     E621ApiKey = _settings.GetSetting<string>("E621ApiKey", null);
 
@@ -81,7 +93,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         try
         {
-            await _settings.SetSettingAsync("E621UserAgent", E621UserAgent ?? string.Empty);
+            // User-Agent is computed automatically; do not persist
             await _settings.SetSettingAsync("E621Username", E621Username ?? string.Empty);
             // Trim leading/trailing whitespace, but do NOT remove internal spaces
             var apiKeyClean = (E621ApiKey ?? string.Empty).Trim();
@@ -230,7 +242,8 @@ public partial class SettingsViewModel : ObservableObject
     // Validation helpers
     public bool IsE621Valid(out string message)
     {
-        if (string.IsNullOrWhiteSpace(E621UserAgent)) { message = "User-Agent is required for e621 requests."; return false; }
+        // UA is always computed; just ensure we have the computed value
+        if (string.IsNullOrWhiteSpace(ComputedUserAgent)) { message = "Failed to compute User-Agent."; return false; }
         message = "Looks good."; return true;
     }
 

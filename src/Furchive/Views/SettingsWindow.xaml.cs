@@ -63,7 +63,7 @@ public partial class SettingsWindow : Window
 
         var creds = new Dictionary<string, string>
         {
-            ["UserAgent"] = vm.E621UserAgent ?? string.Empty
+            ["UserAgent"] = vm.ComputedUserAgent
         };
     if (!string.IsNullOrWhiteSpace(vm.E621Username)) creds["Username"] = vm.E621Username!.Trim();
     if (!string.IsNullOrWhiteSpace(vm.E621ApiKey)) creds["ApiKey"] = vm.E621ApiKey!.Trim();

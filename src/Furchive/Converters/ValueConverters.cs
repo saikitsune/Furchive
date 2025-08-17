@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
 
 namespace Furchive.Converters;
@@ -87,5 +88,64 @@ public class StringEqualsConverter : IMultiValueConverter
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+public class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value != null ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+public class FileTypePlayOverlayVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var ext = (value?.ToString() ?? string.Empty).Trim('.').ToLowerInvariant();
+        switch (ext)
+        {
+            case "gif":
+            case "webm":
+            case "mp4":
+            case "avi":
+            case "mov":
+            case "mkv":
+                return Visibility.Visible;
+            default:
+                return Visibility.Collapsed;
+        }
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+// Converts null to GridLength(0) and non-null to the provided pixel width (ConverterParameter) or Auto if not provided.
+public class NullToGridLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is null)
+            return new GridLength(0);
+
+        // Parameter can be a number (pixels) or the string "Auto"/"*"
+        if (parameter is double d)
+            return new GridLength(d);
+        var p = parameter?.ToString();
+        if (string.IsNullOrWhiteSpace(p))
+            return GridLength.Auto;
+        if (string.Equals(p, "Auto", StringComparison.OrdinalIgnoreCase))
+            return GridLength.Auto;
+        if (p == "*")
+            return new GridLength(1, GridUnitType.Star);
+        if (double.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out var pixels))
+            return new GridLength(pixels);
+        return GridLength.Auto;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }

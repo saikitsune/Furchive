@@ -316,7 +316,14 @@ public partial class MainViewModel : ObservableObject
 
     private async Task AuthenticatePlatformsAsync(IEnumerable<IPlatformApi> platformApis)
     {
-    var ua = _settingsService.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)") ?? "Furchive/1.0 (by user@example.com)";
+    string BuildUa()
+    {
+        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+        var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+    var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim();
+        return $"Furchive/{version} (by {uname})";
+    }
+    var ua = BuildUa();
     var euser = _settingsService.GetSetting<string>("E621Username", "") ?? "";
     var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? "";
 
@@ -526,7 +533,14 @@ public partial class MainViewModel : ObservableObject
         try
         {
             if (_e621Platform == null) return;
-            var ua = _settingsService.GetSetting<string>("E621UserAgent", "Furchive/1.0 (by user@example.com)") ?? "Furchive/1.0 (by user@example.com)";
+            string BuildUa()
+            {
+                var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? "";
+                var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim();
+                return $"Furchive/{version} (by {uname})";
+            }
+            var ua = BuildUa();
             var euser = _settingsService.GetSetting<string>("E621Username", "") ?? "";
             var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? "";
             var creds = new Dictionary<string, string> { ["UserAgent"] = ua };
