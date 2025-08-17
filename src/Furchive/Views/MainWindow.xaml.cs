@@ -178,6 +178,26 @@ public partial class MainWindow : Window
         viewer.Show();
     }
 
+    private void GalleryListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // Ensure the double-click happened on an item and select it if needed
+        if (sender is System.Windows.Controls.ListView lv)
+        {
+            // If no item is selected, try hit-testing
+            if (lv.SelectedItem == null)
+            {
+                var element = e.OriginalSource as DependencyObject;
+                while (element != null && element is not System.Windows.Controls.ListViewItem)
+                    element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+                if (element is System.Windows.Controls.ListViewItem lvi)
+                    lvi.IsSelected = true;
+            }
+        }
+
+        // Reuse existing open-viewer logic
+        OpenViewer_Click(sender, new RoutedEventArgs());
+    }
+
     private void OpenDownloads_Click(object sender, RoutedEventArgs e)
     {
         var settings = App.Services?.GetService(typeof(ISettingsService)) as ISettingsService;

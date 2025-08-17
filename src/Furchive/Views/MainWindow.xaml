@@ -205,7 +205,8 @@
                 <ListView x:Name="galleryListView" ItemsSource="{Binding SearchResults}"
                           SelectedItem="{Binding SelectedMedia}" BorderThickness="0"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          ScrollViewer.VerticalScrollBarVisibility="Auto">
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          MouseDoubleClick="GalleryListView_MouseDoubleClick">
                     <ListView.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Orientation="Horizontal" />
