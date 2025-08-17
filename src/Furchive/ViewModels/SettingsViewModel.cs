@@ -32,6 +32,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _tempPath = string.Empty;
     [ObservableProperty] private int _concurrentDownloads;
     [ObservableProperty] private double _galleryScale; // 1.0 default
+    [ObservableProperty] private int _postsPerPage;
 
     [ObservableProperty] private int _poolsCachedCount;
     [ObservableProperty] private DateTime? _poolsLastCachedAt;
@@ -62,6 +63,7 @@ public partial class SettingsViewModel : ObservableObject
     PoolFilenameTemplate = _settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
     ConcurrentDownloads = Math.Clamp(_settings.GetSetting<int>("ConcurrentDownloads", 3), 1, 4);
     GalleryScale = Math.Clamp(_settings.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
+    PostsPerPage = Math.Clamp(_settings.GetSetting<int>("MaxResultsPerSource", 50), 1, 100);
 
     // Playback
     VideoAutoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
@@ -92,6 +94,7 @@ public partial class SettingsViewModel : ObservableObject
             await _settings.SetSettingAsync("PoolFilenameTemplate", PoolFilenameTemplate ?? string.Empty);
             await _settings.SetSettingAsync("ConcurrentDownloads", Math.Clamp(ConcurrentDownloads, 1, 4));
             await _settings.SetSettingAsync("GalleryScale", Math.Clamp(GalleryScale, 0.75, 1.5));
+            await _settings.SetSettingAsync("MaxResultsPerSource", Math.Clamp(PostsPerPage, 1, 100));
 
             // Playback
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay);

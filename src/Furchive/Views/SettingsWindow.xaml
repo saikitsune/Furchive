@@ -21,13 +21,25 @@
                 <Button Content="Close" Click="Close_Click"/>
             </StackPanel>
             <TextBlock Text="Appearance" FontWeight="Bold" Margin="0,0,0,8"/>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                 <TextBlock Text="Theme:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <ComboBox Width="160" SelectedIndex="0" SelectionChanged="Theme_SelectionChanged">
                     <ComboBoxItem Content="System"/>
                     <ComboBoxItem Content="Light"/>
                     <ComboBoxItem Content="Dark"/>
                 </ComboBox>
+            </StackPanel>
+            <!-- Gallery Scale moved under Appearance -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
+                <TextBlock Text="Gallery item scale:" VerticalAlignment="Center" Width="160"/>
+                <Slider Minimum="0.75" Maximum="1.5" SmallChange="0.05" LargeChange="0.1" Width="200" Value="{Binding GalleryScale, Mode=TwoWay}"/>
+                <TextBlock Text="{Binding GalleryScale, StringFormat={}{0:0.00}x}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <!-- Posts per page under Appearance -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,12">
+                <TextBlock Text="Posts per page:" VerticalAlignment="Center" Width="160"/>
+                <TextBox Text="{Binding PostsPerPage, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+                <TextBlock Text="(1-100)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
             </StackPanel>
 
             <Separator/>
@@ -52,24 +64,10 @@
                            Text="Used only when downloading from a pool. Default: {source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}
 Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}"/>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
-                    <TextBlock Text="Concurrent downloads:" VerticalAlignment="Center" Width="120"/>
-                    <TextBox Text="{Binding ConcurrentDownloads, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+                    <TextBlock Text="Concurrent downloads:" VerticalAlignment="Center" Width="160"/>
+                    <TextBox Text="{Binding ConcurrentDownloads, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="8,0,0,0"/>
                     <TextBlock Text="(1-4 to respect e621 limits)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
                 </StackPanel>
-            </StackPanel>
-
-            <Separator/>
-            <TextBlock Text="Playback" FontWeight="Bold" Margin="0,12,0,8"/>
-            <StackPanel>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
-                    <TextBlock Text="Gallery item scale:" VerticalAlignment="Center" Width="120"/>
-                    <Slider Minimum="0.75" Maximum="1.5" SmallChange="0.05" LargeChange="0.1" Width="200" Value="{Binding GalleryScale, Mode=TwoWay}"/>
-                    <TextBlock Text="{Binding GalleryScale, StringFormat={}{0:0.00}x}" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
-                <CheckBox Content="Autoplay videos" IsChecked="{Binding VideoAutoplay}"/>
-                <CheckBox Content="Start videos muted" IsChecked="{Binding VideoStartMuted}"/>
-                <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap"
-                           Text="Chromium may block autoplay with sound; enabling “Start video muted” ensures autoplay works reliably."/>
             </StackPanel>
 
             <Separator/>
@@ -89,7 +87,14 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                 </StackPanel>
             </GroupBox>
 
-            <!-- Other platforms removed; focusing on e621 only -->
+            <Separator/>
+            <TextBlock Text="Viewer" FontWeight="Bold" Margin="0,12,0,8"/>
+            <StackPanel>
+                <CheckBox Content="Autoplay videos" IsChecked="{Binding VideoAutoplay}"/>
+                <CheckBox Content="Start videos muted" IsChecked="{Binding VideoStartMuted}"/>
+                <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap"
+                           Text="Chromium may block autoplay with sound; enabling “Start video muted” ensures autoplay works reliably."/>
+            </StackPanel>
 
             <Separator/>
             <TextBlock Text="Cache" FontWeight="Bold" Margin="0,8,0,8"/>
@@ -105,6 +110,24 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                 <Button Content="Refresh" Command="{Binding RefreshCacheInfoCommand}" Margin="0,0,8,0"/>
                 <Button Content="Clear Cache" Command="{Binding ClearCacheCommand}" Margin="0,0,8,0"/>
                 <Button Content="Open Cache Folder" Click="OpenCacheFolder_Click"/>
+            </StackPanel>
+
+            <Separator/>
+            <TextBlock Text="Temp" FontWeight="Bold" Margin="0,12,0,8"/>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Path:" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding TempPath}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Used:" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding TempUsedBytes, Converter={StaticResource BytesToStringConverter}}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="Refresh" Command="{Binding RefreshTempInfoCommand}" Margin="0,0,8,0"/>
+                    <Button Content="Clear Temp" Command="{Binding ClearTempCommand}" Margin="0,0,8,0"/>
+                    <Button Content="Open Temp Folder" Click="OpenTempFolder_Click"/>
+                </StackPanel>
             </StackPanel>
 
             <Separator/>
@@ -139,25 +162,6 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                     <TextBlock Text="Update every (minutes):" VerticalAlignment="Center" Width="160"/>
                     <TextBox Width="100" Text="{Binding PoolsUpdateIntervalMinutes, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBlock Text="(min 5)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
-                </StackPanel>
-            </StackPanel>
-
-            <!-- Moved Temp (Viewer) section below Cache -->
-            <Separator/>
-            <TextBlock Text="Temp (Viewer)" FontWeight="Bold" Margin="0,12,0,8"/>
-            <StackPanel>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Path:" Margin="0,0,8,0"/>
-                    <TextBlock Text="{Binding TempPath}"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
-                    <TextBlock Text="Used:" Margin="0,0,8,0"/>
-                    <TextBlock Text="{Binding TempUsedBytes, Converter={StaticResource BytesToStringConverter}}"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button Content="Refresh" Command="{Binding RefreshTempInfoCommand}" Margin="0,0,8,0"/>
-                    <Button Content="Clear Temp" Command="{Binding ClearTempCommand}" Margin="0,0,8,0"/>
-                    <Button Content="Open Temp Folder" Click="OpenTempFolder_Click"/>
                 </StackPanel>
             </StackPanel>
 
