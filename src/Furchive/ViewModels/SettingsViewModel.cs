@@ -170,6 +170,8 @@ public partial class SettingsViewModel : ObservableObject
 
             // Re-fetch and write cache
             var list = await _api.GetPoolsAsync("e621");
+            // Filter pools that are completely empty (all posts deleted)
+            list = list.Where(p => p.PostCount > 0 && !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase)).ToList();
             var cache = new { Items = list, SavedAt = DateTime.UtcNow };
             var json = System.Text.Json.JsonSerializer.Serialize(cache);
             await File.WriteAllTextAsync(path, json);
