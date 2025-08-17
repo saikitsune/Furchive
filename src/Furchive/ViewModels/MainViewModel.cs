@@ -7,6 +7,9 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Input;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using CommunityToolkit.Mvvm.Messaging;
+using Furchive.Messages;
 
 namespace Furchive.ViewModels;
 
@@ -19,6 +22,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IDownloadService _downloadService;
     private readonly ISettingsService _settingsService;
     private readonly ILogger<MainViewModel> _logger;
+    private readonly string _cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
 
     [ObservableProperty]
     private string _searchQuery = string.Empty;
@@ -50,6 +54,41 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<string> ExcludeTags { get; } = new();
     public ObservableCollection<ContentRating> SelectedRatings { get; } = new() { ContentRating.Safe };
     public ObservableCollection<DownloadJob> DownloadQueue { get; } = new();
+
+    // Pools UI
+    [ObservableProperty]
+    private string _poolSearch = string.Empty;
+
+    [ObservableProperty]
+    private PoolInfo? _selectedPool;
+
+    [ObservableProperty]
+    private bool _isPoolMode = false;
+
+    [ObservableProperty]
+    private int? _currentPoolId = null;
+
+    public ObservableCollection<PoolInfo> Pools { get; } = new();
+    public ObservableCollection<PoolInfo> FilteredPools { get; } = new();
+
+    [ObservableProperty]
+    private bool _isPoolsLoading = false;
+
+    [ObservableProperty]
+    private string _poolsStatusText = string.Empty;
+
+    [ObservableProperty]
+    private int _poolsProgressCurrent = 0;
+
+    [ObservableProperty]
+    private int _poolsProgressTotal = 0;
+
+    [ObservableProperty]
+    private bool _poolsProgressHasTotal = false;
+
+    // Download button label switches in pool mode
+    public string DownloadAllLabel => IsPoolMode ? "Download Pool" : "Download All";
+    partial void OnIsPoolModeChanged(bool value) => OnPropertyChanged(nameof(DownloadAllLabel));
 
     // Saved searches
     public partial class SavedSearch
@@ -111,6 +150,54 @@ public partial class MainViewModel : ObservableObject
 
         // Check platform health on startup
         _ = Task.Run(CheckPlatformHealthAsync);
+
+        // Load pools cache and schedule incremental updates
+        _ = Task.Run(async () =>
+        {
+            try { await LoadPoolsFromCacheAsync(); } catch { }
+            try { await StartOrKickIncrementalAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools incremental scheduler failed"); }
+        });
+
+        // Listen for pools cache rebuilds from Settings
+        WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) =>
+        {
+            try
+            {
+                await LoadPoolsFromCacheAsync();
+                // No stale check; the sender just rebuilt the cache
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    PoolsStatusText = $"{Pools.Count} pools";
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification");
+            }
+        });
+
+        // Handle requests to rebuild the pools cache from scratch
+        WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) =>
+        {
+            try
+            {
+                // Clear in-memory list and delete existing cache file if any
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    Pools.Clear();
+                    FilteredPools.Clear();
+                    PoolsStatusText = "rebuilding cache…";
+                });
+                var file = GetPoolsCacheFilePath();
+                try { if (File.Exists(file)) File.Delete(file); } catch { }
+                _poolsCacheLastSavedUtc = DateTime.MinValue;
+                await RefreshPoolsIfStaleAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to rebuild pools cache on request");
+            }
+        });
     }
 
     public bool IsSelectedDownloaded
@@ -123,7 +210,10 @@ public partial class MainViewModel : ObservableObject
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ??
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
             // Try to predict final path using filename template
-            var template = _settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+            var hasPoolContext = (item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"))) || IsPoolMode;
+            var template = hasPoolContext
+                ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+                : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
             string Sanitize(string s)
             {
                 var invalid = Path.GetInvalidFileNameChars();
@@ -136,7 +226,9 @@ public partial class MainViewModel : ObservableObject
                 .Replace("{artist}", Sanitize(item.Artist))
                 .Replace("{id}", item.Id)
                 .Replace("{safeTitle}", Sanitize(item.Title))
-                .Replace("{ext}", ext);
+                .Replace("{ext}", ext)
+                .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty)))
+                .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var fullPath = Path.Combine(defaultDir, rel);
             return File.Exists(fullPath);
         }
@@ -187,6 +279,9 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
+            // Exit pool mode on manual search
+            IsPoolMode = false;
+            CurrentPoolId = null;
             await PerformSearchAsync(1, reset: true);
         }
         catch (Exception ex)
@@ -205,7 +300,14 @@ public partial class MainViewModel : ObservableObject
         if (!CanGoNext || IsSearching) return;
         try
         {
-            await PerformSearchAsync(CurrentPage + 1, reset: true);
+            if (IsPoolMode && CurrentPoolId.HasValue)
+            {
+                await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage + 1, reset: true);
+            }
+            else
+            {
+                await PerformSearchAsync(CurrentPage + 1, reset: true);
+            }
         }
         catch (Exception ex)
         {
@@ -220,7 +322,14 @@ public partial class MainViewModel : ObservableObject
         if (!CanGoPrev || IsSearching) return;
         try
         {
-            await PerformSearchAsync(CurrentPage - 1, reset: true);
+            if (IsPoolMode && CurrentPoolId.HasValue)
+            {
+                await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage - 1, reset: true);
+            }
+            else
+            {
+                await PerformSearchAsync(CurrentPage - 1, reset: true);
+            }
         }
         catch (Exception ex)
         {
@@ -298,6 +407,266 @@ public partial class MainViewModel : ObservableObject
         }
 
         IsSearching = false;
+    }
+
+    // Pools logic
+    partial void OnPoolSearchChanged(string value) { /* no auto-filter; user clicks Filter */ }
+
+    partial void OnSelectedPoolChanged(PoolInfo? value)
+    {
+        // No auto-load to avoid accidental fetch; user clicks command instead
+    }
+
+    private void ApplyPoolsFilter()
+    {
+        try
+        {
+            FilteredPools.Clear();
+            if (string.IsNullOrWhiteSpace(PoolSearch))
+            {
+                foreach (var p in Pools.Take(1000)) FilteredPools.Add(p);
+                return;
+            }
+            var q = PoolSearch.Trim();
+            bool isNumber = int.TryParse(q, out var id);            
+            foreach (var p in Pools)
+            {
+                if (isNumber)
+                {
+                    if (p.Id.ToString().Contains(q, StringComparison.OrdinalIgnoreCase)) FilteredPools.Add(p);
+                }
+                else if (p.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
+                {
+                    FilteredPools.Add(p);
+                }
+                if (FilteredPools.Count >= 1000) break; // safety cap
+            }
+        }
+        catch { }
+    }
+
+    private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "e621_pools.json");
+
+    private async Task LoadPoolsFromCacheAsync()
+    {
+        try
+        {
+            var file = GetPoolsCacheFilePath();
+            if (File.Exists(file))
+            {
+                var json = await File.ReadAllTextAsync(file);
+                var cache = JsonSerializer.Deserialize<PoolsCache>(json) ?? new PoolsCache();
+                if (cache.Items != null && cache.Items.Any())
+                {
+                    App.Current.Dispatcher.Invoke(() =>
+                    {
+                        Pools.Clear();
+                        foreach (var p in cache.Items)
+                        {
+                            if (!p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0)
+                                Pools.Add(p);
+                        }
+                        ApplyPoolsFilter();
+                        PoolsStatusText = $"{Pools.Count} pools";
+                    });
+                    _poolsCacheLastSavedUtc = cache.SavedAt == default ? DateTime.UtcNow.AddDays(-7) : cache.SavedAt;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load pools cache");
+        }
+    }
+
+    private async Task RefreshPoolsIfStaleAsync()
+    {
+        // Deprecated full-stale refresh path retained only for initial cache build
+        try
+        {
+            var file = GetPoolsCacheFilePath();
+            if (File.Exists(file) && Pools.Any())
+            {
+                // If cache exists, we no longer do a full reload here
+                return;
+            }
+
+            IsPoolsLoading = true;
+            PoolsProgressCurrent = 0;
+            PoolsProgressTotal = 0;
+            PoolsProgressHasTotal = false;
+            PoolsStatusText = "(0) updating…";
+            var progress = new Progress<(int current, int? total)>(tuple =>
+            {
+                PoolsProgressCurrent = tuple.current;
+                PoolsProgressHasTotal = tuple.total.HasValue;
+                PoolsProgressTotal = tuple.total ?? 0;
+                PoolsStatusText = PoolsProgressHasTotal
+                    ? $"({PoolsProgressCurrent}/{PoolsProgressTotal}) updating…"
+                    : $"({PoolsProgressCurrent}) updating…";
+            });
+            var list = await _apiService.GetPoolsAsync("e621", progress);
+            // Filter out deleted pools by name prefix and pools with zero remaining posts
+            list = list.Where(p => !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0).ToList();
+            App.Current.Dispatcher.Invoke(() =>
+            {
+                Pools.Clear();
+                foreach (var p in list) Pools.Add(p);
+                ApplyPoolsFilter();
+                PoolsStatusText = $"{Pools.Count} pools";
+            });
+
+            Directory.CreateDirectory(_cacheDir);
+            var now = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
+            await File.WriteAllTextAsync(file, json);
+            _poolsCacheLastSavedUtc = now;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to refresh pools");
+        }
+        finally
+        {
+            IsPoolsLoading = false;
+            // After initial full refresh, schedule periodic incremental updates
+            _ = Task.Run(() => StartOrKickIncrementalAsync());
+        }
+    }
+
+    // Track last time cache saved to support incremental API query
+    private DateTime _poolsCacheLastSavedUtc = DateTime.MinValue;
+
+    private async Task IncrementalUpdatePoolsAsync(TimeSpan interval)
+    {
+        try
+        {
+            // If we have never saved, skip incremental and do nothing
+            var since = _poolsCacheLastSavedUtc == DateTime.MinValue
+                ? DateTime.UtcNow.AddDays(-7)
+                : _poolsCacheLastSavedUtc;
+
+            var updates = await _apiService.GetPoolsUpdatedSinceAsync("e621", since);
+            if (updates == null || updates.Count == 0) return;
+
+            // Merge into existing in-memory list
+            App.Current.Dispatcher.Invoke(() =>
+            {
+                var map = Pools.ToDictionary(p => p.Id);
+                foreach (var u in updates)
+                {
+                    if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0)
+                    {
+                        map[u.Id] = u; // upsert
+                    }
+                    else
+                    {
+                        map.Remove(u.Id); // remove deleted/empty
+                    }
+                }
+                Pools.Clear();
+                foreach (var p in map.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+                    Pools.Add(p);
+                ApplyPoolsFilter();
+                PoolsStatusText = $"{Pools.Count} pools";
+            });
+
+            // Persist merged cache
+            var file = GetPoolsCacheFilePath();
+            Directory.CreateDirectory(_cacheDir);
+            var now = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
+            await File.WriteAllTextAsync(file, json);
+            _poolsCacheLastSavedUtc = now;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Incremental pool update failed");
+        }
+        finally
+        {
+            // Schedule next incremental refresh
+            _ = Task.Delay(interval).ContinueWith(async _ =>
+            {
+                await StartOrKickIncrementalAsync();
+            });
+        }
+    }
+
+    private async Task StartOrKickIncrementalAsync()
+    {
+        // If cache doesn't exist or in-memory list is empty, do a one-time full cache build
+        try
+        {
+            var file = GetPoolsCacheFilePath();
+            if (!File.Exists(file) || !Pools.Any())
+            {
+                await RefreshPoolsIfStaleAsync();
+            }
+        }
+        catch { }
+
+        // Read interval from settings with sane defaults
+        var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360));
+        await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes));
+    }
+
+    [RelayCommand]
+    private void RunPoolsFilter()
+    {
+        ApplyPoolsFilter();
+    }
+
+    [RelayCommand]
+    private async Task LoadSelectedPoolAsync()
+    {
+        var pool = SelectedPool;
+    if (pool == null || IsSearching) return; // guard against concurrent loads
+        try
+        {
+            IsSearching = true;
+            StatusMessage = $"Loading pool {pool.Id} ({pool.Name})...";
+            SearchResults.Clear();
+            CurrentPage = 1;
+            // Pool mode loads ALL posts in pool order; ignore per-page setting
+            IsPoolMode = true;
+            CurrentPoolId = pool.Id;
+            var items = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
+            // Annotate items with pool context for filename templating
+            var poolName = pool.Name;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var pageNum = (i + 1).ToString("D5"); // 00001, 00002, ...
+                items[i].TagCategories ??= new Dictionary<string, List<string>>();
+                items[i].TagCategories["pool_name"] = new List<string> { poolName };
+                items[i].TagCategories["page_number"] = new List<string> { pageNum };
+            }
+            foreach (var item in items) SearchResults.Add(item);
+            HasNextPage = false; // single logical page for full-pool view
+            TotalCount = items.Count;
+            OnPropertyChanged(nameof(CanGoPrev));
+            OnPropertyChanged(nameof(CanGoNext));
+            OnPropertyChanged(nameof(PageInfo));
+            StatusMessage = $"Loaded pool {pool.Id}: {SearchResults.Count} items";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load pool: {ex.Message}";
+            _logger.LogError(ex, "Pool load failed");
+        }
+        finally { IsSearching = false; }
+    }
+
+    private async Task PerformPoolPageAsync(int poolId, int page, bool reset)
+    {
+    // With full-pool load, paging is disabled; keep single logical page.
+    await Task.CompletedTask;
+    }
+
+    private sealed class PoolsCache
+    {
+        public List<PoolInfo> Items { get; set; } = new();
+        public DateTime SavedAt { get; set; }
     }
 
     public static (IEnumerable<string> include, IEnumerable<string> exclude) ParseQuery(string? query)
@@ -456,7 +825,10 @@ public partial class MainViewModel : ObservableObject
 
     private string GenerateFinalPath(MediaItem mediaItem, string basePath)
     {
-        var template = _settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+        var hasPoolContext = mediaItem.TagCategories != null && (mediaItem.TagCategories.ContainsKey("page_number") || mediaItem.TagCategories.ContainsKey("pool_name"));
+        var template = hasPoolContext
+            ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+            : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
         var extFinal = string.IsNullOrWhiteSpace(mediaItem.FileExtension) ? TryGetExtensionFromUrl(mediaItem.FullImageUrl) ?? "bin" : mediaItem.FileExtension;
         string Sanitize(string s)
         {
@@ -469,7 +841,9 @@ public partial class MainViewModel : ObservableObject
             .Replace("{artist}", Sanitize(mediaItem.Artist))
             .Replace("{id}", mediaItem.Id)
             .Replace("{safeTitle}", Sanitize(mediaItem.Title))
-            .Replace("{ext}", extFinal);
+            .Replace("{ext}", extFinal)
+            .Replace("{pool_name}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty)))
+            .Replace("{page_number}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
         return Path.Combine(basePath, filenameRel);
     }
 

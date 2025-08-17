@@ -41,6 +41,33 @@ public interface IPlatformApi
     /// Get the direct download URL for a media item
     /// </summary>
     Task<string?> GetDownloadUrlAsync(string id);
+
+    /// <summary>
+    /// Get list of pools available on this platform (if supported).
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get list of pools with progress updates (current, total?).
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsAsync(IProgress<(int current, int? total)>? progress, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get pools that have changed since the given UTC timestamp (best-effort).
+    /// Implementations may fetch the most recently updated pages and stop when older than 'sinceUtc'.
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(DateTime sinceUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get posts in a specific pool, ordered by pool order.
+    /// </summary>
+    Task<SearchResult> GetPoolPostsAsync(int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get all posts in a pool with the original pool order.
+    /// Ignores page/limit and returns the whole set.
+    /// </summary>
+    Task<List<MediaItem>> GetAllPoolPostsAsync(int poolId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -72,6 +99,31 @@ public interface IUnifiedApiService
     /// Register a platform API implementation
     /// </summary>
     void RegisterPlatform(IPlatformApi platformApi);
+
+    /// <summary>
+    /// Get pools from a specific source (e.g., e621) with optional caching handled by caller or service.
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsAsync(string source, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get pools from a specific source with progress updates (current, total?).
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsAsync(string source, IProgress<(int current, int? total)>? progress, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get posts in a pool from a specific source.
+    /// </summary>
+    Task<SearchResult> GetPoolPostsAsync(string source, int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get pools updated since the given UTC timestamp from a specific source.
+    /// </summary>
+    Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(string source, DateTime sinceUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get all posts in a pool (original order) from a specific source.
+    /// </summary>
+    Task<List<MediaItem>> GetAllPoolPostsAsync(string source, int poolId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

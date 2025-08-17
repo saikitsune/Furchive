@@ -1,0 +1,3 @@
+#!/bin/sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -W 2>/dev/null || pwd)"
+exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT_DIR\commit-msg.ps1" "$@"

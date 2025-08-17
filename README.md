@@ -1,16 +1,16 @@
 ![](/assets/icon256.png)
 # Furchive - Furry Art Gallery Browser
 
-Furchive is a fast, modern gallery viewer, search, and download application for e621. Built with C# and WPF, it provides an intuitive interface for browsing, previewing, and downloading content from e621.
+Furchive is a fast, modern gallery viewer, search, and download application focused on e621. Built with C# and WPF, it provides an intuitive interface for browsing, previewing, and downloading content from e621.
 
 ## Features
 
-- **Multi-Platform Support**: Browse and download from e621, FurAffinity, InkBunny, and Weasyl
-- **Unified Search**: Search across multiple platforms simultaneously
+- **e621 Search**: Powerful search with include/exclude tags and rating filters
 - **Advanced Tag Management**: Include/exclude tags with autocomplete
 - **Download Queue**: Batch downloads with progress tracking, pause/resume functionality
 - **Content Rating Filters**: Filter content by Safe, Questionable, and Explicit ratings
 - **e621 Support**: Browse and download directly from e621
+- **Pools Browser**: Browse pools with fast, incremental cache updates
 - **Powerful Search**: Tag includes/excludes with rating filters
 - **Configurable Settings**: Customizable download paths, filename templates, and behavior
 - **Modern UI**: Clean, responsive WPF interface using ModernWPF
@@ -23,10 +23,16 @@ Furchive is a fast, modern gallery viewer, search, and download application for 
 
 ## Installation
 
+### From Installer (Windows)
+
+Download the latest `FurchiveSetup-<version>.exe` from `installer/inno/output/` (or your release site) and run it. The installer will:
+- Install per-user under `%LOCALAPPDATA%\Programs\Furchive` (no admin required)
+- Install Microsoft Edge WebView2 Runtime if missing
+
 ### From Source
 
 1. Clone the repository:
-```bash
+```powershell
 git clone https://github.com/yourusername/Furchive.git
 cd Furchive
 ```
@@ -56,8 +62,7 @@ dotnet run --project src/Furchive
 
 - **Download Directory**: Default location for downloaded content
 - **Filename Template**: Customize how files are named using variables like `{artist}`, `{title}`, `{id}`
-- **Concurrent Downloads**: Number of simultaneous downloads (1-8)
-- **Duplicate Policy**: Skip, overwrite, or rename duplicate files
+- **Pools Update Interval (minutes)**: How often to check for pool updates (incremental)
 - **Content Ratings**: Default rating filters for searches
 
 ## Usage
@@ -81,6 +86,12 @@ dotnet run --project src/Furchive
 - Use "Download All" for batch downloads
 - Monitor progress in the download queue
 - Pause, resume, or cancel downloads as needed
+
+### Pools Cache and Updates
+
+- On first run (or when no cache exists), Furchive builds a full pools cache from e621.
+- After that, it updates the cache incrementally on a schedule (configurable in Settings, default 6 hours).
+- The "Refresh Pools Cache" button in Settings deletes the cache file and triggers a fresh rebuild.
 
 ### Keyboard Shortcuts
 
@@ -122,19 +133,18 @@ dotnet build -c Release
 ```
 
 ## Installer (Windows)
+The repository includes an Inno Setup–based installer built by `installer/build-installer.ps1`. It:
+- Publishes a self-contained x64 build (no .NET runtime required)
+- Bundles the Microsoft Edge WebView2 runtime offline installer
+- Produces a single EXE at `installer/inno/output/FurchiveSetup-<version>.exe`
 
-This repo includes a WiX v4-based installer that:
-- Publishes a self-contained x64 build of the app (no .NET runtime required)
-- Packages it into an MSI
-- Provides a bootstrapper EXE that installs Microsoft Edge WebView2 Runtime if missing, then your MSI
+Build it via VS Code task or by running the PowerShell script:
 
-Build steps:
-1. Ensure WiX Toolset v4 is installed (via `dotnet tool install --global wix` or WiX build tools in PATH).
-2. Build MSI, then Bootstrapper.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build-installer.ps1 -Configuration Release -Runtime win-x64
+```
 
-Artifacts:
-- `installer/msi/bin/Release/Furchive.msi`
-- `installer/bundle/bin/Release/FurchiveSetup.exe`
+Note: The installer targets 64-bit Windows using the modern `x64os` architecture identifier.
 
 ### Running Tests
 
@@ -174,7 +184,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Disclaimer
 
-This application is not affiliated with e621. Please respect the terms of service and rate limits when using this application.
+This application is not affiliated with e621. Please respect the terms of service and rate limits when using this application. Provide a valid User-Agent in Settings.
 
 ## Support
 

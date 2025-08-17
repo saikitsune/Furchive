@@ -44,6 +44,13 @@
                     <TextBox Text="{Binding FilenameTemplate, UpdateSourceTrigger=PropertyChanged}" Width="420"/>
                 </StackPanel>
                 <TextBlock FontSize="10" Foreground="Gray" Text="Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}" Margin="120,2,0,0"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
+                    <TextBlock Text="Pool Template:" VerticalAlignment="Center" Width="120"/>
+                    <TextBox Text="{Binding PoolFilenameTemplate, UpdateSourceTrigger=PropertyChanged}" Width="420"/>
+                </StackPanel>
+                <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="120,2,0,0"
+                           Text="Used only when downloading from a pool. Default: {source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}
+Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}"/>
             </StackPanel>
 
             <Separator/>
@@ -86,6 +93,34 @@
                 <Button Content="Refresh" Command="{Binding RefreshCacheInfoCommand}" Margin="0,0,8,0"/>
                 <Button Content="Clear Cache" Command="{Binding ClearCacheCommand}" Margin="0,0,8,0"/>
                 <Button Content="Open Cache Folder" Click="OpenCacheFolder_Click"/>
+            </StackPanel>
+
+            <Separator/>
+            <TextBlock Text="Pools" FontWeight="Bold" Margin="0,12,0,8"/>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Cache file:" VerticalAlignment="Center" Width="120"/>
+                    <TextBlock Text="{Binding PoolsCacheFilePath}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Cached pools:" VerticalAlignment="Center" Width="120"/>
+                    <TextBlock Text="{Binding PoolsCachedCount}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Last cached at:" VerticalAlignment="Center" Width="120"/>
+                    <TextBlock Text="{Binding PoolsLastCachedAt, StringFormat={}{0:G}}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="Refresh Info" Command="{Binding RefreshPoolsCacheInfoCommand}" Margin="0,0,8,0"/>
+                    <Button Content="Refresh Pools Cache" Command="{Binding RebuildPoolsCacheCommand}"/>
+                </StackPanel>
+
+                <!-- Update interval setting -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock Text="Update every (minutes):" VerticalAlignment="Center" Width="160"/>
+                    <TextBox Width="100" Text="{Binding PoolsUpdateIntervalMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="(min 5)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- Moved Temp (Viewer) section below Cache -->

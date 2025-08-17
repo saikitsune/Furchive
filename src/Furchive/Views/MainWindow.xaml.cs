@@ -158,7 +158,12 @@ public partial class MainWindow : Window
                 var neighbor = vm.SearchResults[idx];
                 return (neighbor.Id, neighbor);
             }
-            // If out of current page, attempt to fetch from API by moving page via VM helper
+            // In pool mode, navigation is constrained strictly within the current pool
+            if (vm.IsPoolMode)
+            {
+                return null;
+            }
+            // If out of current page (non-pool mode), attempt to fetch from API by moving page via VM helper
             var item = await vm.FetchNextFromApiAsync(delta > 0);
             if (item == null) return null;
             // Reset moving index to end or start so subsequent moves continue in the same direction
@@ -217,6 +222,30 @@ public partial class MainWindow : Window
                     Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
             }
             catch { }
+        }
+    }
+
+    private void PoolsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && e.AddedItems != null && e.AddedItems.Count > 0)
+        {
+            vm.LoadSelectedPoolCommand.Execute(null);
+        }
+    }
+
+    private void PoolsList_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            vm.LoadSelectedPoolCommand.Execute(null);
+        }
+    }
+
+    private void PoolsList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && DataContext is MainViewModel vm)
+        {
+            vm.LoadSelectedPoolCommand.Execute(null);
         }
     }
 

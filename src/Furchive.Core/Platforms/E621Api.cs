@@ -280,6 +280,277 @@ public class E621Api : IPlatformApi
         return mediaItem?.FullImageUrl;
     }
 
+    public async Task<List<PoolInfo>> GetPoolsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            // e621 pools API: https://e621.net/pools.json
+            // Fetch all pages once per refresh (24h cache on caller)
+            var all = new List<PoolInfo>();
+            int page = 1;
+            const int limit = 320; // e621 supports up to 320 per page
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            int current = 0;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=name";
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var resp = await _httpClient.SendAsync(req, cancellationToken);
+                resp.EnsureSuccessStatusCode();
+                var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+                var pools = JsonSerializer.Deserialize<List<E621Pool>>(json, options) ?? new();
+                if (pools.Count == 0) break;
+                all.AddRange(pools.Select(p => new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount }));
+                current = all.Count;
+                if (pools.Count < limit) break;
+                page++;
+                // Be gentle with API: slight delay
+                await Task.Delay(150, cancellationToken);
+            }
+            return all.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPools failed for e621");
+            return new List<PoolInfo>();
+        }
+    }
+
+    public async Task<List<PoolInfo>> GetPoolsAsync(IProgress<(int current, int? total)>? progress, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            var all = new List<PoolInfo>();
+            int page = 1;
+            const int limit = 320;
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            int? total = null;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=name";
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var resp = await _httpClient.SendAsync(req, cancellationToken);
+                resp.EnsureSuccessStatusCode();
+                if (total == null)
+                {
+                    if (resp.Headers.TryGetValues("X-Total-Count", out var tv))
+                    {
+                        var s = tv.FirstOrDefault();
+                        if (int.TryParse(s, out var t)) total = t;
+                    }
+                    else if (resp.Headers.TryGetValues("X-Total", out var tv2))
+                    {
+                        var s2 = tv2.FirstOrDefault();
+                        if (int.TryParse(s2, out var t2)) total = t2;
+                    }
+                }
+                var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+                var pools = JsonSerializer.Deserialize<List<E621Pool>>(json, options) ?? new();
+                if (pools.Count == 0) break;
+                all.AddRange(pools.Select(p => new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount }));
+                progress?.Report((all.Count, total));
+                if (pools.Count < limit) break;
+                page++;
+                await Task.Delay(150, cancellationToken);
+            }
+            var ordered = all.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            progress?.Report((ordered.Count, total ?? ordered.Count));
+            return ordered;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPools (progress) failed for e621");
+            return new List<PoolInfo>();
+        }
+    }
+
+    public async Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(DateTime sinceUtc, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            var updated = new List<PoolInfo>();
+            int page = 1;
+            const int limit = 320;
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            // Query most recently updated pools first, stop when older than threshold.
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var url = $"https://e621.net/pools.json?limit={limit}&page={page}&search[order]=updated_desc";
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var resp = await _httpClient.SendAsync(req, cancellationToken);
+                resp.EnsureSuccessStatusCode();
+                var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+                var pools = JsonSerializer.Deserialize<List<E621Pool>>(json, options) ?? new();
+                if (pools.Count == 0) break;
+                // If the last item on this page is older than sinceUtc, we can stop after processing items newer than sinceUtc on this page
+                var pageOlder = pools.All(p => (p.UpdatedAt ?? DateTime.MinValue) < sinceUtc);
+                foreach (var p in pools)
+                {
+                    var u = p.UpdatedAt ?? DateTime.MinValue;
+                    if (u >= sinceUtc)
+                    {
+                        updated.Add(new PoolInfo { Id = p.Id, Name = p.Name ?? $"Pool {p.Id}", PostCount = p.PostCount });
+                    }
+                }
+                if (pageOlder || pools.Count < limit) break;
+                page++;
+                await Task.Delay(150, cancellationToken);
+            }
+            // Deduplicate by Id and return; order doesn't matter for incremental set
+            return updated
+                .GroupBy(p => p.Id)
+                .Select(g => g.First())
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPoolsUpdatedSince failed for e621");
+            return new List<PoolInfo>();
+        }
+    }
+
+    public async Task<SearchResult> GetPoolPostsAsync(int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            // According to e621, you can query posts by pool: pool:ID
+            // Preserve order in the pool by using order:pool (id asc within pool). We'll paginate client-side via page.
+            var offset = (Math.Max(1, page) - 1) * Math.Clamp(limit, 1, 100);
+            var perPage = Math.Clamp(limit, 1, 100);
+            var tagQuery = $"pool:{poolId} order:pool"; // order in pool sequence
+            var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={perPage}&page={(offset / perPage) + 1}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await _httpClient.SendAsync(req, cancellationToken);
+            resp.EnsureSuccessStatusCode();
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var data = JsonSerializer.Deserialize<E621PostsResponse>(json, options) ?? new();
+
+            var items = data.Posts.Select(MapPostToMediaItem).ToList();
+            if (string.IsNullOrWhiteSpace(_apiKey))
+            {
+                items = items.Where(i => !string.IsNullOrWhiteSpace(i.FullImageUrl)).ToList();
+            }
+
+            return new SearchResult
+            {
+                Items = items,
+                CurrentPage = page,
+                HasNextPage = data.Posts.Count >= perPage,
+                TotalCount = 0
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPoolPosts failed for e621 pool {PoolId}", poolId);
+            return new SearchResult { Errors = { [PlatformName] = ex.Message } };
+        }
+    }
+
+    public async Task<List<MediaItem>> GetAllPoolPostsAsync(int poolId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            // First, fetch the pool metadata to get ordered post IDs
+            var poolUrl = $"https://e621.net/pools/{poolId}.json";
+            using (var req = new HttpRequestMessage(HttpMethod.Get, poolUrl))
+            {
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var resp = await _httpClient.SendAsync(req, cancellationToken);
+                resp.EnsureSuccessStatusCode();
+                var json = await resp.Content.ReadAsStringAsync(cancellationToken);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var pool = JsonSerializer.Deserialize<E621PoolDetail>(json, options) ?? new E621PoolDetail();
+                var ids = pool.PostIds ?? new List<int>();
+                if (ids.Count == 0) return new List<MediaItem>();
+
+                // Fetch posts by explicit IDs in batches using the `ids=` parameter (multiple id: tags would AND and return nothing).
+                var result = new List<MediaItem>(ids.Count);
+                var idsSet = new HashSet<int>(ids);
+                var seen = new HashSet<int>();
+                const int batchSize = 100; // conservative
+                for (int i = 0; i < ids.Count; i += batchSize)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var slice = ids.Skip(i).Take(batchSize).ToList();
+                    var idsParam = string.Join(",", slice);
+                    var tags = $"id:{idsParam}"; // OR list of ids
+                    var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tags)}&limit={slice.Count}";
+                    using var r = new HttpRequestMessage(HttpMethod.Get, url);
+                    r.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    var pr = await _httpClient.SendAsync(r, cancellationToken);
+                    pr.EnsureSuccessStatusCode();
+                    var pj = await pr.Content.ReadAsStringAsync(cancellationToken);
+                    var data = JsonSerializer.Deserialize<E621PostsResponse>(pj, options) ?? new E621PostsResponse();
+                    var mapped = data.Posts.Select(MapPostToMediaItem).ToList();
+                    if (string.IsNullOrWhiteSpace(_apiKey))
+                        mapped = mapped.Where(m => !string.IsNullOrWhiteSpace(m.FullImageUrl)).ToList();
+                    // Strictly keep only posts whose IDs are in the requested slice (defensive against any stray matches)
+                    mapped = mapped.Where(m => int.TryParse(m.Id, out var mid) && slice.Contains(mid)).ToList();
+                    // Preserve pool order for this batch
+                    var orderMap = slice.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
+                    mapped.Sort((a, b) =>
+                    {
+                        if (!int.TryParse(a.Id, out var ai)) ai = int.MinValue;
+                        if (!int.TryParse(b.Id, out var bi)) bi = int.MinValue;
+                        return orderMap.GetValueOrDefault(ai, int.MaxValue).CompareTo(orderMap.GetValueOrDefault(bi, int.MaxValue));
+                    });
+                    // Deduplicate across batches
+                    foreach (var m in mapped)
+                    {
+                        if (int.TryParse(m.Id, out var mid) && seen.Add(mid))
+                            result.Add(m);
+                    }
+                    await Task.Delay(100, cancellationToken);
+                }
+                // Final sort by full pool order
+                var fullOrder = ids.Select((id, idx) => (id, idx)).ToDictionary(t => t.id, t => t.idx);
+                // Build final list strictly in pool order from the deduped results
+                var byId = result.Where(m => int.TryParse(m.Id, out _))
+                                  .GroupBy(m => int.Parse(m.Id))
+                                  .ToDictionary(g => g.Key, g => g.First());
+                var ordered = new List<MediaItem>(byId.Count);
+                foreach (var id in ids)
+                {
+                    if (byId.TryGetValue(id, out var item)) ordered.Add(item);
+                }
+                return ordered;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetAllPoolPosts failed for e621 pool {PoolId}", poolId);
+            return new List<MediaItem>();
+        }
+    }
+
+    private void EnsureUserAgent()
+    {
+        if (string.IsNullOrWhiteSpace(_userAgent))
+        {
+            try
+            {
+                _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                var defaultUa = $"Furchive/{version} (by USERNAME)";
+                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
+            }
+            catch { }
+        }
+    }
+
     private int GetRateLimitFromHeaders(System.Net.Http.Headers.HttpResponseHeaders headers)
     {
         if (headers.TryGetValues("X-RateLimit-Remaining", out var values))
@@ -447,5 +718,20 @@ public class E621Api : IPlatformApi
         [JsonPropertyName("name")] public string? Name { get; set; }
         [JsonPropertyName("post_count")] public int PostCount { get; set; }
         [JsonPropertyName("category")] public int Category { get; set; }
+    }
+
+    private sealed class E621Pool
+    {
+        [JsonPropertyName("id")] public int Id { get; set; }
+        [JsonPropertyName("name")] public string? Name { get; set; }
+        [JsonPropertyName("post_count")] public int PostCount { get; set; }
+    [JsonPropertyName("updated_at")] public DateTime? UpdatedAt { get; set; }
+    }
+
+    private sealed class E621PoolDetail
+    {
+        [JsonPropertyName("id")] public int Id { get; set; }
+        [JsonPropertyName("name")] public string? Name { get; set; }
+        [JsonPropertyName("post_ids")] public List<int>? PostIds { get; set; }
     }
 }

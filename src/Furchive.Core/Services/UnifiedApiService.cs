@@ -2,6 +2,7 @@ using Furchive.Core.Interfaces;
 using Furchive.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using System.Linq;
 
 namespace Furchive.Core.Services;
 
@@ -22,6 +23,80 @@ public class UnifiedApiService : IUnifiedApiService
     {
         _platforms[platformApi.PlatformName] = platformApi;
         _logger.LogInformation("Registered platform: {Platform}", platformApi.PlatformName);
+    }
+
+    public async Task<List<PoolInfo>> GetPoolsAsync(string source, CancellationToken cancellationToken = default)
+    {
+        if (!_platforms.TryGetValue(source, out var api)) return new List<PoolInfo>();
+        try { return await api.GetPoolsAsync(cancellationToken); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPools failed for {Source}", source);
+            return new List<PoolInfo>();
+        }
+    }
+
+    public async Task<List<PoolInfo>> GetPoolsAsync(string source, IProgress<(int current, int? total)>? progress, CancellationToken cancellationToken = default)
+    {
+        if (!_platforms.TryGetValue(source, out var api)) return new List<PoolInfo>();
+        try
+        {
+            // If platform implements the progress overload, use it; otherwise call without progress and report final
+            var supports = api.GetType().GetMethod("GetPoolsAsync", new[] { typeof(IProgress<(int current, int? total)>), typeof(CancellationToken) }) != null;
+            if (supports)
+            {
+                var task = (Task<List<PoolInfo>>)api.GetType().GetMethod("GetPoolsAsync", new[] { typeof(IProgress<(int current, int? total)>), typeof(CancellationToken) })!
+                    .Invoke(api, new object?[] { progress, cancellationToken })!;
+                return await task;
+            }
+            else
+            {
+                var list = await api.GetPoolsAsync(cancellationToken);
+                progress?.Report((list.Count, list.Count));
+                return list;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPools (with progress) failed for {Source}", source);
+            return new List<PoolInfo>();
+        }
+    }
+
+    public async Task<SearchResult> GetPoolPostsAsync(string source, int poolId, int page = 1, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        if (!_platforms.TryGetValue(source, out var api)) return new SearchResult { Items = new(), CurrentPage = page };
+        try
+        {
+            return await api.GetPoolPostsAsync(poolId, page, limit, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPoolPosts failed for {Source} pool {PoolId}", source, poolId);
+            return new SearchResult { Items = new(), CurrentPage = page, Errors = { [source] = ex.Message } };
+        }
+    }
+
+    public async Task<List<PoolInfo>> GetPoolsUpdatedSinceAsync(string source, DateTime sinceUtc, CancellationToken cancellationToken = default)
+    {
+        if (!_platforms.TryGetValue(source, out var api)) return new List<PoolInfo>();
+        try { return await api.GetPoolsUpdatedSinceAsync(sinceUtc, cancellationToken); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPoolsUpdatedSince failed for {Source}", source);
+            return new List<PoolInfo>();
+        }
+    }
+
+    public async Task<List<MediaItem>> GetAllPoolPostsAsync(string source, int poolId, CancellationToken cancellationToken = default)
+    {
+        if (!_platforms.TryGetValue(source, out var api)) return new List<MediaItem>();
+        try { return await api.GetAllPoolPostsAsync(poolId, cancellationToken); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetAllPoolPosts failed for {Source} pool {PoolId}", source, poolId);
+            return new List<MediaItem>();
+        }
     }
 
     public async Task<Dictionary<string, PlatformHealth>> GetAllPlatformHealthAsync()
