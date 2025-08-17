@@ -71,8 +71,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- Left Column: Pools + Tag Management Panel -->
-            <Border Grid.Column="0" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
-                    BorderBrush="{DynamicResource SystemControlBackgroundBaseMediumBrush}" BorderThickness="0,0,1,0">
+        <Border Grid.Column="0" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
+            BorderBrush="{DynamicResource SystemControlBackgroundBaseMediumBrush}" BorderThickness="0,0,1,0" Padding="0,0,3,0">
                 <ScrollViewer Margin="10">
                     <StackPanel>
                         <!-- Pools Section -->
@@ -90,11 +90,22 @@
                                  SelectedItem="{Binding SelectedPool}"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 Padding="0,0,14,0"
+                                 Margin="0,0,8,0"
                                  MaxHeight="150"
                                  SelectionChanged="PoolsList_SelectionChanged"
                                  PreviewMouseLeftButtonUp="PoolsList_MouseUp"
                                  KeyDown="PoolsList_KeyDown">
+                            <ListBox.Resources>
+                                <!-- Thicker vertical scrollbar specifically for the Pools list -->
+                                <Style TargetType="ScrollBar">
+                                    <Style.Triggers>
+                                        <Trigger Property="Orientation" Value="Vertical">
+                                            <Setter Property="Width" Value="18"/>
+                                            <Setter Property="MinWidth" Value="18"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="Height" Value="22"/>
