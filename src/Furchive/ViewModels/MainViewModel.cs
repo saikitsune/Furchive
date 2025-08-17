@@ -175,6 +175,29 @@ public partial class MainViewModel : ObservableObject
                 _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification");
             }
         });
+
+        // Handle requests to rebuild the pools cache from scratch
+        WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) =>
+        {
+            try
+            {
+                // Clear in-memory list and delete existing cache file if any
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    Pools.Clear();
+                    FilteredPools.Clear();
+                    PoolsStatusText = "rebuilding cache…";
+                });
+                var file = GetPoolsCacheFilePath();
+                try { if (File.Exists(file)) File.Delete(file); } catch { }
+                _poolsCacheLastSavedUtc = DateTime.MinValue;
+                await RefreshPoolsIfStaleAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to rebuild pools cache on request");
+            }
+        });
     }
 
     public bool IsSelectedDownloaded

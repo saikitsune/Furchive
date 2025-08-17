@@ -170,34 +170,28 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task RebuildPoolsCacheAsync()
+    private Task RebuildPoolsCacheAsync()
     {
         try
         {
             var path = GetPoolsCachePath();
             var dir = Path.GetDirectoryName(path)!;
             Directory.CreateDirectory(dir);
-            // Delete old cache
+            // Delete old cache JSON so the app treats it as missing
             try { if (File.Exists(path)) File.Delete(path); } catch { }
 
-            // Re-fetch and write cache
-            var list = await _api.GetPoolsAsync("e621");
-            // Filter pools that are completely empty (all posts deleted)
-            list = list.Where(p => p.PostCount > 0 && !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase)).ToList();
-            var cache = new { Items = list, SavedAt = DateTime.UtcNow };
-            var json = System.Text.Json.JsonSerializer.Serialize(cache);
-            await File.WriteAllTextAsync(path, json);
+            // Notify the app shell to rebuild from scratch (MainViewModel will do the full fetch)
+            WeakReferenceMessenger.Default.Send(new PoolsCacheRebuildRequestedMessage());
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to rebuild pools cache");
+            _logger.LogWarning(ex, "Failed to request pools cache rebuild");
         }
         finally
         {
             RefreshPoolsCacheInfo();
-            // Broadcast a lightweight notification so MainViewModel can refresh its sidebar
-            WeakReferenceMessenger.Default.Send<PoolsCacheRebuiltMessage>(new());
         }
+        return Task.CompletedTask;
     }
 
     [RelayCommand]

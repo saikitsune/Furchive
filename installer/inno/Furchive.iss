@@ -21,7 +21,8 @@ OutputDir=output
 OutputBaseFilename=FurchiveSetup-{#AppVersion}
 Compression=lzma
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64
+; Use the modern architecture identifier to avoid deprecation warnings
+ArchitecturesInstallIn64BitMode=x64os
 DisableProgramGroupPage=yes
 ; Enforce per-user install only (no all-users option)
 PrivilegesRequired=lowest
