@@ -31,15 +31,25 @@ try {
     "[$stamp] file='$MessageFile' version='$version' len=$($msg.Length)" | Out-File -FilePath $logPath -Append -Encoding UTF8
 } catch {}
 
-# If already prefixed with the version, skip
-if ($msg -match "^\Q$version\E[: ]") { return }
+# If already prefixed with the version, skip (escape for regex)
+if ($msg -match ("^" + [regex]::Escape($version) + "[: ]")) { return }
 
 # Add prefix "<version>: " ahead of the first non-comment line
-$lines = Get-Content -LiteralPath $MessageFile
+$lines = @(Get-Content -LiteralPath $MessageFile)
 for ($i = 0; $i -lt $lines.Count; $i++) {
     $line = $lines[$i]
     if ($line -match '^(#|\s*$)') { continue }
-    $lines[$i] = "$(($version)): $line"
+    $lines[$i] = ($version + ": " + $line)
     break
+}
+$updated = $false
+for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match '^(#|\s*$)') { continue }
+    $updated = $true
+    break
+}
+if (-not $updated) {
+    $prefixLine = ($version + ": ")
+    $lines = @($prefixLine) + $lines
 }
 $lines | Set-Content -LiteralPath $MessageFile -Encoding UTF8
