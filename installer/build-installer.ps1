@@ -4,7 +4,9 @@ param(
   # Version is optional; when omitted we derive it from the csproj FileVersion/AssemblyVersion
   [string]$Version,
   # Optional: override the download URL for the WebView2 runtime (e.g., to a GitHub Release asset)
-  [string]$WebView2Url
+  [string]$WebView2Url,
+  # Optional: override the download URL for the .NET Desktop Runtime (x64) installer
+  [string]$DotNetDesktopUrl
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +63,22 @@ $wv2File = Join-Path (Join-Path $root 'inno') 'MicrosoftEdgeWebView2RuntimeInsta
 if (-not (Test-Path $wv2File)) {
   Write-Host "Downloading WebView2 runtime from $WebView2Url ..."
   Invoke-WebRequest -Uri $WebView2Url -OutFile $wv2File
+}
+
+# Download .NET Desktop Runtime (x64) installer if not present.
+# Allow override via parameter or environment DOTNET_DESKTOP_URL; default to Microsoft thank-you link (bootstrapper).
+if (-not $DotNetDesktopUrl -or [string]::IsNullOrWhiteSpace($DotNetDesktopUrl)) {
+  $DotNetDesktopUrl = $env:DOTNET_DESKTOP_URL
+}
+if (-not $DotNetDesktopUrl -or [string]::IsNullOrWhiteSpace($DotNetDesktopUrl)) {
+  # Default to .NET 8 Desktop Runtime x64 bootstrapper (will fetch latest 8.x during install)
+  $DotNetDesktopUrl = 'https://dotnet.microsoft.com/download/dotnet/thank-you/runtime-desktop-8.0.0-windows-x64-installer'
+}
+
+$dotnetFile = Join-Path (Join-Path $root 'inno') 'DotNetDesktopRuntimeInstallerX64.exe'
+if (-not (Test-Path $dotnetFile)) {
+  Write-Host "Downloading .NET Desktop Runtime installer from $DotNetDesktopUrl ..."
+  Invoke-WebRequest -Uri $DotNetDesktopUrl -OutFile $dotnetFile
 }
 # Try common Inno paths
 $innoc = ${env:INNOSETUP} ; if (-not $innoc) { $innoc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' }

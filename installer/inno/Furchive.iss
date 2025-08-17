@@ -7,7 +7,7 @@
 #define AppExeName "Furchive.exe"
 
 [Setup]
-AppId={{4B1C5C5E-7E98-4B54-92B0-551F7AA7B3B0}
+AppId={{4B1C5C5E-7E98-4B54-92B0-551F7AA7B3B0}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
@@ -40,6 +40,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "..\..\src\Furchive\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Include the WebView2 Evergreen bootstrapper downloaded by the build script
 Source: "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; Include .NET Desktop Runtime (x64) installer (bootstrapper)
+Source: "DotNetDesktopRuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -84,18 +86,6 @@ begin
 		end;
 	end;
 end;
-
-[Run]
-; Install WebView2 runtime silently (idempotent)
-Filename: "{tmp}\\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/install /quiet /norestart /log ""{localappdata}\\Furchive\\webview2-install.log"""; Flags: waituntilterminated runhidden; Check: NeedsWebView2
-; Use ShellExecute so Windows honors the app's UAC manifest prompt
-Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent shellexec
-
-[Dirs]
-; Ensure user-writable app data folder exists for logs or caches
-Name: "{localappdata}\\Furchive"; Flags: uninsalwaysuninstall
-
-[Code]
 function NeedsWebView2(): Boolean;
 var
 	F: TFindRec;
@@ -117,3 +107,94 @@ begin
 	// Not found -> need to install
 	Result := True;
 end;
+
+function GetMajorFromVersionStr(const ver: string): Integer;
+var
+	p: Integer;
+	majorStr: string;
+begin
+	p := Pos('.', ver);
+	if p > 0 then
+		majorStr := Copy(ver, 1, p - 1)
+	else
+		majorStr := ver;
+	Result := StrToIntDef(majorStr, 0);
+end;
+
+function GetHighestDesktopRuntimeMajorFromPath(const basePath: string): Integer;
+var
+	F: TFindRec;
+	candidate: Integer;
+	highest: Integer;
+	full: string;
+begin
+	highest := 0;
+	full := AddBackslash(basePath);
+	if FindFirst(full + '*', F) then
+	try
+		repeat
+			if (F.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+			begin
+				candidate := GetMajorFromVersionStr(F.Name);
+				if candidate > highest then highest := candidate;
+			end;
+		until not FindNext(F);
+	finally
+		FindClose(F);
+	end;
+	Result := highest;
+end;
+
+function IsDotNet8OrLaterInstalled(): Boolean;
+var
+	ver: string;
+	major: Integer;
+begin
+	// Registry: prefer official installed versions key (may not exist on all machines)
+	if RegQueryStringValue(HKLM, 'SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.WindowsDesktop.App', 'Version', ver) then
+	begin
+		major := GetMajorFromVersionStr(ver);
+		if major >= 8 then begin Result := True; exit; end;
+	end;
+	// Some installs may write to HKCU for per-user installs
+	if RegQueryStringValue(HKCU, 'SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.WindowsDesktop.App', 'Version', ver) then
+	begin
+		major := GetMajorFromVersionStr(ver);
+		if major >= 8 then begin Result := True; exit; end;
+	end;
+
+	// Fallback: scan common shared framework folders and parse highest major
+	major := GetHighestDesktopRuntimeMajorFromPath(ExpandConstant('{commonpf64}') + '\\dotnet\\shared\\Microsoft.WindowsDesktop.App');
+	if major >= 8 then begin Result := True; exit; end;
+	major := GetHighestDesktopRuntimeMajorFromPath(ExpandConstant('{pf64}') + '\\dotnet\\shared\\Microsoft.WindowsDesktop.App');
+	if major >= 8 then begin Result := True; exit; end;
+	major := GetHighestDesktopRuntimeMajorFromPath(ExpandConstant('{localappdata}') + '\\Microsoft\\dotnet\\shared\\Microsoft.WindowsDesktop.App');
+	if major >= 8 then begin Result := True; exit; end;
+
+	Result := False;
+end;
+
+function NeedsDotNetRuntimeAndUserAccepted(): Boolean;
+var
+	resp: Integer;
+begin
+	if IsDotNet8OrLaterInstalled() then
+	begin
+		Result := False;
+		exit;
+	end;
+	resp := MsgBox('This app requires the .NET 8 Desktop Runtime. It was not detected on your system. Install it now?', mbConfirmation, MB_YESNO or MB_DEFBUTTON1);
+	Result := (resp = IDYES);
+end;
+
+[Run]
+; Install WebView2 runtime silently (idempotent)
+Filename: "{tmp}\\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/install /quiet /norestart /log ""{localappdata}\\Furchive\\webview2-install.log"""; Flags: waituntilterminated runhidden; Check: NeedsWebView2
+; Check for .NET 8+ Desktop Runtime and offer to install if missing
+Filename: "{tmp}\\DotNetDesktopRuntimeInstallerX64.exe"; Parameters: "/install /quiet /norestart"; Flags: waituntilterminated runhidden; Check: NeedsDotNetRuntimeAndUserAccepted()
+; Use ShellExecute so Windows honors the app's UAC manifest prompt
+Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent shellexec
+
+[Dirs]
+; Ensure user-writable app data folder exists for logs or caches
+Name: "{localappdata}\\Furchive"; Flags: uninsalwaysuninstall

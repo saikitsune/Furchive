@@ -17,8 +17,11 @@ Furchive is a fast, modern gallery viewer, search, and download application focu
 
 ## Requirements
 
-- .NET 8.0 or later
-- Windows 10/11
+- Windows 10/11 (x64)
+- Microsoft Edge WebView2 Runtime
+    - Used for in-app video playback. The installer will install it if missing.
+- .NET 8 Desktop Runtime (for source runs)
+    - If you run from source with a framework-dependent build, you need .NET 8 Desktop Runtime. The provided installer publishes self-contained, but will also offer to install .NET 8 if not found for better compatibility.
 - Visual Studio 2022 (for development)
 
 ## Installation
@@ -28,6 +31,7 @@ Furchive is a fast, modern gallery viewer, search, and download application focu
 Download the latest `FurchiveSetup-<version>.exe` from `installer/inno/output/` (or your release site) and run it. The installer will:
 - Install per-user under `%LOCALAPPDATA%\Programs\Furchive` (no admin required)
 - Install Microsoft Edge WebView2 Runtime if missing
+ - Detect .NET 8 Desktop Runtime; if not found, prompt to install a compatible .NET version
 
 ### From Source
 
