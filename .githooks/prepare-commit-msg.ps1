@@ -5,8 +5,8 @@ param(
     [string]$Sha
 )
 
-# Resolve repo root
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# Resolve repo root (.githooks is directly under repo root)
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $csproj = Join-Path $repoRoot 'src\Furchive\Furchive.csproj'
 if (-not (Test-Path $csproj)) { return }
 
@@ -23,6 +23,13 @@ if (-not $version) { return }
 # Read existing message
 if (-not (Test-Path $MessageFile)) { return }
 $msg = Get-Content -Raw -LiteralPath $MessageFile
+
+# Debug log (non-fatal)
+try {
+    $logPath = Join-Path $repoRoot '.git/prepare-commit-msg.log'
+    $stamp = Get-Date -Format o
+    "[$stamp] file='$MessageFile' version='$version' len=$($msg.Length)" | Out-File -FilePath $logPath -Append -Encoding UTF8
+} catch {}
 
 # If already prefixed with the version, skip
 if ($msg -match "^\Q$version\E[: ]") { return }

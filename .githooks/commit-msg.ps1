@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$MessageFile
 )
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# Resolve repo root (.githooks is directly under repo root)
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $csproj = Join-Path $repoRoot 'src\Furchive\Furchive.csproj'
 if (-not (Test-Path $csproj)) { return }
 
@@ -18,6 +19,13 @@ if (-not $version) { return }
 
 if (-not (Test-Path $MessageFile)) { return }
 $msg = Get-Content -Raw -LiteralPath $MessageFile
+
+# Debug log (non-fatal)
+try {
+    $logPath = Join-Path $repoRoot '.git/commit-msg.log'
+    $stamp = Get-Date -Format o
+    "[$stamp] file='$MessageFile' version='$version' len=$($msg.Length)" | Out-File -FilePath $logPath -Append -Encoding UTF8
+} catch {}
 if ($msg -match "^\Q$version\E[: ]") { return }
 
 $lines = Get-Content -LiteralPath $MessageFile
