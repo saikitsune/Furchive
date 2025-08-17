@@ -30,6 +30,8 @@ public partial class ViewerWindow : Window
     private readonly DispatcherTimer _timer;
     private CancellationTokenSource? _loadCts;
     private string? _currentLocalPath;
+    private int _currentIndexInList = -1;
+    private int _totalInList = 0;
 
     public ViewerWindow(IUnifiedApiService api, IDownloadService downloads, ISettingsService settings)
     {
@@ -49,6 +51,7 @@ public partial class ViewerWindow : Window
         _getPrev = getPrev;
     _ = LoadIntoViewerAsync(current);
     TryUpdatePageNumberLabel(current);
+    TryUpdatePoolNavigationState(current);
     }
 
     private async void Next_Click(object sender, RoutedEventArgs e)
@@ -58,11 +61,12 @@ public partial class ViewerWindow : Window
         if (res?.id != null)
         {
             var full = await _api.GetMediaDetailsAsync(_source, res.Value.id);
-            var nextItem = full ?? res.Value.item;
+            var nextItem = res.Value.item ?? full; // prefer original item to preserve pool annotations
             if (nextItem != null)
             {
                 DataContext = nextItem;
                 TryUpdatePageNumberLabel(nextItem);
+                TryUpdatePoolNavigationState(nextItem);
                 await LoadIntoViewerAsync(nextItem);
             }
         }
@@ -75,11 +79,12 @@ public partial class ViewerWindow : Window
         if (res?.id != null)
         {
             var full = await _api.GetMediaDetailsAsync(_source, res.Value.id);
-            var prevItem = full ?? res.Value.item;
+            var prevItem = res.Value.item ?? full; // prefer original item to preserve pool annotations
             if (prevItem != null)
             {
                 DataContext = prevItem;
                 TryUpdatePageNumberLabel(prevItem);
+                TryUpdatePoolNavigationState(prevItem);
                 await LoadIntoViewerAsync(prevItem);
             }
         }
@@ -543,6 +548,55 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                 page = list[0];
             }
             tb.Text = string.IsNullOrWhiteSpace(page) ? string.Empty : $"Page: {page}";
+        }
+        catch { }
+    }
+
+    private void TryUpdatePoolNavigationState(MediaItem item)
+    {
+        try
+        {
+            var prevBtn = FindName("prevButton") as System.Windows.Controls.Button;
+            var nextBtn = FindName("nextButton") as System.Windows.Controls.Button;
+            if (prevBtn == null || nextBtn == null) return;
+
+            // Infer index from page_number if present, else leave buttons enabled
+            _currentIndexInList = -1;
+            _totalInList = 0;
+            string? page = null;
+            if (item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var list) && list != null && list.Count > 0)
+            {
+                page = list[0];
+            }
+            if (!string.IsNullOrWhiteSpace(page) && int.TryParse(page, out var pageNum))
+            {
+                _currentIndexInList = Math.Max(1, pageNum); // 1-based
+            }
+            // Try to infer total from pool_name grouping: we don't have total embedded, so approximate from current SearchResults if available via Owner's DataContext
+            try
+            {
+                if (this.Owner is MainWindow mw && mw.DataContext is ViewModels.MainViewModel vm)
+                {
+                    _totalInList = vm.SearchResults?.Count ?? 0;
+                }
+            }
+            catch { }
+
+            if (_currentIndexInList > 0 && _totalInList > 0)
+            {
+                prevBtn.IsEnabled = _currentIndexInList > 1;
+                nextBtn.IsEnabled = _currentIndexInList < _totalInList;
+                prevBtn.Opacity = prevBtn.IsEnabled ? 1.0 : 0.5;
+                nextBtn.Opacity = nextBtn.IsEnabled ? 1.0 : 0.5;
+            }
+            else
+            {
+                // Unknown context; leave buttons enabled
+                prevBtn.IsEnabled = true;
+                nextBtn.IsEnabled = true;
+                prevBtn.Opacity = 1.0;
+                nextBtn.Opacity = 1.0;
+            }
         }
         catch { }
     }

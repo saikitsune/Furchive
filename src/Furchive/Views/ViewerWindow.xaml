@@ -24,8 +24,8 @@
 
         <ToolBar Grid.Row="0" ToolBarTray.IsLocked="True" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
             <StackPanel Orientation="Horizontal">
-                <Button Content="◀ Prev" Click="Prev_Click" Margin="2"/>
-                <Button Content="Next ▶" Click="Next_Click" Margin="2"/>
+                <Button x:Name="prevButton" Content="◀ Prev" Click="Prev_Click" Margin="2"/>
+                <Button x:Name="nextButton" Content="Next ▶" Click="Next_Click" Margin="2"/>
                 <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
                     <TextBlock Text="  •  " VerticalAlignment="Center"/>
