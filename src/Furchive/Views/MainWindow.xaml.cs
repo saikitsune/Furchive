@@ -303,9 +303,22 @@ public partial class MainWindow : Window
         {
             try
             {
-                var dir = Path.GetDirectoryName(job.DestinationPath);
-                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                    Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+                var path = job.DestinationPath;
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    // If the path itself is a directory (e.g., aggregate group), open it directly
+                    if (Directory.Exists(path))
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+                    }
+                    else
+                    {
+                        // Otherwise open the folder containing the file
+                        var dir = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                            Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+                    }
+                }
             }
             catch { }
         }

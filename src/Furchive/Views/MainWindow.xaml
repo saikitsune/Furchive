@@ -518,9 +518,7 @@
                                                     <Setter Property="Text" Value="{Binding DestinationPath}"/>
                                                     <Setter Property="ToolTip" Value="{Binding DestinationPath}"/>
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsAggregate}" Value="True">
-                                                            <Setter Property="Text" Value="{Binding GroupType, StringFormat=Group: {0}}"/>
-                                                        </DataTrigger>
+                                                        <!-- For aggregates, show the resolved group folder path (DestinationPath is set to common dir) -->
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>

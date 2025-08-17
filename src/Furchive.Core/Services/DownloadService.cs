@@ -50,7 +50,8 @@ public class DownloadService : IDownloadService
             IsAggregate = true,
             GroupType = groupType,
             MediaItem = new MediaItem { Title = $"{CultureInfo.CurrentCulture.TextInfo.ToTitleCase(groupType)}: {(string.IsNullOrWhiteSpace(groupLabel) ? (mediaItems.FirstOrDefault()?.Artist ?? "Group") : groupLabel)} ({mediaItems.Count} items)", Source = mediaItems.FirstOrDefault()?.Source ?? "e621" },
-            DestinationPath = System.IO.Path.Combine(destinationPath, $"{groupType}-download"),
+            // Temporary; will be replaced with common directory once children are queued
+            DestinationPath = System.IO.Path.Combine(destinationPath),
             Status = DownloadStatus.Queued
         };
         _downloadJobs[aggregate.Id] = aggregate;
@@ -64,11 +65,28 @@ public class DownloadService : IDownloadService
                 child.ParentId = aggregate.Id;
         }
 
+        // Compute a common directory for all children to represent the group folder path
+        try
+        {
+            var childDirs = aggregate.ChildrenIds
+                .Select(id => _downloadJobs.TryGetValue(id, out var j) ? Path.GetDirectoryName(j.DestinationPath) : null)
+                .Where(d => !string.IsNullOrEmpty(d) && Directory.Exists(d!))
+                .Select(d => d!)
+                .ToList();
+            if (childDirs.Count > 0)
+            {
+                var common = GetCommonDirectory(childDirs);
+                if (!string.IsNullOrEmpty(common))
+                    aggregate.DestinationPath = common!;
+            }
+        }
+        catch { }
+
         // Hook into updates to recompute aggregate progress
         DownloadProgressUpdated += (s, job) => AggregateUpdate(job);
         DownloadStatusChanged += (s, job) => AggregateUpdate(job);
 
-        return aggregate.Id;
+    return aggregate.Id;
 
         void AggregateUpdate(DownloadJob job)
         {
@@ -202,7 +220,7 @@ public class DownloadService : IDownloadService
             try
             {
                 var queuedJobs = _downloadJobs.Values
-                    .Where(j => j.Status == DownloadStatus.Queued)
+                    .Where(j => j.Status == DownloadStatus.Queued && !j.IsAggregate)
                     .OrderBy(j => j.QueuedAt)
                     .ToList();
 
@@ -223,6 +241,26 @@ public class DownloadService : IDownloadService
         }
     }
 
+    private static string? GetCommonDirectory(List<string> dirs)
+    {
+        if (dirs == null || dirs.Count == 0) return null;
+        var parts = dirs.Select(d => d.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Split(Path.DirectorySeparatorChar)).ToList();
+        var minLen = parts.Min(p => p.Length);
+        var prefix = new List<string>();
+        for (int i = 0; i < minLen; i++)
+        {
+            var segment = parts[0][i];
+            if (parts.All(p => string.Equals(p[i], segment, StringComparison.OrdinalIgnoreCase)))
+                prefix.Add(segment);
+            else
+                break;
+        }
+        if (prefix.Count == 0) return Path.GetPathRoot(dirs[0]);
+        var common = string.Join(Path.DirectorySeparatorChar, prefix);
+        if (common.EndsWith(":")) common += Path.DirectorySeparatorChar; // ensure root like C:→C:\
+        return common;
+    }
+
     private async Task ProcessSingleDownloadAsync(DownloadJob job)
     {
         await _downloadSemaphore.WaitAsync(_cancellationTokenSource.Token);
@@ -240,6 +278,14 @@ public class DownloadService : IDownloadService
             var details = await _apiService.GetMediaDetailsAsync(job.MediaItem.Source, job.MediaItem.Id);
             if (details?.FullImageUrl == null)
             {
+                // For grouped downloads (e.g., pools), silently skip missing URLs instead of raising an error
+                if (!string.IsNullOrEmpty(job.ParentId))
+                {
+                    job.Status = DownloadStatus.Completed; // mark as done/skipped to allow aggregate to proceed
+                    job.CompletedAt = DateTime.UtcNow;
+                    DownloadStatusChanged?.Invoke(this, job);
+                    return;
+                }
                 throw new InvalidOperationException("Could not get download URL");
             }
             // If original extension missing, update path with derived extension
