@@ -367,7 +367,7 @@
             <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
             <Button x:Name="downloadButton" Content="Download" Command="{Binding DownloadSelectedCommand}"
                 Style="{StaticResource ToolbarButtonStyle}" IsEnabled="{Binding SelectedMedia, Converter={StaticResource NullToBooleanConverter}}"/>
-            <Button x:Name="downloadAllButton" Content="Download All" Command="{Binding DownloadAllCommand}"
+            <Button x:Name="downloadAllButton" Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"
                 Style="{StaticResource ToolbarButtonStyle}" Margin="6,0,0,0"/>
             <Button x:Name="openDownloadsButton" Content="Open Downloads" Click="OpenDownloads_Click"
                 Style="{StaticResource ToolbarButtonStyle}" Margin="6,0,0,0"/>

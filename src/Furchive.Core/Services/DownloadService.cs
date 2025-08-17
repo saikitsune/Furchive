@@ -266,7 +266,10 @@ public class DownloadService : IDownloadService
 
     private string GenerateFilePath(MediaItem mediaItem, string basePath)
     {
-    var template = _settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+        var hasPoolContext = mediaItem.TagCategories != null && (mediaItem.TagCategories.ContainsKey("page_number") || mediaItem.TagCategories.ContainsKey("pool_name"));
+        var template = hasPoolContext
+            ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+            : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
         var useOriginalFilename = _settingsService.GetSetting<bool>("UseOriginalFilename", false);
 
         if (useOriginalFilename && !string.IsNullOrEmpty(mediaItem.Title))
@@ -283,7 +286,9 @@ public class DownloadService : IDownloadService
             .Replace("{artist}", SanitizeFilename(mediaItem.Artist))
             .Replace("{id}", mediaItem.Id)
             .Replace("{safeTitle}", SanitizeFilename(mediaItem.Title))
-            .Replace("{ext}", extFinal ?? string.Empty);
+            .Replace("{ext}", extFinal ?? string.Empty)
+            .Replace("{pool_name}", SanitizeFilename(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("pool_name", out var poolNames) && poolNames.Count > 0 ? poolNames[0] : string.Empty))
+            .Replace("{page_number}", SanitizeFilename(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("page_number", out var pageNumbers) && pageNumbers.Count > 0 ? pageNumbers[0] : string.Empty));
 
         return Path.Combine(basePath, filename);
     }

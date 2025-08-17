@@ -20,8 +20,10 @@ public class IsMediaDownloadedConverter : IValueConverter
             var defaultDir = settings?.GetSetting<string>("DefaultDownloadDirectory",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads"))
                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
-            var template = settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}")
-                ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+            var hasPoolContext = item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"));
+            var template = hasPoolContext
+                ? (settings?.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+                : (settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
             static string Sanitize(string s)
             {
                 var invalid = Path.GetInvalidFileNameChars();
@@ -45,7 +47,9 @@ public class IsMediaDownloadedConverter : IValueConverter
                 .Replace("{artist}", Sanitize(item.Artist))
                 .Replace("{id}", item.Id)
                 .Replace("{safeTitle}", Sanitize(item.Title))
-                .Replace("{ext}", ext);
+                .Replace("{ext}", ext)
+                .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : string.Empty))
+                .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var full = Path.Combine(defaultDir, rel);
             return File.Exists(full) ? Visibility.Visible : Visibility.Collapsed;
         }

@@ -86,6 +86,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _poolsProgressHasTotal = false;
 
+    // Download button label switches in pool mode
+    public string DownloadAllLabel => IsPoolMode ? "Download Pool" : "Download All";
+    partial void OnIsPoolModeChanged(bool value) => OnPropertyChanged(nameof(DownloadAllLabel));
+
     // Saved searches
     public partial class SavedSearch
     {
@@ -183,7 +187,10 @@ public partial class MainViewModel : ObservableObject
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ??
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
             // Try to predict final path using filename template
-            var template = _settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+            var hasPoolContext = (item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"))) || IsPoolMode;
+            var template = hasPoolContext
+                ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+                : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
             string Sanitize(string s)
             {
                 var invalid = Path.GetInvalidFileNameChars();
@@ -196,7 +203,9 @@ public partial class MainViewModel : ObservableObject
                 .Replace("{artist}", Sanitize(item.Artist))
                 .Replace("{id}", item.Id)
                 .Replace("{safeTitle}", Sanitize(item.Title))
-                .Replace("{ext}", ext);
+                .Replace("{ext}", ext)
+                .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty)))
+                .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var fullPath = Path.Combine(defaultDir, rel);
             return File.Exists(fullPath);
         }
@@ -519,6 +528,15 @@ public partial class MainViewModel : ObservableObject
             IsPoolMode = true;
             CurrentPoolId = pool.Id;
             var items = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
+            // Annotate items with pool context for filename templating
+            var poolName = pool.Name;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var pageNum = (i + 1).ToString("D5"); // 00001, 00002, ...
+                items[i].TagCategories ??= new Dictionary<string, List<string>>();
+                items[i].TagCategories["pool_name"] = new List<string> { poolName };
+                items[i].TagCategories["page_number"] = new List<string> { pageNum };
+            }
             foreach (var item in items) SearchResults.Add(item);
             HasNextPage = false; // single logical page for full-pool view
             TotalCount = items.Count;
@@ -703,7 +721,10 @@ public partial class MainViewModel : ObservableObject
 
     private string GenerateFinalPath(MediaItem mediaItem, string basePath)
     {
-        var template = _settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+        var hasPoolContext = mediaItem.TagCategories != null && (mediaItem.TagCategories.ContainsKey("page_number") || mediaItem.TagCategories.ContainsKey("pool_name"));
+        var template = hasPoolContext
+            ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+            : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
         var extFinal = string.IsNullOrWhiteSpace(mediaItem.FileExtension) ? TryGetExtensionFromUrl(mediaItem.FullImageUrl) ?? "bin" : mediaItem.FileExtension;
         string Sanitize(string s)
         {
@@ -716,7 +737,9 @@ public partial class MainViewModel : ObservableObject
             .Replace("{artist}", Sanitize(mediaItem.Artist))
             .Replace("{id}", mediaItem.Id)
             .Replace("{safeTitle}", Sanitize(mediaItem.Title))
-            .Replace("{ext}", extFinal);
+            .Replace("{ext}", extFinal)
+            .Replace("{pool_name}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty)))
+            .Replace("{page_number}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
         return Path.Combine(basePath, filenameRel);
     }
 

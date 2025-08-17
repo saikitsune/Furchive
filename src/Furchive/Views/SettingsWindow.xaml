@@ -44,6 +44,13 @@
                     <TextBox Text="{Binding FilenameTemplate, UpdateSourceTrigger=PropertyChanged}" Width="420"/>
                 </StackPanel>
                 <TextBlock FontSize="10" Foreground="Gray" Text="Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}" Margin="120,2,0,0"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
+                    <TextBlock Text="Pool Template:" VerticalAlignment="Center" Width="120"/>
+                    <TextBox Text="{Binding PoolFilenameTemplate, UpdateSourceTrigger=PropertyChanged}" Width="420"/>
+                </StackPanel>
+                <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="120,2,0,0"
+                           Text="Used only when downloading from a pool. Default: {source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}
+Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}"/>
             </StackPanel>
 
             <Separator/>

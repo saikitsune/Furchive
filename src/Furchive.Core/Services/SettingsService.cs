@@ -159,6 +159,7 @@ public class SettingsService : ISettingsService
             // Download Settings
             ["DefaultDownloadDirectory"] = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads", "Furchive"),
             ["FilenameTemplate"] = "{source}/{artist}/{id}_{safeTitle}.{ext}",
+            ["PoolFilenameTemplate"] = "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}",
             ["ConcurrentDownloads"] = 3,
             ["MaxResultsPerSource"] = 50,
             ["RatingsDefault"] = "safe",

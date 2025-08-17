@@ -25,6 +25,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _cachePath = string.Empty;
     [ObservableProperty] private string _defaultDownloadDirectory = string.Empty;
     [ObservableProperty] private string _filenameTemplate = string.Empty;
+    [ObservableProperty] private string _poolFilenameTemplate = string.Empty;
     [ObservableProperty] private bool _videoAutoplay = true;
     [ObservableProperty] private bool _videoStartMuted = false;
     [ObservableProperty] private long _tempUsedBytes;
@@ -55,6 +56,7 @@ public partial class SettingsViewModel : ObservableObject
     var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads", "Furchive");
     DefaultDownloadDirectory = _settings.GetSetting<string>("DefaultDownloadDirectory", fallback) ?? fallback;
     FilenameTemplate = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+    PoolFilenameTemplate = _settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
 
     // Playback
     VideoAutoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
@@ -78,6 +80,7 @@ public partial class SettingsViewModel : ObservableObject
             // Downloads
             await _settings.SetSettingAsync("DefaultDownloadDirectory", DefaultDownloadDirectory ?? string.Empty);
             await _settings.SetSettingAsync("FilenameTemplate", FilenameTemplate ?? string.Empty);
+            await _settings.SetSettingAsync("PoolFilenameTemplate", PoolFilenameTemplate ?? string.Empty);
 
             // Playback
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay);
