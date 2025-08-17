@@ -83,7 +83,8 @@ public partial class SettingsWindow : Window
 
             var authState = health.IsAuthenticated ? "authenticated" : (ok ? "credentials set" : "unauthenticated");
             var icon = health.IsAuthenticated ? MessageBoxImage.Information : MessageBoxImage.Warning;
-            System.Windows.MessageBox.Show($"{name} {authState}. Rate limit remaining: {health.RateLimitRemaining}", name, MessageBoxButton.OK, icon);
+            var extra = !health.IsAuthenticated ? "\n\nIf using an API key, you must fill in both the Username and API key" : string.Empty;
+            System.Windows.MessageBox.Show($"{name} {authState}. Rate limit remaining: {health.RateLimitRemaining}{extra}", name, MessageBoxButton.OK, icon);
         }
         catch (Exception ex)
         {

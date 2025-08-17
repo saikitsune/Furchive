@@ -69,11 +69,13 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                 <StackPanel Margin="8">
                     <TextBlock Text="User-Agent (required)"/>
                     <TextBox Text="{Binding E621UserAgent, UpdateSourceTrigger=PropertyChanged}"/>
-                    <TextBlock Text="Username (optional)" Margin="0,8,0,0"/>
+                    <TextBlock Text="Username" Margin="0,8,0,0"/>
                     <TextBox Text="{Binding E621Username, UpdateSourceTrigger=PropertyChanged}"/>
-                    <TextBlock Text="API Key (optional)" Margin="0,8,0,0"/>
+                    <TextBlock Text="API Key" Margin="0,8,0,0"/>
                     <TextBox Text="{Binding E621ApiKey, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Test e621" Margin="0,8,0,0" Click="TestE621_Click"/>
+                    <TextBlock Margin="0,4,0,0" FontSize="10" Foreground="Gray" TextWrapping="Wrap"
+                               Text="If using an API key, you must fill in both the Username and API key"/>
                 </StackPanel>
             </GroupBox>
 
