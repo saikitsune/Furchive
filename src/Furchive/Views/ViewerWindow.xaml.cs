@@ -482,7 +482,23 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                 .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : string.Empty))
                 .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var fullPath = Path.Combine(defaultDir, rel);
-            return File.Exists(fullPath) ? fullPath : null;
+            if (File.Exists(fullPath)) return fullPath;
+            // Fallback: search pool directories for a matching file by id
+            try
+            {
+                var poolsRoot = Path.Combine(defaultDir, item.Source, "pools", Sanitize(item.Artist));
+                if (Directory.Exists(poolsRoot))
+                {
+                    foreach (var file in Directory.EnumerateFiles(poolsRoot, "*", SearchOption.AllDirectories))
+                    {
+                        var name = Path.GetFileNameWithoutExtension(file);
+                        if (name != null && (name.Equals(item.Id, StringComparison.OrdinalIgnoreCase) || name.EndsWith("_" + item.Id, StringComparison.OrdinalIgnoreCase) || name.Contains(item.Id, StringComparison.OrdinalIgnoreCase)))
+                            return file;
+                    }
+                }
+            }
+            catch { }
+            return null;
         }
         catch { return null; }
     }

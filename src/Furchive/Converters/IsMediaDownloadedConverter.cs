@@ -51,7 +51,26 @@ public class IsMediaDownloadedConverter : IValueConverter
                 .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : string.Empty))
                 .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var full = Path.Combine(defaultDir, rel);
-            return File.Exists(full) ? Visibility.Visible : Visibility.Collapsed;
+            if (File.Exists(full)) return Visibility.Visible;
+            // Fallback: search common pool directories for a file that matches this id
+            try
+            {
+                var poolsRoot = Path.Combine(defaultDir, item.Source, "pools", Sanitize(item.Artist));
+                if (Directory.Exists(poolsRoot))
+                {
+                    bool match(string file)
+                    {
+                        var name = Path.GetFileNameWithoutExtension(file);
+                        return name != null && (name.Equals(item.Id, StringComparison.OrdinalIgnoreCase) || name.EndsWith("_" + item.Id, StringComparison.OrdinalIgnoreCase) || name.Contains(item.Id, StringComparison.OrdinalIgnoreCase));
+                    }
+                    foreach (var file in Directory.EnumerateFiles(poolsRoot, "*", SearchOption.AllDirectories))
+                    {
+                        if (match(file)) return Visibility.Visible;
+                    }
+                }
+            }
+            catch { }
+            return Visibility.Collapsed;
         }
         catch
         {

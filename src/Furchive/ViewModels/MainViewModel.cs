@@ -309,7 +309,28 @@ public partial class MainViewModel : ObservableObject
                 .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty)))
                 .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var fullPath = Path.Combine(defaultDir, rel);
-            return File.Exists(fullPath);
+            if (File.Exists(fullPath)) return true;
+
+            // Fallback: if downloaded via pool aggregate without local pool context, check default pool template location
+            try
+            {
+                var poolsRoot = Path.Combine(defaultDir, item.Source, "pools", Sanitize(item.Artist));
+                if (Directory.Exists(poolsRoot))
+                {
+                    // Common default pattern is "{page_number}_{id}.*" under pool folders; search recursively
+                    bool match(string file)
+                    {
+                        var name = Path.GetFileNameWithoutExtension(file);
+                        return name != null && (name.Equals(item.Id, StringComparison.OrdinalIgnoreCase) || name.EndsWith("_" + item.Id, StringComparison.OrdinalIgnoreCase) || name.Contains(item.Id, StringComparison.OrdinalIgnoreCase));
+                    }
+                    foreach (var file in Directory.EnumerateFiles(poolsRoot, "*", SearchOption.AllDirectories))
+                    {
+                        if (match(file)) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
         }
     }
 
