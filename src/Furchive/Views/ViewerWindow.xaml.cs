@@ -48,6 +48,7 @@ public partial class ViewerWindow : Window
         _getNext = getNext;
         _getPrev = getPrev;
     _ = LoadIntoViewerAsync(current);
+    TryUpdatePageNumberLabel(current);
     }
 
     private async void Next_Click(object sender, RoutedEventArgs e)
@@ -61,6 +62,7 @@ public partial class ViewerWindow : Window
             if (nextItem != null)
             {
                 DataContext = nextItem;
+                TryUpdatePageNumberLabel(nextItem);
                 await LoadIntoViewerAsync(nextItem);
             }
         }
@@ -77,6 +79,7 @@ public partial class ViewerWindow : Window
             if (prevItem != null)
             {
                 DataContext = prevItem;
+                TryUpdatePageNumberLabel(prevItem);
                 await LoadIntoViewerAsync(prevItem);
             }
         }
@@ -396,7 +399,10 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
 
     private string BuildFinalDownloadPath(string basePath, MediaItem mediaItem)
     {
-        var template = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+        var hasPoolContext = mediaItem.TagCategories != null && (mediaItem.TagCategories.ContainsKey("page_number") || mediaItem.TagCategories.ContainsKey("pool_name"));
+        var template = hasPoolContext
+            ? (_settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+            : (_settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
         var extFinal = string.IsNullOrWhiteSpace(mediaItem.FileExtension) ? TryGetExtensionFromUrl(mediaItem.FullImageUrl) ?? "bin" : mediaItem.FileExtension;
         string Sanitize(string s)
         {
@@ -409,7 +415,9 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
             .Replace("{artist}", Sanitize(mediaItem.Artist))
             .Replace("{id}", mediaItem.Id)
             .Replace("{safeTitle}", Sanitize(mediaItem.Title))
-            .Replace("{ext}", extFinal);
+            .Replace("{ext}", extFinal)
+            .Replace("{pool_name}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : string.Empty))
+            .Replace("{page_number}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
         return Path.Combine(basePath, filenameRel);
     }
 
@@ -432,7 +440,10 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
             var defaultDir = _settings.GetSetting<string>("DefaultDownloadDirectory",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads")) ??
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Downloads");
-            var template = _settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}";
+            var hasPoolContext = item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name"));
+            var template = hasPoolContext
+                ? (_settings.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}")
+                : (_settings.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}_{safeTitle}.{ext}") ?? "{source}/{artist}/{id}_{safeTitle}.{ext}");
             string Sanitize(string s)
             {
                 var invalid = Path.GetInvalidFileNameChars();
@@ -445,7 +456,9 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                 .Replace("{artist}", Sanitize(item.Artist))
                 .Replace("{id}", item.Id)
                 .Replace("{safeTitle}", Sanitize(item.Title))
-                .Replace("{ext}", ext);
+                .Replace("{ext}", ext)
+                .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : string.Empty))
+                .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var fullPath = Path.Combine(defaultDir, rel);
             return File.Exists(fullPath) ? fullPath : null;
         }
@@ -514,6 +527,22 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                     v.style.background='#000';
                 }}
             }})();");
+        }
+        catch { }
+    }
+
+    private void TryUpdatePageNumberLabel(MediaItem item)
+    {
+        try
+        {
+            var tb = FindName("pageNumberText") as System.Windows.Controls.TextBlock;
+            if (tb == null) return;
+            string page = string.Empty;
+            if (item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var list) && list != null && list.Count > 0)
+            {
+                page = list[0];
+            }
+            tb.Text = string.IsNullOrWhiteSpace(page) ? string.Empty : $"Page: {page}";
         }
         catch { }
     }

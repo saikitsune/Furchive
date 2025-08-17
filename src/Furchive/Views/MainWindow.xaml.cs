@@ -158,7 +158,12 @@ public partial class MainWindow : Window
                 var neighbor = vm.SearchResults[idx];
                 return (neighbor.Id, neighbor);
             }
-            // If out of current page, attempt to fetch from API by moving page via VM helper
+            // In pool mode, navigation is constrained strictly within the current pool
+            if (vm.IsPoolMode)
+            {
+                return null;
+            }
+            // If out of current page (non-pool mode), attempt to fetch from API by moving page via VM helper
             var item = await vm.FetchNextFromApiAsync(delta > 0);
             if (item == null) return null;
             // Reset moving index to end or start so subsequent moves continue in the same direction
