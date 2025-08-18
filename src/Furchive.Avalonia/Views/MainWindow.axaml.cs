@@ -8,11 +8,14 @@ using System.IO;
 using Furchive.Core.Interfaces;
 using Avalonia.Input;
 using Avalonia.Controls.Primitives;
+using Avalonia.Threading;
 
 namespace Furchive.Avalonia.Views;
 
 public partial class MainWindow : Window
 {
+    private readonly DispatcherTimer _scrollDebounceTimer;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -20,6 +23,16 @@ public partial class MainWindow : Window
         {
             DataContext = App.Services.GetRequiredService<MainViewModel>();
         }
+
+        _scrollDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _scrollDebounceTimer.Tick += async (_, __) =>
+        {
+            _scrollDebounceTimer.Stop();
+            if (DataContext is MainViewModel vm && vm.HasNextPage && !vm.IsSearching)
+            {
+                try { await vm.AppendNextPageAsync(); } catch { }
+            }
+        };
     }
 
     private async void OnOpenDownloads(object? sender, RoutedEventArgs e)
@@ -94,10 +107,11 @@ public partial class MainWindow : Window
             var offset = sv.Offset.Y;
             if (extent <= 0 || viewport <= 0) return;
             var remaining = extent - (offset + viewport);
-            if (remaining <= viewport * 0.5 && vm.HasNextPage && !vm.IsSearching)
+            if (remaining <= viewport * 0.5 && vm.HasNextPage)
             {
-                // Append the next page immediately for infinite scroll behavior
-                _ = vm.AppendNextPageAsync();
+                // Debounce to reduce rapid-fire calls; VM also guards concurrency
+                _scrollDebounceTimer.Stop();
+                _scrollDebounceTimer.Start();
             }
         }
         catch { }

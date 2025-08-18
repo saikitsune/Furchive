@@ -36,8 +36,8 @@ UninstallDisplayIcon={app}\{#AppExeName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-; Files are copied from the publish directory built by dotnet publish
-Source: "..\..\src\Furchive\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Files are copied from the Avalonia publish directory built by dotnet publish
+Source: "..\..\src\Furchive.Avalonia\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Include the WebView2 Evergreen bootstrapper downloaded by the build script
 Source: "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 ; Include .NET Desktop Runtime (x64) installer (bootstrapper)

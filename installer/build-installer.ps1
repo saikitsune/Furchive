@@ -13,8 +13,8 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Split-Path -Parent $root
-$appProj = Join-Path $repo 'src/Furchive/Furchive.csproj'
-$publishDir = Join-Path $repo 'src/Furchive/publish'
+$appProj = Join-Path $repo 'src/Furchive.Avalonia/Furchive.Avalonia.csproj'
+$publishDir = Join-Path $repo 'src/Furchive.Avalonia/publish'
 $iss = Join-Path $root 'inno/Furchive.iss'
 ${outDir} = Join-Path $root 'inno/output'
 
@@ -50,8 +50,12 @@ Write-Host "Publishing app ($Configuration, $Runtime) to $publishDir..."
 & dotnet publish $appProj -c $Configuration -r $Runtime --self-contained true -p:PublishTrimmed=false -o $publishDir
 
 # After publish, read the actual app version from the produced EXE to ensure exact alignment
+# Try to locate the primary executable (prefer Furchive.exe if present, otherwise first *.exe)
 $exePath = Join-Path $publishDir 'Furchive.exe'
-if (-not (Test-Path $exePath)) { throw "Published app not found: $exePath" }
+if (-not (Test-Path $exePath)) {
+  $candidates = Get-ChildItem -Path $publishDir -Filter '*.exe' -File | Select-Object -First 1
+  if ($candidates) { $exePath = $candidates.FullName } else { throw "Published app executable not found in $publishDir" }
+}
 try {
   $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
   $binVer = $null
