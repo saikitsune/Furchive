@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:cvt="using:Furchive.Avalonia.Converters"
-    xmlns:web="clr-namespace:Avalonia.WebView;assembly=Avalonia.WebView"
     x:Class="Furchive.Avalonia.Views.ViewerWindow"
     x:Name="Root"
     Width="1000" Height="800" Title="Viewer">
@@ -30,10 +29,14 @@
                         <Image Stretch="Uniform" Source="{Binding FullImageUrl, Converter={StaticResource ImageCache}}"/>
                     </ScrollViewer>
                 </Border>
-                <!-- Video mode: embedded WebView2 -->
-                <Border Background="#000000" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">
-                    <web:WebView2 x:Name="WebPlayer" Source="{Binding FullImageUrl}"/>
-                </Border>
+                <!-- Video mode: we attach WebView at runtime when available; otherwise show fallback -->
+                <Grid IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">
+                    <Panel x:Name="WebHost"/>
+                    <StackPanel x:Name="WebFallback" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                        <TextBlock Foreground="White" Text="Video content"/>
+                        <Button Content="Open in browser" Click="OnOpenOriginal"/>
+                    </StackPanel>
+                </Grid>
             </Grid>
         </Grid>
 

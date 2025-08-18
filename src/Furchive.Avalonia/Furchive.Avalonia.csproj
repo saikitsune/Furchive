@@ -8,20 +8,24 @@
   <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   <AssemblyVersion>1.1.0.0</AssemblyVersion>
   <FileVersion>1.1.0.0</FileVersion>
+    <!-- Toggle to include Avalonia.WebView packages when NuGet access is available -->
+    <EnableAvaloniaWebView>false</EnableAvaloniaWebView>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.0.10" />
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
-  <!-- Re-enable in-app video via Avalonia WebView (requires NuGet access) -->
-  <PackageReference Include="Avalonia.WebView" Version="11.0.10" />
-  <PackageReference Include="Avalonia.WebView.Desktop" Version="11.0.10" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
   <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
   <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+  </ItemGroup>
+  <!-- Conditionally include WebView packages to avoid restore failures when NuGet access is blocked -->
+  <ItemGroup Condition="'$(EnableAvaloniaWebView)'=='true'">
+    <PackageReference Include="Avalonia.WebView" Version="11.0.10" />
+    <PackageReference Include="Avalonia.WebView.Desktop" Version="11.0.10" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Furchive.Core\Furchive.Core.csproj" />
