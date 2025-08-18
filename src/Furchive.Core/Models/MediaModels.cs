@@ -83,6 +83,11 @@ public class DownloadJob : System.ComponentModel.INotifyPropertyChanged
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public MediaItem MediaItem { get; set; } = new();
+    // Aggregate/group download support
+    public bool IsAggregate { get; set; } = false; // true for a synthetic job aggregating child jobs
+    public string? ParentId { get; set; } // if set, this is a child of an aggregate job
+    public List<string> ChildrenIds { get; set; } = new(); // used only on aggregate jobs
+    public string? GroupType { get; set; } // e.g., "pool"
     private string _destinationPath = string.Empty;
     public string DestinationPath { get => _destinationPath; set { if (_destinationPath != value) { _destinationPath = value; OnPropertyChanged(nameof(DestinationPath)); } } }
     private DownloadStatus _status = DownloadStatus.Queued;

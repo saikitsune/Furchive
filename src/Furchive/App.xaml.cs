@@ -14,6 +14,7 @@ using Furchive.Views;
 using Furchive.Core.Platforms;
 using ModernWpf;
 using Furchive.Infrastructure;
+using System.Net.Http;
 
 namespace Furchive;
 
@@ -89,9 +90,17 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<IUnifiedApiService, UnifiedApiService>();
                 services.AddSingleton<IDownloadService, DownloadService>();
                 services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
+                services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
+                services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
 
                 // Platform APIs (will be registered in MainViewModel)
-                services.AddTransient<IPlatformApi, E621Api>();
+                services.AddTransient<IPlatformApi>(sp =>
+                {
+                    var http = sp.GetRequiredService<HttpClient>();
+                    var logger = sp.GetRequiredService<ILogger<E621Api>>();
+                    var settings = sp.GetService<ISettingsService>();
+                    return new E621Api(http, logger, settings);
+                });
                 // Removed other platforms (FurAffinity, InkBunny, Weasyl) to focus on e621 only
 
                 // ViewModels
@@ -124,6 +133,21 @@ public partial class App : System.Windows.Application
             await settingsService.LoadAsync();
             LogStartup("Settings loaded.");
 
+            // Ensure defaults for new background worker settings
+            try
+            {
+                if (settingsService.GetSetting<int>("CpuWorkerDegree", -1) <= 0)
+                {
+                    var def = Math.Clamp(Environment.ProcessorCount / 2, 1, Environment.ProcessorCount);
+                    await settingsService.SetSettingAsync("CpuWorkerDegree", def);
+                }
+                // If not present, initialize ThumbnailPrewarmEnabled to true
+                var hasPrewarm = settingsService.GetSetting<string>("ThumbnailPrewarmEnabled", null);
+                if (string.IsNullOrEmpty(hasPrewarm)) await settingsService.SetSettingAsync("ThumbnailPrewarmEnabled", true);
+            }
+            catch { }
+
+
             // Clean temp viewer folder on startup
             try
             {
@@ -145,6 +169,17 @@ public partial class App : System.Windows.Application
             // Show main window
             LogStartup("Resolving MainWindow...");
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
+            // Now that MainWindow and its ViewModel are constructed (platforms registered), load persistent caches
+            try
+            {
+                var unified = _host.Services.GetRequiredService<IUnifiedApiService>();
+                (unified as dynamic)?.LoadE621PersistentCacheIfEnabled();
+                LogStartup("Loaded persistent caches (if enabled).");
+            }
+            catch (Exception ex)
+            {
+                LogStartup($"Persistent cache load failed: {ex.Message}");
+            }
             LogStartup("MainWindow resolved. Showing window...");
             mainWindow.Show();
             LogStartup("MainWindow shown.");
@@ -231,6 +266,14 @@ public partial class App : System.Windows.Application
 
         if (_host != null)
         {
+            // Save persistent API caches if enabled
+            try
+            {
+                var unified = _host.Services.GetRequiredService<IUnifiedApiService>();
+                (unified as dynamic)?.SaveE621PersistentCacheIfEnabled();
+            }
+            catch { }
+
             await _host.StopAsync();
             _host.Dispose();
         }

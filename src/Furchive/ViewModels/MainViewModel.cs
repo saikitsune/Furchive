@@ -21,6 +21,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IUnifiedApiService _apiService;
     private readonly IDownloadService _downloadService;
     private readonly ISettingsService _settingsService;
+    private readonly IThumbnailCacheService? _thumbCache;
+    private readonly ICpuWorkQueue? _cpuQueue;
     private readonly ILogger<MainViewModel> _logger;
     private readonly string _cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
     private readonly IPlatformApi? _e621Platform; // keep a handle to re-auth when settings change
@@ -42,10 +44,26 @@ public partial class MainViewModel : ObservableObject
     partial void OnSelectedMediaChanged(MediaItem? value)
     {
         OnPropertyChanged(nameof(IsSelectedDownloaded));
+    _ = EnsurePreviewPoolInfoAsync(value);
     }
 
     [ObservableProperty]
     private string _statusMessage = "Ready";
+
+    // Background caching progress (search prefetch)
+    [ObservableProperty]
+    private bool _isBackgroundCaching = false;
+
+    [ObservableProperty]
+    private int _backgroundCachingCurrent = 0;
+
+    [ObservableProperty]
+    private int _backgroundCachingTotal = 0;
+
+    public int BackgroundCachingPercent => BackgroundCachingTotal <= 0 ? 0 : (int)Math.Round(100.0 * BackgroundCachingCurrent / (double)BackgroundCachingTotal);
+
+    [ObservableProperty]
+    private int _backgroundCachingItemsFetched = 0;
 
     [ObservableProperty]
     private int _ratingFilterIndex = 0; // 0: All, 1: Explicit, 2: Questionable, 3: Safe
@@ -69,8 +87,20 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int? _currentPoolId = null;
 
+    // Preview pool context (shown even when not in pool mode if detectable)
+    [ObservableProperty]
+    private string _previewPoolName = string.Empty;
+
+    public string PreviewPoolDisplayName => !string.IsNullOrWhiteSpace(PreviewPoolName)
+        ? PreviewPoolName
+        : (SelectedPool?.Name ?? string.Empty);
+
+    public bool PreviewPoolVisible => IsPoolMode || !string.IsNullOrWhiteSpace(PreviewPoolName);
+
     public ObservableCollection<PoolInfo> Pools { get; } = new();
     public ObservableCollection<PoolInfo> FilteredPools { get; } = new();
+    // Pinned Pools
+    public ObservableCollection<PoolInfo> PinnedPools { get; } = new();
 
     [ObservableProperty]
     private bool _isPoolsLoading = false;
@@ -89,7 +119,13 @@ public partial class MainViewModel : ObservableObject
 
     // Download button label switches in pool mode
     public string DownloadAllLabel => IsPoolMode ? "Download Pool" : "Download All";
-    partial void OnIsPoolModeChanged(bool value) => OnPropertyChanged(nameof(DownloadAllLabel));
+    partial void OnIsPoolModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DownloadAllLabel));
+        OnPropertyChanged(nameof(ShowPinPoolButton));
+    }
+
+    public bool ShowPinPoolButton => IsPoolMode && SelectedPool != null;
 
     // Track pools known to be empty (no visible posts). We'll exclude them from UI once detected.
     private HashSet<int> _excludedPoolIds = new();
@@ -161,13 +197,17 @@ public partial class MainViewModel : ObservableObject
         IUnifiedApiService apiService,
         IDownloadService downloadService,
         ISettingsService settingsService,
-        ILogger<MainViewModel> logger,
-        IEnumerable<IPlatformApi> platformApis)
+    ILogger<MainViewModel> logger,
+    IEnumerable<IPlatformApi> platformApis,
+    IThumbnailCacheService thumbCache,
+    ICpuWorkQueue cpuQueue)
     {
         _apiService = apiService;
         _downloadService = downloadService;
         _settingsService = settingsService;
         _logger = logger;
+    _thumbCache = thumbCache;
+    _cpuQueue = cpuQueue;
 
         // Register platform APIs
     foreach (var p in platformApis)
@@ -185,6 +225,16 @@ public partial class MainViewModel : ObservableObject
 
         // Load initial settings
         LoadSettings();
+        // Load pinned pools from settings
+        try
+        {
+            var jsonPinned = _settingsService.GetSetting<string>("PinnedPools", "[]") ?? "[]";
+            var pinned = JsonSerializer.Deserialize<List<PoolInfo>>(jsonPinned) ?? new();
+            PinnedPools.Clear();
+            foreach (var p in pinned)
+                PinnedPools.Add(p);
+        }
+        catch { }
     // Initialize gallery scale
     GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
 
@@ -298,7 +348,28 @@ public partial class MainViewModel : ObservableObject
                 .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty)))
                 .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
             var fullPath = Path.Combine(defaultDir, rel);
-            return File.Exists(fullPath);
+            if (File.Exists(fullPath)) return true;
+
+            // Fallback: if downloaded via pool aggregate without local pool context, check default pool template location
+            try
+            {
+                var poolsRoot = Path.Combine(defaultDir, item.Source, "pools", Sanitize(item.Artist));
+                if (Directory.Exists(poolsRoot))
+                {
+                    // Common default pattern is "{page_number}_{id}.*" under pool folders; search recursively
+                    bool match(string file)
+                    {
+                        var name = Path.GetFileNameWithoutExtension(file);
+                        return name != null && (name.Equals(item.Id, StringComparison.OrdinalIgnoreCase) || name.EndsWith("_" + item.Id, StringComparison.OrdinalIgnoreCase) || name.Contains(item.Id, StringComparison.OrdinalIgnoreCase));
+                    }
+                    foreach (var file in Directory.EnumerateFiles(poolsRoot, "*", SearchOption.AllDirectories))
+                    {
+                        if (match(file)) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
         }
     }
 
@@ -519,11 +590,128 @@ public partial class MainViewModel : ObservableObject
             else await App.Current.Dispatcher.InvokeAsync(() => StatusMessage = status);
             // Persist last session after a search completes
             try { await PersistLastSessionAsync(); } catch { }
+
+            // Kick off background prefetch of next N pages (settings: E621SearchPrefetchPagesAhead)
+            _ = Task.Run(() => PrefetchNextPagesAsync(page));
+
+            // Optional: prewarm thumbnails using CPU work queue
+            try
+            {
+                var prewarm = _settingsService.GetSetting<bool>("ThumbnailPrewarmEnabled", true);
+                if (prewarm && _thumbCache != null && _cpuQueue != null)
+                {
+                    // Only queue visible page’s thumbnails to keep it light
+                    foreach (var item in result.Items)
+                    {
+                        var url = item.PreviewUrl ?? item.FullImageUrl;
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        if (_thumbCache.TryGetCachedPath(url) != null) continue;
+                        _cpuQueue.Enqueue(async ct =>
+                        {
+                            try { await _thumbCache.GetOrAddAsync(url, ct); }
+                            catch { }
+                        });
+                    }
+                }
+            }
+            catch { }
         }
         finally
         {
             if (App.Current.Dispatcher.CheckAccess()) IsSearching = false;
             else await App.Current.Dispatcher.InvokeAsync(() => IsSearching = false);
+        }
+    }
+
+    private async Task PrefetchNextPagesAsync(int currentPage)
+    {
+        try
+        {
+            var ahead = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchPagesAhead", 2), 0, 5);
+            if (ahead <= 0) return;
+
+            // Build common search parameters baseline
+            await EnsureE621AuthAsync();
+            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
+            var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var ratings = RatingFilterIndex switch
+            {
+                0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit },
+                1 => new List<ContentRating> { ContentRating.Explicit },
+                2 => new List<ContentRating> { ContentRating.Questionable },
+                3 => new List<ContentRating> { ContentRating.Safe },
+                _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }
+            };
+            var limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
+
+            var pages = Enumerable.Range(currentPage + 1, ahead).ToList();
+            if (pages.Count == 0) return;
+
+            // Progress setup
+            await App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsBackgroundCaching = true;
+                BackgroundCachingCurrent = 0;
+                BackgroundCachingTotal = pages.Count;
+                BackgroundCachingItemsFetched = 0;
+            });
+
+            // Fetch with configurable small parallelism degree to speed up while being gentle on API
+            var degree = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchParallelism", 2), 1, 4);
+            using var throttler = new SemaphoreSlim(degree);
+            var tasks = new List<Task>();
+            foreach (var p in pages)
+            {
+                await throttler.WaitAsync();
+                var task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var sr = await _apiService.SearchAsync(new SearchParameters
+                        {
+                            IncludeTags = includeTags,
+                            ExcludeTags = excludeTags,
+                            Sources = new List<string> { "e621" },
+                            Ratings = ratings,
+                            Sort = Furchive.Core.Models.SortOrder.Newest,
+                            Page = p,
+                            Limit = limit
+                        });
+                        await App.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            BackgroundCachingItemsFetched += sr.Items?.Count ?? 0;
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Prefetch page {Page} failed", p);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            BackgroundCachingCurrent++;
+                            OnPropertyChanged(nameof(BackgroundCachingPercent));
+                        });
+                        throttler.Release();
+                    }
+                });
+                tasks.Add(task);
+            }
+            await Task.WhenAll(tasks);
+        }
+        catch { }
+        finally
+        {
+            await App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsBackgroundCaching = false;
+                BackgroundCachingTotal = 0;
+                BackgroundCachingCurrent = 0;
+                BackgroundCachingItemsFetched = 0;
+                OnPropertyChanged(nameof(BackgroundCachingPercent));
+            });
         }
     }
 
@@ -551,12 +739,94 @@ public partial class MainViewModel : ObservableObject
         catch { }
     }
 
+    private async Task EnsurePreviewPoolInfoAsync(MediaItem? item)
+    {
+        try
+        {
+            if (item == null)
+            {
+                PreviewPoolName = string.Empty;
+                OnPropertyChanged(nameof(PreviewPoolDisplayName));
+                OnPropertyChanged(nameof(PreviewPoolVisible));
+                return;
+            }
+            // Prefer pool context already present on the item (from search/details enrichment)
+            if (item.TagCategories != null &&
+                (item.TagCategories.ContainsKey("pool_name") || item.TagCategories.ContainsKey("pool_id")))
+            {
+                // Set preview name from tag first
+                if (item.TagCategories.TryGetValue("pool_name", out var names) && names.Count > 0)
+                {
+                    PreviewPoolName = names[0];
+                }
+                else
+                {
+                    PreviewPoolName = string.Empty;
+                }
+
+                // Try to set SelectedPool so the View Pool button enables and ID shows
+                try
+                {
+                    PoolInfo? pool = null;
+                    if (item.TagCategories.TryGetValue("pool_id", out var ids) && ids.Count > 0 && int.TryParse(ids[0], out var pid))
+                    {
+                        pool = Pools.FirstOrDefault(p => p.Id == pid) ?? new PoolInfo { Id = pid, Name = PreviewPoolName ?? string.Empty };
+                    }
+                    else if (!string.IsNullOrWhiteSpace(PreviewPoolName))
+                    {
+                        pool = Pools.FirstOrDefault(p => string.Equals(p.Name, PreviewPoolName, StringComparison.OrdinalIgnoreCase))
+                            ?? new PoolInfo { Id = 0, Name = PreviewPoolName };
+                    }
+                    if (pool != null)
+                    {
+                        SelectedPool = pool;
+                    }
+                }
+                catch { }
+
+                OnPropertyChanged(nameof(PreviewPoolDisplayName));
+                OnPropertyChanged(nameof(PreviewPoolVisible));
+                return;
+            }
+            // Otherwise try to fetch pool context from platform (e621)
+            if (_e621Platform != null && string.Equals(item.Source, "e621", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var ctx = await _e621Platform.GetPoolContextForPostAsync(item.Id);
+                    if (ctx.HasValue)
+                    {
+                        var (poolId, poolName, pageNumber) = ctx.Value;
+                        item.TagCategories ??= new Dictionary<string, List<string>>();
+                        item.TagCategories["pool_id"] = new List<string> { poolId.ToString() };
+                        item.TagCategories["pool_name"] = new List<string> { poolName };
+                        if (pageNumber > 0)
+                            item.TagCategories["page_number"] = new List<string> { pageNumber.ToString("D5") };
+                        // Also set SelectedPool if it matches cached list, so View Pool is enabled
+                        var sp = Pools.FirstOrDefault(p => p.Id == poolId) ?? new PoolInfo { Id = poolId, Name = poolName };
+                        if (sp != null) SelectedPool = sp;
+                        PreviewPoolName = poolName;
+                        OnPropertyChanged(nameof(PreviewPoolDisplayName));
+                        OnPropertyChanged(nameof(PreviewPoolVisible));
+                        return;
+                    }
+                }
+                catch { }
+            }
+            PreviewPoolName = string.Empty;
+            OnPropertyChanged(nameof(PreviewPoolDisplayName));
+            OnPropertyChanged(nameof(PreviewPoolVisible));
+        }
+        catch { }
+    }
+
     // Pools logic
     partial void OnPoolSearchChanged(string value) { /* no auto-filter; user clicks Filter */ }
 
     partial void OnSelectedPoolChanged(PoolInfo? value)
     {
-        // No auto-load to avoid accidental fetch; user clicks command instead
+    // No auto-load to avoid accidental fetch; user clicks command instead
+    OnPropertyChanged(nameof(ShowPinPoolButton));
     }
 
     private void ApplyPoolsFilter()
@@ -585,6 +855,46 @@ public partial class MainViewModel : ObservableObject
                 if (FilteredPools.Count >= 1000) break; // safety cap
             }
             PoolsStatusText = $"{FilteredPools.Count} pools";
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private async Task PinSelectedPoolAsync()
+    {
+        try
+        {
+            if (!IsPoolMode) return; // only pin while viewing a pool
+            var pool = SelectedPool;
+            if (pool == null) return;
+            if (!PinnedPools.Any(p => p.Id == pool.Id))
+            {
+                PinnedPools.Add(new PoolInfo { Id = pool.Id, Name = pool.Name, PostCount = pool.PostCount });
+                await PersistPinnedPoolsAsync();
+            }
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private async Task UnpinPoolAsync(PoolInfo? pool)
+    {
+        if (pool == null) return;
+        try
+        {
+            var existing = PinnedPools.FirstOrDefault(p => p.Id == pool.Id);
+            if (existing != null) PinnedPools.Remove(existing);
+            await PersistPinnedPoolsAsync();
+        }
+        catch { }
+    }
+
+    private async Task PersistPinnedPoolsAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(PinnedPools.ToList());
+            await _settingsService.SetSettingAsync("PinnedPools", json);
         }
         catch { }
     }
@@ -762,9 +1072,9 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task LoadSelectedPoolAsync()
+    private async Task LoadSelectedPoolAsync(PoolInfo? fromPinned = null)
     {
-        var pool = SelectedPool;
+        var pool = fromPinned ?? SelectedPool;
     if (pool == null || IsSearching) return; // guard against concurrent loads
         try
         {
@@ -776,6 +1086,8 @@ public partial class MainViewModel : ObservableObject
             // Pool mode loads ALL posts in pool order; ignore per-page setting
             IsPoolMode = true;
             CurrentPoolId = pool.Id;
+            // Synchronize SelectedPool with the pool being opened
+            SelectedPool = Pools.FirstOrDefault(p => p.Id == pool.Id) ?? pool;
             var items = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
             // If pool has no visible items, exclude it from UI and cache
             if (items == null || items.Count == 0)
@@ -1077,8 +1389,19 @@ public partial class MainViewModel : ObservableObject
                 }
             }
             if (toQueue.Any())
-                await _downloadService.QueueMultipleDownloadsAsync(toQueue, downloadPath);
-            StatusMessage = $"Queued {SearchResults.Count} downloads";
+            {
+                if (IsPoolMode && CurrentPoolId.HasValue)
+                {
+                    // Queue as an aggregate pool download job
+                    var label = SelectedPool?.Name ?? PreviewPoolName ?? "Pool";
+                    await _downloadService.QueueAggregateDownloadsAsync("pool", toQueue, downloadPath, label);
+                }
+                else
+                {
+                    await _downloadService.QueueMultipleDownloadsAsync(toQueue, downloadPath);
+                }
+            }
+            StatusMessage = IsPoolMode ? $"Queued pool downloads ({SearchResults.Count} items)" : $"Queued {SearchResults.Count} downloads";
         }
         catch (Exception ex)
         {
@@ -1127,6 +1450,8 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var jobs = await _downloadService.GetDownloadJobsAsync();
+            // Hide child jobs in UI when they belong to an aggregate
+            jobs = jobs.Where(j => string.IsNullOrEmpty(j.ParentId)).ToList();
             var map = DownloadQueue.ToDictionary(j => j.Id);
             var incomingIds = new HashSet<string>(jobs.Select(j => j.Id));
             // Update existing or add new
@@ -1179,6 +1504,11 @@ public partial class MainViewModel : ObservableObject
     {
         App.Current.Dispatcher.Invoke(() =>
         {
+            if (!string.IsNullOrEmpty(job.ParentId))
+            {
+                // Hide child jobs from UI list
+                return;
+            }
             var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id);
             if (existing != null)
             {
@@ -1205,6 +1535,7 @@ public partial class MainViewModel : ObservableObject
     {
         App.Current.Dispatcher.Invoke(() =>
         {
+            if (!string.IsNullOrEmpty(job.ParentId)) return; // hide child jobs
             var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id);
             if (existing != null)
             {

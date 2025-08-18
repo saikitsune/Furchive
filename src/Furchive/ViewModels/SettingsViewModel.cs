@@ -42,6 +42,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _poolFilenameTemplate = string.Empty;
     [ObservableProperty] private bool _videoAutoplay = true;
     [ObservableProperty] private bool _videoStartMuted = false;
+    // Viewer rendering options
+    [ObservableProperty] private bool _viewerGpuAccelerationEnabled = true;
     [ObservableProperty] private long _tempUsedBytes;
     [ObservableProperty] private string _tempPath = string.Empty;
     [ObservableProperty] private int _concurrentDownloads;
@@ -52,6 +54,27 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private DateTime? _poolsLastCachedAt;
     [ObservableProperty] private string _poolsCacheFilePath = string.Empty;
     [ObservableProperty] private int _poolsUpdateIntervalMinutes;
+
+    // Search Cache (e621) – advanced tuning
+    [ObservableProperty] private int _e621MaxPoolDetailConcurrency; // 1-16
+    [ObservableProperty] private int _e621SearchTtlMinutes;         // 1-1440
+    [ObservableProperty] private int _e621TagSuggestTtlMinutes;     // 1-1440
+    [ObservableProperty] private int _e621PoolPostsTtlMinutes;      // 1-1440
+    [ObservableProperty] private int _e621PoolAllTtlMinutes;        // 1-1440
+    [ObservableProperty] private int _e621PostDetailsTtlMinutes;    // 1-1440
+    [ObservableProperty] private int _e621PoolsTtlMinutes;          // 1-1440 (pool metadata)
+    // Search prefetching
+    [ObservableProperty] private int _e621SearchPrefetchPagesAhead; // 0-5
+    [ObservableProperty] private int _e621SearchPrefetchParallelism; // 1-4
+
+    // Persistent cache toggle and caps
+    [ObservableProperty] private bool _e621PersistentCacheEnabled;
+    [ObservableProperty] private int _e621PersistentCacheMaxSearchEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxTagSuggestEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxPoolPostsEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxFullPoolEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxPostDetailsEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxPoolDetailsEntries;
 
     public SettingsViewModel(ISettingsService settings, IThumbnailCacheService thumbCache, ILogger<SettingsViewModel> logger, IUnifiedApiService api)
     {
@@ -80,12 +103,34 @@ public partial class SettingsViewModel : ObservableObject
     // Playback
     VideoAutoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
     VideoStartMuted = _settings.GetSetting<bool>("VideoStartMuted", false);
+    ViewerGpuAccelerationEnabled = _settings.GetSetting<bool>("ViewerGpuAccelerationEnabled", true);
         // Pools cache info
         RefreshPoolsCacheInfo();
 
     // Pools incremental update interval (minutes)
     var defaultInterval = 360; // 6 hours
     PoolsUpdateIntervalMinutes = Math.Max(5, _settings.GetSetting<int>("PoolsUpdateIntervalMinutes", defaultInterval));
+
+    // Search Cache defaults (take effect on next app start)
+    E621MaxPoolDetailConcurrency = Math.Clamp(_settings.GetSetting<int>("E621MaxPoolDetailConcurrency", 16), 1, 16);
+    // Recommended defaults: Search 10, TagSuggest 180, PoolPosts 60, FullPool 360, PostDetails 1440, Pools 360
+    E621SearchTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.Search", 10), 1, 1440);
+    E621TagSuggestTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.TagSuggest", 180), 1, 1440);
+    E621PoolPostsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.PoolPosts", 60), 1, 1440);
+    E621PoolAllTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.PoolAll", 360), 1, 1440);
+    E621PostDetailsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.PostDetails", 1440), 1, 1440);
+    E621PoolsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.Pools", 360), 1, 1440);
+    E621SearchPrefetchPagesAhead = Math.Clamp(_settings.GetSetting<int>("E621SearchPrefetchPagesAhead", 2), 0, 5);
+    E621SearchPrefetchParallelism = Math.Clamp(_settings.GetSetting<int>("E621SearchPrefetchParallelism", 2), 1, 4);
+
+    // Persistent cache defaults
+    E621PersistentCacheEnabled = _settings.GetSetting<bool>("E621PersistentCacheEnabled", false);
+    E621PersistentCacheMaxSearchEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.Search", 200), 50, 5000);
+    E621PersistentCacheMaxTagSuggestEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.TagSuggest", 400), 50, 10000);
+    E621PersistentCacheMaxPoolPostsEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.PoolPosts", 200), 50, 5000);
+    E621PersistentCacheMaxFullPoolEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.FullPool", 150), 50, 5000);
+    E621PersistentCacheMaxPostDetailsEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.PostDetails", 800), 50, 20000);
+    E621PersistentCacheMaxPoolDetailsEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.PoolDetails", 400), 50, 10000);
     }
 
     [RelayCommand]
@@ -111,10 +156,32 @@ public partial class SettingsViewModel : ObservableObject
             // Playback
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted);
+            await _settings.SetSettingAsync("ViewerGpuAccelerationEnabled", ViewerGpuAccelerationEnabled);
+            // Lazy decode feature removed
 
             // Pools update interval
             var interval = PoolsUpdateIntervalMinutes <= 0 ? 360 : PoolsUpdateIntervalMinutes;
             await _settings.SetSettingAsync("PoolsUpdateIntervalMinutes", interval);
+
+            // Search Cache (advanced)
+            await _settings.SetSettingAsync("E621MaxPoolDetailConcurrency", Math.Clamp(E621MaxPoolDetailConcurrency, 1, 16));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.Search", Math.Clamp(E621SearchTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.TagSuggest", Math.Clamp(E621TagSuggestTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.PoolPosts", Math.Clamp(E621PoolPostsTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.PoolAll", Math.Clamp(E621PoolAllTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.PostDetails", Math.Clamp(E621PostDetailsTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.Pools", Math.Clamp(E621PoolsTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621SearchPrefetchPagesAhead", Math.Clamp(E621SearchPrefetchPagesAhead, 0, 5));
+            await _settings.SetSettingAsync("E621SearchPrefetchParallelism", Math.Clamp(E621SearchPrefetchParallelism, 1, 4));
+
+            // Persistent cache
+            await _settings.SetSettingAsync("E621PersistentCacheEnabled", E621PersistentCacheEnabled);
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.Search", Math.Clamp(E621PersistentCacheMaxSearchEntries, 50, 5000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.TagSuggest", Math.Clamp(E621PersistentCacheMaxTagSuggestEntries, 50, 10000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolPosts", Math.Clamp(E621PersistentCacheMaxPoolPostsEntries, 50, 5000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.FullPool", Math.Clamp(E621PersistentCacheMaxFullPoolEntries, 50, 5000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PostDetails", Math.Clamp(E621PersistentCacheMaxPostDetailsEntries, 50, 20000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolDetails", Math.Clamp(E621PersistentCacheMaxPoolDetailsEntries, 50, 10000));
 
             // Notify the rest of the app that settings have changed so UI can live-refresh
             WeakReferenceMessenger.Default.Send(new SettingsSavedMessage());

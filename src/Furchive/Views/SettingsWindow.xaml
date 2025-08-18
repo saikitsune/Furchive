@@ -92,6 +92,7 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
             <StackPanel>
                 <CheckBox Content="Autoplay videos" IsChecked="{Binding VideoAutoplay}"/>
                 <CheckBox Content="Start videos muted" IsChecked="{Binding VideoStartMuted}"/>
+                <CheckBox Content="Enable GPU acceleration (restart may be required)" IsChecked="{Binding ViewerGpuAccelerationEnabled}"/>
                 <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap"
                            Text="Chromium may block autoplay with sound; enabling “Start video muted” ensures autoplay works reliably."/>
             </StackPanel>
@@ -168,6 +169,92 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
                 <Button Content="Save" Command="{Binding SaveCommand}" Margin="0,0,8,0"/>
                 <Button Content="Close" Click="Close_Click"/>
+            </StackPanel>
+
+            <Separator/>
+            <TextBlock Text="Search Cache" FontWeight="Bold" Margin="0,12,0,8"/>
+            <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="0,0,0,6"
+                       Text="Advanced: tune e621 search/pool cache TTLs (minutes) and pool-detail fetch concurrency. Changes take effect on next app start."/>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Pool detail concurrency:" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621MaxPoolDetailConcurrency, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="(1-16)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
+                    <TextBlock Text="Prefetch pages ahead:" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621SearchPrefetchPagesAhead, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="(0-5)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Prefetch parallelism:" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621SearchPrefetchParallelism, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="(1-4)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Search results TTL (min):" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621SearchTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621SearchCache_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Tag suggest TTL (min):" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621TagSuggestTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621TagSuggestCache_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Pool posts TTL (min):" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621PoolPostsTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621PoolPostsCache_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Full pool TTL (min):" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621PoolAllTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621FullPoolCache_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Post details TTL (min):" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621PostDetailsTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621PostDetailsCache_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Pool metadata TTL (min):" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621PoolsTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621PoolDetailsCache_Click"/>
+                </StackPanel>
+            </StackPanel>
+
+            <Separator/>
+            <TextBlock Text="Persistent Cache" FontWeight="Bold" Margin="0,12,0,8"/>
+            <StackPanel>
+                <CheckBox Content="Enable persistent API cache (experimental)" IsChecked="{Binding E621PersistentCacheEnabled}"/>
+                <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="0,4,0,6"
+                           Text="Saves selected e621 API caches to disk on exit and reloads on startup. Entries respect TTLs and caps. Split per cache type for safety."/>
+                <UniformGrid Columns="2" Rows="3" Margin="0,4,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                        <TextBlock Text="Search max entries:" Width="180" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxSearchEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="Tag suggest max entries:" Width="200" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxTagSuggestEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                        <TextBlock Text="Pool posts max entries:" Width="180" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxPoolPostsEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="Full pool max entries:" Width="200" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxFullPoolEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                        <TextBlock Text="Post details max entries:" Width="180" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxPostDetailsEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="Pool details max entries:" Width="200" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxPoolDetailsEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                </UniformGrid>
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

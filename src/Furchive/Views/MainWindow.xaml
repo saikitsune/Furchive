@@ -85,6 +85,7 @@
                             <TextBox Width="210" Text="{Binding PoolSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search pools by name or ID"/>
                             <Button Content="Filter" Margin="6,0,0,0" Command="{Binding RunPoolsFilterCommand}"/>
                         </StackPanel>
+                        
                         <ListBox x:Name="poolsList"
                                  ItemsSource="{Binding FilteredPools}"
                                  SelectedItem="{Binding SelectedPool}"
@@ -200,7 +201,80 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         </ScrollViewer>
-                        
+                        <!-- Pin current pool while viewing a pool (moved under Saved Searches) -->
+                        <Button Content="📌 Pin Pool" Margin="0,10,0,6"
+                                Command="{Binding PinSelectedPoolCommand}"
+                                ToolTip="Pin the current pool for quick access"
+                                Visibility="{Binding ShowPinPoolButton, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <!-- Pinned Pools list (moved below Saved Searches) -->
+                        <TextBlock Text="Pinned Pools" Style="{StaticResource SubHeaderTextStyle}"/>
+                        <ListBox x:Name="pinnedPoolsList"
+                                 ItemsSource="{Binding PinnedPools}"
+                                 Height="130"  
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 Margin="0,0,8,0">
+                            <ListBox.Resources>
+                                <!-- Match Pools list scrollbar styling -->
+                                <Style TargetType="ScrollBar">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                    <Setter Property="Opacity" Value="0.9"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="Orientation" Value="Vertical">
+                                            <Setter Property="Width" Value="16"/>
+                                            <Setter Property="MinWidth" Value="16"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                    <Setter Property="Height" Value="26"/>
+                                    <Setter Property="Padding" Value="0,0,18,0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                    <!-- Remove default selection/mouseover visuals -->
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0"
+                                                Content="{Binding Name}" HorizontalAlignment="Left" Padding="4,2"
+                                                Command="{Binding DataContext.LoadSelectedPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Open this pool">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource TagButtonStyle}">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Grid.Column="1" Content="×" Width="22" Height="22" Margin="6,0,0,0"
+                                                Background="Red" Foreground="White" FontWeight="Bold"
+                                                Command="{Binding DataContext.UnpinPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Remove from pinned"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -303,6 +377,24 @@
                                 <TextBlock Text="{Binding Title}" Style="{StaticResource SubHeaderTextStyle}" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding Artist}" FontStyle="Italic" Margin="0,0,0,5"/>
                                 <TextBlock Text="{Binding Source}" FontSize="10" Foreground="Gray" Margin="0,0,0,5"/>
+
+                                <!-- Pool context and actions (if available) -->
+                                <StackPanel Margin="0,6,0,8"
+                                            Visibility="{Binding DataContext.PreviewPoolVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Pool:" FontWeight="SemiBold"/>
+                                        <TextBlock Text=" "/>
+                                        <TextBlock Text="{Binding DataContext.PreviewPoolDisplayName, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" Width="160"/>
+                                        <TextBlock Text=" (" Foreground="Gray"/>
+                                        <TextBlock Text="{Binding DataContext.SelectedPool.Id, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="Gray"/>
+                                        <TextBlock Text=")" Foreground="Gray"/>
+                                        <TextBlock Text="  •  Page: " Margin="6,0,0,0" Foreground="Gray"/>
+                                        <TextBlock Text="{Binding TagCategories[page_number][0]}" Foreground="Gray"/>
+                                    </StackPanel>
+                                    <Button Content="View Pool" Width="100" Margin="0,6,0,0"
+                                            Command="{Binding DataContext.LoadSelectedPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            IsEnabled="{Binding DataContext.SelectedPool, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToBooleanConverter}}"/>
+                                </StackPanel>
                                 
                                 <!-- Description -->
                                 <TextBlock Text="Description:" FontWeight="SemiBold" Margin="0,10,0,5"/>
@@ -432,9 +524,22 @@
                                 <GridViewColumn.Header>
                                     <GridViewColumnHeader Content="Title" Tag="MediaItem.Title" Click="DownloadGridHeader_Click"/>
                                 </GridViewColumn.Header>
-                                <GridViewColumn.DisplayMemberBinding>
-                                    <Binding Path="MediaItem.Title"/>
-                                </GridViewColumn.DisplayMemberBinding>
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding MediaItem.Title}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                            <Setter Property="Text" Value="{Binding MediaItem.Title}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
                             </GridViewColumn>
                             <GridViewColumn Width="100">
                                 <GridViewColumn.Header>
@@ -463,22 +568,55 @@
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding TotalBytes, Converter={StaticResource BytesToStringConverter}}"/>
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding TotalBytes, Converter={StaticResource BytesToStringConverter}}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                            <Setter Property="Text" Value="{Binding ChildrenIds.Count, StringFormat={}{0} items}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
                             <GridViewColumn Header="Path" Width="360">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding DestinationPath}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DestinationPath}"/>
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding DestinationPath}"/>
+                                                    <Setter Property="ToolTip" Value="{Binding DestinationPath}"/>
+                                                    <Style.Triggers>
+                                                        <!-- For aggregates, show the resolved group folder path (DestinationPath is set to common dir) -->
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
-                            <GridViewColumn Header="Actions" Width="140">
+                            <GridViewColumn Header="Actions" Width="160">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                            <Button Content="Open" Width="56" Margin="0,0,6,0" Click="OpenDownloadedFile_Click"/>
+                                            <!-- Hide Open for aggregate jobs (e.g., pooled downloads) -->
+                                            <Button Content="Open" Width="56" Margin="0,0,6,0" Click="OpenDownloadedFile_Click">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsAggregate}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
                                             <Button Content="Folder" Width="60" Click="OpenDownloadedFolder_Click"/>
                                         </StackPanel>
                                     </DataTemplate>
@@ -495,6 +633,24 @@
     <StatusBar Grid.Row="4" x:Name="statusBar" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusMessage}"/>
+            </StatusBarItem>
+            <StatusBarItem>
+                <StackPanel Orientation="Horizontal" Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="Searching:" Margin="0,0,6,0"/>
+                    <ProgressBar Width="120" Height="16" IsIndeterminate="True"/>
+                </StackPanel>
+            </StatusBarItem>
+            <StatusBarItem>
+                <StackPanel Orientation="Horizontal" Visibility="{Binding IsBackgroundCaching, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="Caching:" Margin="0,0,6,0"/>
+                    <ProgressBar Width="140" Height="16" Minimum="0" Maximum="100" Value="{Binding BackgroundCachingPercent, Mode=OneWay}"/>
+                    <TextBlock Text=" " Width="6"/>
+                    <TextBlock Text="{Binding BackgroundCachingCurrent}"/>
+                    <TextBlock Text="/"/>
+                    <TextBlock Text="{Binding BackgroundCachingTotal}"/>
+                    <TextBlock Text="  •  Items:" Margin="8,0,4,0"/>
+                    <TextBlock Text="{Binding BackgroundCachingItemsFetched}"/>
+                </StackPanel>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
                 <StackPanel Orientation="Horizontal">

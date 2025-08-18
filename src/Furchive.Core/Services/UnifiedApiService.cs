@@ -3,6 +3,7 @@ using Furchive.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Linq;
+using System.Collections.Concurrent;
 
 namespace Furchive.Core.Services;
 
@@ -14,6 +15,9 @@ public class UnifiedApiService : IUnifiedApiService
     private readonly Dictionary<string, IPlatformApi> _platforms = new();
     private readonly ILogger<UnifiedApiService> _logger;
 
+    // Static registry to allow cross-instance access (e.g., Settings vs Main)
+    private static readonly ConcurrentDictionary<string, IPlatformApi> s_platforms = new(StringComparer.OrdinalIgnoreCase);
+
     public UnifiedApiService(ILogger<UnifiedApiService> logger)
     {
         _logger = logger;
@@ -22,6 +26,7 @@ public class UnifiedApiService : IUnifiedApiService
     public void RegisterPlatform(IPlatformApi platformApi)
     {
         _platforms[platformApi.PlatformName] = platformApi;
+    s_platforms[platformApi.PlatformName] = platformApi; // ensure globally discoverable
         _logger.LogInformation("Registered platform: {Platform}", platformApi.PlatformName);
     }
 
@@ -251,5 +256,84 @@ public class UnifiedApiService : IUnifiedApiService
             .ToList();
 
         return allSuggestions;
+    }
+
+    // Cache maintenance passthroughs for E621 (no-op for others)
+    public void ClearE621SearchCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearSearchCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621TagSuggestCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearTagSuggestCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621PoolPostsCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearPoolPostsCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621FullPoolCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearFullPoolCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621PostDetailsCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearPostDetailsCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621PoolDetailsCache()
+    {
+    if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
+        {
+            var m = api.GetType().GetMethod("ClearPoolDetailsCache");
+            m?.Invoke(api, null);
+        }
+    }
+
+    // Lightweight metrics passthrough (used by Settings Admin view)
+    public object? GetE621CacheMetrics()
+    {
+    if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
+        {
+            var m = api.GetType().GetMethod("GetCacheMetrics");
+            return m?.Invoke(api, null);
+        }
+        return null;
+    }
+
+    // Persistent cache passthroughs
+    public void LoadE621PersistentCacheIfEnabled()
+    {
+        if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
+        {
+            var m = api.GetType().GetMethod("LoadPersistentCacheIfEnabled");
+            m?.Invoke(api, null);
+        }
+    }
+    public void SaveE621PersistentCacheIfEnabled()
+    {
+        if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
+        {
+            var m = api.GetType().GetMethod("SavePersistentCacheIfEnabled");
+            m?.Invoke(api, null);
+        }
     }
 }

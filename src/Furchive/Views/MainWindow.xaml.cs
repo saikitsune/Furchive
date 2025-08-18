@@ -25,11 +25,36 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
+        try
+        {
+            var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(4) ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(ver)) this.Title += " — v" + ver;
+        }
+        catch { }
     // Load persisted UI sizes first so initial selection uses saved widths
     TryLoadPanelSizes();
     DataContext = viewModel;
     // React to selection changes to animate preview pane
     viewModel.PropertyChanged += ViewModelOnPropertyChanged;
+        // Auto-scroll pinned pools when items change
+        try
+        {
+            viewModel.PinnedPools.CollectionChanged += (s, e) =>
+            {
+                // Only scroll when new items are added
+                if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (FindName("pinnedPoolsList") is System.Windows.Controls.ListBox lb && lb.Items.Count > 0)
+                        {
+                            lb.ScrollIntoView(lb.Items[lb.Items.Count - 1]);
+                        }
+                    }), DispatcherPriority.Background);
+                }
+            };
+        }
+        catch { }
         // Ensure preview starts hidden when nothing selected
         AnimatePreviewPane();
         _downloadsRefreshTimer.Tick += (_, __) =>
@@ -303,9 +328,22 @@ public partial class MainWindow : Window
         {
             try
             {
-                var dir = Path.GetDirectoryName(job.DestinationPath);
-                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                    Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+                var path = job.DestinationPath;
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    // If the path itself is a directory (e.g., aggregate group), open it directly
+                    if (Directory.Exists(path))
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+                    }
+                    else
+                    {
+                        // Otherwise open the folder containing the file
+                        var dir = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                            Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+                    }
+                }
             }
             catch { }
         }

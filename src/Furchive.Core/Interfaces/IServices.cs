@@ -68,6 +68,12 @@ public interface IPlatformApi
     /// Ignores page/limit and returns the whole set.
     /// </summary>
     Task<List<MediaItem>> GetAllPoolPostsAsync(int poolId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Try to get pool context (pool id, name, and page number within the pool) for a given post id.
+    /// Returns null if the post does not belong to any pool or the platform doesn't support it.
+    /// </summary>
+    Task<(int poolId, string poolName, int pageNumber)?> GetPoolContextForPostAsync(string postId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -124,6 +130,14 @@ public interface IUnifiedApiService
     /// Get all posts in a pool (original order) from a specific source.
     /// </summary>
     Task<List<MediaItem>> GetAllPoolPostsAsync(string source, int poolId, CancellationToken cancellationToken = default);
+
+    // Cache maintenance for e621 (no-op for others)
+    void ClearE621SearchCache();
+    void ClearE621TagSuggestCache();
+    void ClearE621PoolPostsCache();
+    void ClearE621FullPoolCache();
+    void ClearE621PostDetailsCache();
+    void ClearE621PoolDetailsCache();
 }
 
 /// <summary>
@@ -140,6 +154,12 @@ public interface IDownloadService
     /// Queue multiple media items for download
     /// </summary>
     Task<List<string>> QueueMultipleDownloadsAsync(List<MediaItem> mediaItems, string destinationPath);
+
+    /// <summary>
+    /// Queue a grouped aggregate download (e.g., a pool) and its children.
+    /// Returns the aggregate job ID.
+    /// </summary>
+    Task<string> QueueAggregateDownloadsAsync(string groupType, List<MediaItem> mediaItems, string destinationPath, string? groupLabel = null);
 
     /// <summary>
     /// Get all download jobs
