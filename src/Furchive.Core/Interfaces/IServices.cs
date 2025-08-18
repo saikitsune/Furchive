@@ -237,3 +237,18 @@ public interface ISettingsService
     /// </summary>
     event EventHandler<string>? SettingChanged;
 }
+
+/// <summary>
+/// Cross-platform shell helper for opening files, folders, and URLs.
+/// </summary>
+public interface IPlatformShellService
+{
+    /// <summary>Open a file or application by path.</summary>
+    void OpenPath(string path);
+
+    /// <summary>Open a folder in the OS file manager.</summary>
+    void OpenFolder(string folderPath);
+
+    /// <summary>Open a URL in the default browser.</summary>
+    void OpenUrl(string url);
+}

@@ -47,6 +47,7 @@ public partial class App : Application
             services.AddSingleton<IDownloadService, DownloadService>();
             services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
             services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
+            services.AddSingleton<IPlatformShellService, PlatformShellService>();
             services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
             services.AddTransient<IPlatformApi>(sp =>
             {

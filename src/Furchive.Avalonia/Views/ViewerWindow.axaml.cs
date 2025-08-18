@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Furchive.Core.Models;
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Furchive.Core.Interfaces;
 
 namespace Furchive.Avalonia.Views;
 
@@ -18,7 +20,7 @@ public partial class ViewerWindow : Window
     {
         if (DataContext is MediaItem m && !string.IsNullOrWhiteSpace(m.FullImageUrl))
         {
-            try { Process.Start(new ProcessStartInfo { FileName = m.FullImageUrl, UseShellExecute = true }); } catch { }
+            try { App.Services?.GetService<IPlatformShellService>()?.OpenUrl(m.FullImageUrl); } catch { }
         }
     }
 
@@ -26,7 +28,7 @@ public partial class ViewerWindow : Window
     {
         if (DataContext is MediaItem m && !string.IsNullOrWhiteSpace(m.SourceUrl))
         {
-            try { Process.Start(new ProcessStartInfo { FileName = m.SourceUrl, UseShellExecute = true }); } catch { }
+            try { App.Services?.GetService<IPlatformShellService>()?.OpenUrl(m.SourceUrl); } catch { }
         }
     }
 }

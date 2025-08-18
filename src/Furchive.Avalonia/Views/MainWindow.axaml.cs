@@ -52,7 +52,7 @@ public partial class MainWindow : Window
             var path = job.DestinationPath;
             if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
             {
-                try { Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true }); } catch { }
+                try { App.Services?.GetService<IPlatformShellService>()?.OpenPath(path); } catch { }
             }
         }
     }
@@ -65,7 +65,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(path))
             {
                 var dir = File.Exists(path) ? Path.GetDirectoryName(path)! : path;
-                try { Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true }); } catch { }
+                try { App.Services?.GetService<IPlatformShellService>()?.OpenFolder(dir); } catch { }
             }
         }
     }
@@ -78,7 +78,7 @@ public partial class MainWindow : Window
             var dir = settings?.GetSetting<string>("DefaultDownloadDirectory", "");
             if (string.IsNullOrWhiteSpace(dir)) return;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+            App.Services?.GetService<IPlatformShellService>()?.OpenFolder(dir);
         }
         catch { }
     }
@@ -96,11 +96,8 @@ public partial class MainWindow : Window
             var remaining = extent - (offset + viewport);
             if (remaining <= viewport * 0.5 && vm.HasNextPage && !vm.IsSearching)
             {
-                // Kick background prefetch for upcoming pages based on current page
-                // Fire-and-forget; VM handles throttling by settings
-                var _ = typeof(MainViewModel)
-                    .GetMethod("PrefetchNextPagesAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                    ?.Invoke(vm, new object[] { vm.CurrentPage });
+                // Append the next page immediately for infinite scroll behavior
+                _ = vm.AppendNextPageAsync();
             }
         }
         catch { }
