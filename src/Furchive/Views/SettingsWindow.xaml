@@ -93,7 +93,6 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                 <CheckBox Content="Autoplay videos" IsChecked="{Binding VideoAutoplay}"/>
                 <CheckBox Content="Start videos muted" IsChecked="{Binding VideoStartMuted}"/>
                 <CheckBox Content="Enable GPU acceleration (restart may be required)" IsChecked="{Binding ViewerGpuAccelerationEnabled}"/>
-                <CheckBox Content="Lazy decode large images (optimize memory/perf)" IsChecked="{Binding ViewerLazyDecodeEnabled}"/>
                 <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap"
                            Text="Chromium may block autoplay with sound; enabling “Start video muted” ensures autoplay works reliably."/>
             </StackPanel>

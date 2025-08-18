@@ -47,7 +47,7 @@ public partial class ViewerWindow : Window
     private WindowState _prevWindowState;
     private Rect _prevBounds;
     // Settings flags
-    private bool _lazyDecodeEnabled = true;
+    // (Lazy decode removed)
 
     public ViewerWindow(IUnifiedApiService api, IDownloadService downloads, ISettingsService settings)
     {
@@ -77,9 +77,6 @@ public partial class ViewerWindow : Window
                     : System.Windows.Interop.RenderMode.SoftwareOnly;
             }
             catch { }
-
-            // Cache lazy decode flag
-            try { _lazyDecodeEnabled = _settings.GetSetting<bool>("ViewerLazyDecodeEnabled", true); } catch { _lazyDecodeEnabled = true; }
 
             var img = FindName("imageViewer") as System.Windows.Controls.Image;
             if (img != null)
@@ -685,29 +682,6 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                             var bmp = new BitmapImage();
                             bmp.BeginInit();
                             bmp.CacheOption = BitmapCacheOption.OnLoad;
-                            // Lazy decode to viewport size if enabled
-                            try
-                            {
-                                if (_lazyDecodeEnabled)
-                                {
-                                    var sv = FindName("contentScrollViewer") as System.Windows.Controls.ScrollViewer;
-                                    if (sv != null)
-                                    {
-                                        var vw = sv.ViewportWidth;
-                                        var vh = sv.ViewportHeight;
-                                        if (double.IsNaN(vw) || vw <= 0) vw = sv.ActualWidth;
-                                        if (double.IsNaN(vh) || vh <= 0) vh = sv.ActualHeight;
-                                        // Choose a reasonable decode dimension preserving aspect ratio
-                                        if (vw > 0 && vh > 0)
-                                        {
-                                            // Prefer width-based decode using system DPI scale
-                                            var dpi = VisualTreeHelper.GetDpi(this);
-                                            bmp.DecodePixelWidth = (int)Math.Ceiling(vw * dpi.DpiScaleX);
-                                        }
-                                    }
-                                }
-                            }
-                            catch { }
                             bmp.UriSource = new Uri(_currentLocalPath);
                             bmp.EndInit();
                             var img = (FindName("imageViewer") as System.Windows.Controls.Image)!;
@@ -720,65 +694,7 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                     catch { }
                 }
             }
-            // Fire background prefetch for neighbors (previous 2, next 2)
-            try { _ = Task.Run(() => PrefetchNeighborsAsync(item, ct)); } catch { }
-        }
-        catch { }
-    }
-
-    private async Task PrefetchNeighborsAsync(MediaItem current, CancellationToken ct)
-    {
-        try
-        {
-            if (this.Owner is not MainWindow mw || mw.DataContext is not ViewModels.MainViewModel vm) return;
-            var list = vm.SearchResults;
-            if (list == null || list.Count == 0) return;
-            var idx = list.IndexOf(current);
-            if (idx < 0) return;
-            var indices = new[] { idx - 2, idx - 1, idx + 1, idx + 2 }
-                .Where(i => i >= 0 && i < list.Count)
-                .Distinct()
-                .ToList();
-            if (indices.Count == 0) return;
-
-            using var throttler = new SemaphoreSlim(4);
-            var tasks = new List<Task>();
-            foreach (var i in indices)
-            {
-                await throttler.WaitAsync(ct).ConfigureAwait(false);
-                var neighbor = list[i];
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        if (ct.IsCancellationRequested) return;
-                        // Ensure details for full URL if missing
-                        if (string.IsNullOrWhiteSpace(neighbor.FullImageUrl))
-                        {
-                            try
-                            {
-                                var details = await _api.GetMediaDetailsAsync(neighbor.Source, neighbor.Id);
-                                if (details != null && !string.IsNullOrWhiteSpace(details.FullImageUrl))
-                                {
-                                    neighbor.FullImageUrl = details.FullImageUrl;
-                                    neighbor.PreviewUrl ??= details.PreviewUrl ?? details.FullImageUrl;
-                                    neighbor.FileExtension ??= details.FileExtension;
-                                }
-                            }
-                            catch { }
-                        }
-                        var path = GetTempPathFor(neighbor);
-                        if (File.Exists(path)) return;
-                        var url = string.IsNullOrWhiteSpace(neighbor.FullImageUrl) ? neighbor.PreviewUrl : neighbor.FullImageUrl;
-                        if (string.IsNullOrWhiteSpace(url)) return;
-                        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                        await DownloadToFileAsync(url!, path, null, ct);
-                    }
-                    catch { }
-                    finally { try { throttler.Release(); } catch { } }
-                }, ct));
-            }
-            await Task.WhenAll(tasks);
+            // Neighbor prefetch removed
         }
         catch { }
     }
