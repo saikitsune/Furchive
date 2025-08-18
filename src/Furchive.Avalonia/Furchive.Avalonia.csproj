@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  <AssemblyVersion>1.1.0.0</AssemblyVersion>
+  <FileVersion>1.1.0.0</FileVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+  <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+  <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+  <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+  <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Furchive.Core\Furchive.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

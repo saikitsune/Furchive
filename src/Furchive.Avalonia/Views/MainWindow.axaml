@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Furchive.Avalonia.ViewModels"
+        x:Class="Furchive.Avalonia.Views.MainWindow"
+        Width="1200" Height="800"
+        Title="Furchive (Avalonia Preview)"
+        mc:Ignorable="d">
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+    <Grid RowDefinitions="Auto,*" ColumnDefinitions="*">
+        <StackPanel Orientation="Horizontal" Margin="8" Spacing="8">
+            <TextBox Width="400" Watermark="Search tags" Text="{Binding SearchText, Mode=TwoWay}"/>
+            <Button Content="Search"/>
+            <Button Content="Downloads" Click="OnOpenDownloads"/>
+            <Button Content="Settings" Click="OnOpenSettings"/>
+        </StackPanel>
+        <Grid Grid.Row="1" ColumnDefinitions="260,*">
+            <Border Classes="Sidebar" Padding="8">
+                <StackPanel>
+                    <TextBlock Text="Pools" FontWeight="Bold"/>
+                    <ListBox>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+            <ScrollViewer Grid.Column="1">
+                <WrapPanel Orientation="Horizontal" ItemWidth="220" ItemHeight="220">
+                    <!-- Placeholder for posts gallery -->
+                    <ItemsControl>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="6" Width="200" Height="200">
+                                    <Image Stretch="UniformToFill"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </WrapPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>
