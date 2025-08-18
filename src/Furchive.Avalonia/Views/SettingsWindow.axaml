@@ -2,9 +2,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Furchive.Avalonia.Views.SettingsWindow"
         Width="800" Height="600" Title="Settings">
-    <StackPanel Margin="12" Spacing="8">
-        <TextBlock Text="Settings (scaffold)" FontSize="20"/>
-        <TextBlock Text="This window will host Settings UI ported from WPF."/>
-        <Button Content="Close" HorizontalAlignment="Right" Click="OnClose"/>
-    </StackPanel>
+    <Grid RowDefinitions="Auto,*" Margin="12">
+        <TextBlock Text="Settings" FontSize="20"/>
+        <StackPanel Grid.Row="1" Spacing="10">
+            <StackPanel>
+                <TextBlock Text="Default Download Directory"/>
+                <TextBox x:Name="DownloadDir"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Save" Click="OnSave"/>
+                <Button Content="Close" Click="OnClose"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
 </Window>

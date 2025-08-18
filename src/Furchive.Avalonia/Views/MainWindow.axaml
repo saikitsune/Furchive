@@ -10,18 +10,33 @@
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
-    <Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="*">
+    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
         <StackPanel Orientation="Horizontal" Margin="8" Spacing="8">
             <TextBox Width="420" Watermark="Search tags" Text="{Binding SearchQuery, Mode=TwoWay}"/>
+            <ComboBox Width="160" SelectedIndex="{Binding RatingFilterIndex, Mode=TwoWay}">
+                <ComboBoxItem Content="All"/>
+                <ComboBoxItem Content="Explicit"/>
+                <ComboBoxItem Content="Questionable"/>
+                <ComboBoxItem Content="Safe"/>
+            </ComboBox>
             <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
+            <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
             <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
             <Button Content="Downloads" Click="OnOpenDownloads" HorizontalAlignment="Right"/>
             <Button Content="Settings" Click="OnOpenSettings"/>
         </StackPanel>
 
-        <Grid Grid.Row="1" ColumnDefinitions="260,*" Margin="8,0,8,0">
+        <Grid Grid.Row="1" Margin="8,0,8,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="{Binding SelectedMedia, Converter={StaticResource NullToGridLength}, ConverterParameter=360}"/>
+            </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Text="Pools" FontWeight="Bold"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="Pools" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding PoolsStatusText}"/>
+                </StackPanel>
                 <TextBox Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
                 <Button Content="Soft Refresh" Command="{Binding SoftRefreshPoolsCommand}"/>
                 <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}">
@@ -34,13 +49,69 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <Button Content="Load Pool" Command="{Binding LoadSelectedPoolCommand}"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Load Pool" Command="{Binding LoadSelectedPoolCommand}"/>
+                    <Button Content="📌 Pin" Command="{Binding PinSelectedPoolCommand}" IsVisible="{Binding ShowPinPoolButton}"/>
+                </StackPanel>
+
+                <!-- Include Tags -->
+                <TextBlock Text="Include Tags" FontWeight="Bold" Margin="0,10,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox x:Name="includeTagInput" Width="160" Watermark="tag"/>
+                    <Button Content="Add" Command="{Binding AddIncludeTagCommand}" CommandParameter="{Binding Path=Text, ElementName=includeTagInput}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding IncludeTags}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button Content="{Binding .}" Command="{Binding DataContext.RemoveIncludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Exclude Tags -->
+                <TextBlock Text="Exclude Tags" FontWeight="Bold" Margin="0,10,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox x:Name="excludeTagInput" Width="160" Watermark="-tag"/>
+                    <Button Content="Add" Command="{Binding AddExcludeTagCommand}" CommandParameter="{Binding Path=Text, ElementName=excludeTagInput}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding ExcludeTags}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button Content="{Binding .}" Command="{Binding DataContext.RemoveExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Saved Searches -->
+                <TextBlock Text="Saved Searches" FontWeight="Bold" Margin="0,10,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox Width="160" Text="{Binding SaveSearchName, Mode=TwoWay}" Watermark="Name"/>
+                    <Button Content="Save" Command="{Binding SaveSearchCommand}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding SavedSearches}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding Name}" Width="140"/>
+                                <Button Content="Search" Command="{Binding DataContext.ApplySavedSearchCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                                <Button Content="Delete" Command="{Binding DataContext.DeleteSavedSearchCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Pinned Pools -->
+                <TextBlock Text="Pinned Pools" FontWeight="Bold" Margin="0,10,0,0"/>
                 <ItemsControl ItemsSource="{Binding PinnedPools}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="📌"/>
-                                <TextBlock Text="{Binding Name}"/>
+                                <Button Content="{Binding Name}" Command="{Binding DataContext.LoadSelectedPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                                <Button Content="×" Command="{Binding DataContext.UnpinPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -55,20 +126,82 @@
                     <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
                 </StackPanel>
                 <ScrollViewer Grid.Row="1">
-                    <ItemsControl ItemsSource="{Binding SearchResults}">
-                        <ItemsControl.ItemTemplate>
+                    <ListBox ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <!-- Double-tap handler can be wired in code-behind if needed. -->
+                        <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
-                                    <StackPanel>
-                                        <Image Source="{Binding PreviewUrl}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
+                                    <Grid RowDefinitions="Auto,Auto">
+                                        <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCache}}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <TextBlock Text="▶" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6">
+                                            <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding DataContext.IsSelectedDownloaded, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Margin="2,4,2,0">
+                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding Artist}" Foreground="Gray"/>
+                                                <TextBlock Text="·"/>
+                                                <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </ScrollViewer>
             </Grid>
+
+            <!-- Preview Pane -->
+            <Border Grid.Column="2" Padding="8" IsVisible="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}">
+                <ScrollViewer DataContext="{Binding SelectedMedia}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Download" Command="{Binding DataContext.DownloadSelectedCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding .}"/>
+                        </StackPanel>
+                        <Image Source="{Binding PreviewUrl}" Stretch="Uniform" MaxHeight="300"/>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Artist}"/>
+                        <TextBlock Text="{Binding Source}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
         </Grid>
+        <!-- Downloads -->
+        <Border Grid.Row="2" Margin="8,8,8,8" Padding="6" BorderBrush="#333" BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Downloads" FontWeight="Bold"/>
+                    <Button Content="Download Selected" Command="{Binding DownloadSelectedCommand}" IsEnabled="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}"/>
+                    <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
+                </StackPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding DownloadQueue}" AutoGenerateColumns="False" HeadersVisibility="Column">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Title" Binding="{Binding MediaItem.Title}" Width="2*"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
+                        <DataGridTextColumn Header="Progress" Binding="{Binding ProgressPercent}" Width="*"/>
+                        <DataGridTemplateColumn Header="Actions" Width="180">
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Button Content="Open" Click="OnOpenDownloaded"/>
+                                    <Button Content="Folder" Click="OnOpenDownloadedFolder"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Path" Binding="{Binding DestinationPath}" Width="2*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

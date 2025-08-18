@@ -12,5 +12,6 @@
     <cvt:NullToBoolVisibleConverter x:Key="NullToBoolVisible" />
     <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable" />
     <cvt:NullToGridLengthConverter x:Key="NullToGridLength" />
+  <cvt:ImageCacheConverter x:Key="ImageCache" />
   </Application.Resources>
 </Application>
