@@ -65,8 +65,14 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _e621SearchPrefetchPagesAhead; // 0-5
     [ObservableProperty] private int _e621SearchPrefetchParallelism; // 1-4
 
-    // Cache metrics (lightweight admin view)
-    [ObservableProperty] private string _e621CacheMetricsText = string.Empty;
+    // Persistent cache toggle and caps
+    [ObservableProperty] private bool _e621PersistentCacheEnabled;
+    [ObservableProperty] private int _e621PersistentCacheMaxSearchEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxTagSuggestEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxPoolPostsEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxFullPoolEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxPostDetailsEntries;
+    [ObservableProperty] private int _e621PersistentCacheMaxPoolDetailsEntries;
 
     public SettingsViewModel(ISettingsService settings, IThumbnailCacheService thumbCache, ILogger<SettingsViewModel> logger, IUnifiedApiService api)
     {
@@ -113,6 +119,15 @@ public partial class SettingsViewModel : ObservableObject
     E621PoolsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.Pools", 360), 1, 1440);
     E621SearchPrefetchPagesAhead = Math.Clamp(_settings.GetSetting<int>("E621SearchPrefetchPagesAhead", 2), 0, 5);
     E621SearchPrefetchParallelism = Math.Clamp(_settings.GetSetting<int>("E621SearchPrefetchParallelism", 2), 1, 4);
+
+    // Persistent cache defaults
+    E621PersistentCacheEnabled = _settings.GetSetting<bool>("E621PersistentCacheEnabled", false);
+    E621PersistentCacheMaxSearchEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.Search", 200), 50, 5000);
+    E621PersistentCacheMaxTagSuggestEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.TagSuggest", 400), 50, 10000);
+    E621PersistentCacheMaxPoolPostsEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.PoolPosts", 200), 50, 5000);
+    E621PersistentCacheMaxFullPoolEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.FullPool", 150), 50, 5000);
+    E621PersistentCacheMaxPostDetailsEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.PostDetails", 800), 50, 20000);
+    E621PersistentCacheMaxPoolDetailsEntries = Math.Clamp(_settings.GetSetting<int>("E621PersistentCacheMaxEntries.PoolDetails", 400), 50, 10000);
     }
 
     [RelayCommand]
@@ -154,6 +169,15 @@ public partial class SettingsViewModel : ObservableObject
             await _settings.SetSettingAsync("E621SearchPrefetchPagesAhead", Math.Clamp(E621SearchPrefetchPagesAhead, 0, 5));
             await _settings.SetSettingAsync("E621SearchPrefetchParallelism", Math.Clamp(E621SearchPrefetchParallelism, 1, 4));
 
+            // Persistent cache
+            await _settings.SetSettingAsync("E621PersistentCacheEnabled", E621PersistentCacheEnabled);
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.Search", Math.Clamp(E621PersistentCacheMaxSearchEntries, 50, 5000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.TagSuggest", Math.Clamp(E621PersistentCacheMaxTagSuggestEntries, 50, 10000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolPosts", Math.Clamp(E621PersistentCacheMaxPoolPostsEntries, 50, 5000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.FullPool", Math.Clamp(E621PersistentCacheMaxFullPoolEntries, 50, 5000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PostDetails", Math.Clamp(E621PersistentCacheMaxPostDetailsEntries, 50, 20000));
+            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolDetails", Math.Clamp(E621PersistentCacheMaxPoolDetailsEntries, 50, 10000));
+
             // Notify the rest of the app that settings have changed so UI can live-refresh
             WeakReferenceMessenger.Default.Send(new SettingsSavedMessage());
         }
@@ -162,44 +186,6 @@ public partial class SettingsViewModel : ObservableObject
             _logger.LogError(ex, "Failed to save settings");
             throw;
         }
-    }
-
-    [RelayCommand]
-    private Task RefreshCacheMetricsAsync()
-    {
-        try
-        {
-            // Ask unified API for e621 cache metrics (reflection passthrough)
-            var metrics = (_api as dynamic)?.GetE621CacheMetrics();
-            if (metrics == null)
-            {
-                E621CacheMetricsText = "Metrics unavailable.";
-                return Task.CompletedTask;
-            }
-            // Build a simple, readable text summary
-            string Line(string name, dynamic m)
-            {
-                try
-                {
-                    double rate = (m.Lookups > 0) ? (100.0 * (double)m.Hits / (double)m.Lookups) : 0.0;
-                    return $"{name}: entries={m.Entries} lookups={m.Lookups} hits={m.Hits} misses={m.Misses} evictions={m.Evictions} hit%={rate:0.0}";
-                }
-                catch { return $"{name}: (unavailable)"; }
-            }
-            var sb = new System.Text.StringBuilder();
-            try { sb.AppendLine(Line("Search", metrics.Search)); } catch { }
-            try { sb.AppendLine(Line("TagSuggest", metrics.TagSuggest)); } catch { }
-            try { sb.AppendLine(Line("PoolPosts", metrics.PoolPosts)); } catch { }
-            try { sb.AppendLine(Line("FullPool", metrics.FullPool)); } catch { }
-            try { sb.AppendLine(Line("PostDetails", metrics.PostDetails)); } catch { }
-            try { sb.AppendLine(Line("PoolDetails", metrics.PoolDetails)); } catch { }
-            E621CacheMetricsText = sb.ToString().TrimEnd();
-        }
-        catch
-        {
-            E621CacheMetricsText = "Failed to read metrics.";
-        }
-        return Task.CompletedTask;
     }
 
     [RelayCommand]

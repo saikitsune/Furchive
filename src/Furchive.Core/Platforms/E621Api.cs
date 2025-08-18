@@ -37,6 +37,15 @@ public class E621Api : IPlatformApi
     private readonly TimeSpan _poolAllTtl; // configurable
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (MediaItem item, DateTime expires)> _postDetailsCache = new();
     private readonly TimeSpan _postDetailsTtl; // configurable
+    // Persistent cache settings
+    private readonly bool _persistEnabled;
+    private readonly int _maxSearchEntries;
+    private readonly int _maxTagSuggestEntries;
+    private readonly int _maxPoolPostsEntries;
+    private readonly int _maxFullPoolEntries;
+    private readonly int _maxPostDetailsEntries;
+    private readonly int _maxPoolDetailsEntries;
+    private readonly string _diskCacheDir;
 
     // Lightweight cache metrics
     private sealed class CacheMetrics
@@ -81,6 +90,21 @@ public class E621Api : IPlatformApi
     _poolPostsTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PoolPosts", 60), 1, 1440));
     _poolAllTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PoolAll", 360), 1, 1440));
     _postDetailsTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PostDetails", 1440), 1, 1440));
+
+        // Persistent cache configuration
+        bool GetBool(string key, bool fallback)
+        {
+            try { return _settings?.GetSetting<bool>(key, fallback) ?? fallback; }
+            catch { return fallback; }
+        }
+        _persistEnabled = GetBool("E621PersistentCacheEnabled", false);
+        _maxSearchEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.Search", 200), 50, 5000);
+        _maxTagSuggestEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.TagSuggest", 400), 50, 10000);
+        _maxPoolPostsEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.PoolPosts", 200), 50, 5000);
+        _maxFullPoolEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.FullPool", 150), 50, 5000);
+        _maxPostDetailsEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.PostDetails", 800), 50, 20000);
+        _maxPoolDetailsEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.PoolDetails", 400), 50, 10000);
+        _diskCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621");
     }
 
     // Cache maintenance helpers (invoked from Settings)
@@ -390,6 +414,72 @@ public class E621Api : IPlatformApi
         var items = string.IsNullOrWhiteSpace(_apiKey)
             ? allItems.Where(i => !string.IsNullOrWhiteSpace(i.FullImageUrl)).ToList()
             : allItems;
+
+        // Enrich with pool context (bounded concurrency + cache), mirroring the foreground path
+        try
+        {
+            var keepIds = new HashSet<int>(items.Select(i => int.TryParse(i.Id, out var x) ? x : -1).Where(x => x > 0));
+            if (keepIds.Count > 0)
+            {
+                var postPoolPairs = new List<(int postId, int poolId)>();
+                foreach (var p in data.Posts)
+                {
+                    if (!keepIds.Contains(p.Id)) continue;
+                    var pools = p.Pools ?? p.Relationships?.Pools;
+                    if (pools != null && pools.Count > 0)
+                    {
+                        postPoolPairs.Add((p.Id, pools[0]));
+                    }
+                }
+                var poolIds = postPoolPairs.Select(t => t.poolId).Distinct().ToList();
+                if (poolIds.Count > 0)
+                {
+                    var detailsByPool = new Dictionary<int, E621PoolDetail>();
+                    var tasks = poolIds.Select(async pid =>
+                    {
+                        var det = await GetPoolDetailCachedAsync(pid, options, CancellationToken.None);
+                        lock (detailsByPool)
+                        {
+                            if (det != null) detailsByPool[pid] = det;
+                        }
+                    });
+                    await Task.WhenAll(tasks);
+
+                    if (detailsByPool.Count > 0)
+                    {
+                        var ctxMap = new Dictionary<int, (int poolId, string name, int page)>();
+                        foreach (var kv in detailsByPool)
+                        {
+                            var pid = kv.Key; var det = kv.Value;
+                            var name = det.Name ?? $"Pool {pid}";
+                            if (det.PostIds == null) continue;
+                            foreach (var pair in postPoolPairs.Where(pp => pp.poolId == pid))
+                            {
+                                var idx = det.PostIds.FindIndex(x => x == pair.postId);
+                                if (idx >= 0) ctxMap[pair.postId] = (pid, name, idx + 1);
+                            }
+                        }
+                        if (ctxMap.Count > 0)
+                        {
+                            foreach (var item in items)
+                            {
+                                if (int.TryParse(item.Id, out var iid) && ctxMap.TryGetValue(iid, out var info))
+                                {
+                                    item.TagCategories ??= new Dictionary<string, List<string>>();
+                                    item.TagCategories["pool_id"] = new List<string> { info.poolId.ToString() };
+                                    item.TagCategories["pool_name"] = new List<string> { info.name };
+                                    item.TagCategories["page_number"] = new List<string> { info.page.ToString("D5") };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Prefetching pool context during SWR search refresh failed");
+        }
         var resultObj = new SearchResult
         {
             Items = items,
@@ -1479,5 +1569,228 @@ public class E621Api : IPlatformApi
             PostDetails = new { Entries = _postDetailsCache.Count, Lookups = _metricsPostDetails.Lookups, Hits = _metricsPostDetails.Hits, Misses = _metricsPostDetails.Misses, Evictions = _metricsPostDetails.Evictions },
             PoolDetails = new { Entries = _poolCache.Count, Lookups = _metricsPoolDetails.Lookups, Hits = _metricsPoolDetails.Hits, Misses = _metricsPoolDetails.Misses, Evictions = _metricsPoolDetails.Evictions }
         };
+    }
+
+    // Persistent cache schema and helpers
+    private sealed class CacheEnvelope<T>
+    {
+        public string Version { get; set; } = "1";
+        public DateTime SavedAtUtc { get; set; } = DateTime.UtcNow;
+        public List<T> Items { get; set; } = new();
+    }
+    private sealed class SearchEntry
+    {
+        public string Key { get; set; } = string.Empty;
+        public DateTime ExpiresUtc { get; set; }
+        public SearchResult Value { get; set; } = new();
+    }
+    private sealed class TagSuggestEntry
+    {
+        public string Key { get; set; } = string.Empty;
+        public DateTime ExpiresUtc { get; set; }
+        public List<TagSuggestion> Value { get; set; } = new();
+    }
+    private sealed class PoolPostsEntry
+    {
+        public (int poolId, int page, int limit, bool authed) Key { get; set; }
+        public DateTime ExpiresUtc { get; set; }
+        public SearchResult Value { get; set; } = new();
+    }
+    private sealed class FullPoolEntry
+    {
+        public (int poolId, bool authed) Key { get; set; }
+        public DateTime ExpiresUtc { get; set; }
+        public List<MediaItem> Value { get; set; } = new();
+    }
+    private sealed class PostDetailsEntry
+    {
+        public int Key { get; set; }
+        public DateTime ExpiresUtc { get; set; }
+        public MediaItem Value { get; set; } = new();
+    }
+    private sealed class PoolDetailsEntry
+    {
+        public int Key { get; set; }
+        public DateTime ExpiresUtc { get; set; }
+        public E621PoolDetail Value { get; set; } = new();
+    }
+
+    public void LoadPersistentCacheIfEnabled()
+    {
+        if (!_persistEnabled) return;
+        try
+        {
+            Directory.CreateDirectory(_diskCacheDir);
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            // Search
+            TryLoad("search.json", (JsonDocument doc) =>
+            {
+                var env = JsonSerializer.Deserialize<CacheEnvelope<SearchEntry>>(doc.RootElement.GetRawText(), opts);
+                if (env?.Items == null) return;
+                var now = DateTime.UtcNow;
+                foreach (var it in env.Items)
+                {
+                    if (it == null) continue;
+                    if (it.ExpiresUtc <= now) continue;
+                    _searchCache[it.Key] = (it.Value, it.ExpiresUtc);
+                }
+            });
+            // TagSuggest
+            TryLoad("tag_suggest.json", (JsonDocument doc) =>
+            {
+                var env = JsonSerializer.Deserialize<CacheEnvelope<TagSuggestEntry>>(doc.RootElement.GetRawText(), opts);
+                if (env?.Items == null) return;
+                var now = DateTime.UtcNow;
+                foreach (var it in env.Items)
+                {
+                    if (it == null) continue;
+                    if (it.ExpiresUtc <= now) continue;
+                    _tagSuggestCache[it.Key] = (it.Value, it.ExpiresUtc);
+                }
+            });
+            // PoolPosts
+            TryLoad("pool_posts.json", (JsonDocument doc) =>
+            {
+                var env = JsonSerializer.Deserialize<CacheEnvelope<PoolPostsEntry>>(doc.RootElement.GetRawText(), opts);
+                if (env?.Items == null) return;
+                var now = DateTime.UtcNow;
+                foreach (var it in env.Items)
+                {
+                    if (it == null) continue;
+                    if (it.ExpiresUtc <= now) continue;
+                    _poolPostsCache[it.Key] = (it.Value, it.ExpiresUtc);
+                }
+            });
+            // FullPool
+            TryLoad("full_pool.json", (JsonDocument doc) =>
+            {
+                var env = JsonSerializer.Deserialize<CacheEnvelope<FullPoolEntry>>(doc.RootElement.GetRawText(), opts);
+                if (env?.Items == null) return;
+                var now = DateTime.UtcNow;
+                foreach (var it in env.Items)
+                {
+                    if (it == null) continue;
+                    if (it.ExpiresUtc <= now) continue;
+                    _poolAllCache[it.Key] = (it.Value, it.ExpiresUtc);
+                }
+            });
+            // PostDetails
+            TryLoad("post_details.json", (JsonDocument doc) =>
+            {
+                var env = JsonSerializer.Deserialize<CacheEnvelope<PostDetailsEntry>>(doc.RootElement.GetRawText(), opts);
+                if (env?.Items == null) return;
+                var now = DateTime.UtcNow;
+                foreach (var it in env.Items)
+                {
+                    if (it == null) continue;
+                    if (it.ExpiresUtc <= now) continue;
+                    _postDetailsCache[it.Key] = (it.Value, it.ExpiresUtc);
+                }
+            });
+            // PoolDetails
+            TryLoad("pool_details.json", (JsonDocument doc) =>
+            {
+                var env = JsonSerializer.Deserialize<CacheEnvelope<PoolDetailsEntry>>(doc.RootElement.GetRawText(), opts);
+                if (env?.Items == null) return;
+                var now = DateTime.UtcNow;
+                foreach (var it in env.Items)
+                {
+                    if (it == null) continue;
+                    if (it.ExpiresUtc <= now) continue;
+                    _poolCache[it.Key] = (it.Value, it.ExpiresUtc);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load persistent e621 cache");
+        }
+    }
+
+    public void SavePersistentCacheIfEnabled()
+    {
+        if (!_persistEnabled) return;
+        try
+        {
+            Directory.CreateDirectory(_diskCacheDir);
+            var opts = new JsonSerializerOptions { WriteIndented = false };
+            var now = DateTime.UtcNow;
+            // helper local function
+            void Save<TEntry>(string file, IEnumerable<TEntry> items)
+            {
+                var env = new CacheEnvelope<TEntry> { Items = items.ToList(), SavedAtUtc = now };
+                var path = Path.Combine(_diskCacheDir, file);
+                var json = JsonSerializer.Serialize(env, opts);
+                File.WriteAllText(path, json);
+            }
+
+            // Search: respect cap and TTL
+            var searchItems = _searchCache
+                .Where(kv => kv.Value.expires > now)
+                .OrderByDescending(kv => kv.Value.expires)
+                .Take(_maxSearchEntries)
+                .Select(kv => new SearchEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.result });
+            Save("search.json", searchItems);
+
+            // TagSuggest
+            var tagItems = _tagSuggestCache
+                .Where(kv => kv.Value.expires > now)
+                .OrderByDescending(kv => kv.Value.expires)
+                .Take(_maxTagSuggestEntries)
+                .Select(kv => new TagSuggestEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.list });
+            Save("tag_suggest.json", tagItems);
+
+            // PoolPosts
+            var ppItems = _poolPostsCache
+                .Where(kv => kv.Value.expires > now)
+                .OrderByDescending(kv => kv.Value.expires)
+                .Take(_maxPoolPostsEntries)
+                .Select(kv => new PoolPostsEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.result });
+            Save("pool_posts.json", ppItems);
+
+            // FullPool
+            var fpItems = _poolAllCache
+                .Where(kv => kv.Value.expires > now)
+                .OrderByDescending(kv => kv.Value.expires)
+                .Take(_maxFullPoolEntries)
+                .Select(kv => new FullPoolEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.items });
+            Save("full_pool.json", fpItems);
+
+            // PostDetails
+            var pdItems = _postDetailsCache
+                .Where(kv => kv.Value.expires > now)
+                .OrderByDescending(kv => kv.Value.expires)
+                .Take(_maxPostDetailsEntries)
+                .Select(kv => new PostDetailsEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.item });
+            Save("post_details.json", pdItems);
+
+            // PoolDetails
+            var pdetItems = _poolCache
+                .Where(kv => kv.Value.expires > now)
+                .OrderByDescending(kv => kv.Value.expires)
+                .Take(_maxPoolDetailsEntries)
+                .Select(kv => new PoolDetailsEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.detail });
+            Save("pool_details.json", pdetItems);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save persistent e621 cache");
+        }
+    }
+
+    private void TryLoad(string fileName, Action<JsonDocument> apply)
+    {
+        try
+        {
+            var path = Path.Combine(_diskCacheDir, fileName);
+            if (!File.Exists(path)) return;
+            using var fs = File.OpenRead(path);
+            using var doc = JsonDocument.Parse(fs);
+            apply(doc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to load cache file {File}", fileName);
+        }
     }
 }

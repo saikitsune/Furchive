@@ -223,14 +223,37 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
             </StackPanel>
 
             <Separator/>
-            <TextBlock Text="Admin" FontWeight="Bold" Margin="0,12,0,8"/>
-            <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="0,0,0,6"
-                       Text="Cache metrics help diagnose performance. Values reset on app restart."/>
+            <TextBlock Text="Persistent Cache" FontWeight="Bold" Margin="0,12,0,8"/>
             <StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button Content="Refresh Cache Metrics" Command="{Binding RefreshCacheMetricsCommand}"/>
-                </StackPanel>
-                <TextBox Text="{Binding E621CacheMetricsText}" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Height="120"/>
+                <CheckBox Content="Enable persistent API cache (experimental)" IsChecked="{Binding E621PersistentCacheEnabled}"/>
+                <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="0,4,0,6"
+                           Text="Saves selected e621 API caches to disk on exit and reloads on startup. Entries respect TTLs and caps. Split per cache type for safety."/>
+                <UniformGrid Columns="2" Rows="3" Margin="0,4,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                        <TextBlock Text="Search max entries:" Width="180" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxSearchEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="Tag suggest max entries:" Width="200" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxTagSuggestEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                        <TextBlock Text="Pool posts max entries:" Width="180" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxPoolPostsEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="Full pool max entries:" Width="200" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxFullPoolEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                        <TextBlock Text="Post details max entries:" Width="180" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxPostDetailsEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Text="Pool details max entries:" Width="200" VerticalAlignment="Center"/>
+                        <TextBox Width="80" Text="{Binding E621PersistentCacheMaxPoolDetailsEntries, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                </UniformGrid>
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

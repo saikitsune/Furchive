@@ -131,6 +131,7 @@ public partial class App : System.Windows.Application
             await settingsService.LoadAsync();
             LogStartup("Settings loaded.");
 
+
             // Clean temp viewer folder on startup
             try
             {
@@ -152,6 +153,17 @@ public partial class App : System.Windows.Application
             // Show main window
             LogStartup("Resolving MainWindow...");
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
+            // Now that MainWindow and its ViewModel are constructed (platforms registered), load persistent caches
+            try
+            {
+                var unified = _host.Services.GetRequiredService<IUnifiedApiService>();
+                (unified as dynamic)?.LoadE621PersistentCacheIfEnabled();
+                LogStartup("Loaded persistent caches (if enabled).");
+            }
+            catch (Exception ex)
+            {
+                LogStartup($"Persistent cache load failed: {ex.Message}");
+            }
             LogStartup("MainWindow resolved. Showing window...");
             mainWindow.Show();
             LogStartup("MainWindow shown.");
@@ -238,6 +250,14 @@ public partial class App : System.Windows.Application
 
         if (_host != null)
         {
+            // Save persistent API caches if enabled
+            try
+            {
+                var unified = _host.Services.GetRequiredService<IUnifiedApiService>();
+                (unified as dynamic)?.SaveE621PersistentCacheIfEnabled();
+            }
+            catch { }
+
             await _host.StopAsync();
             _host.Dispose();
         }

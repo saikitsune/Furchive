@@ -3,6 +3,7 @@ using Furchive.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Linq;
+using System.Collections.Concurrent;
 
 namespace Furchive.Core.Services;
 
@@ -14,6 +15,9 @@ public class UnifiedApiService : IUnifiedApiService
     private readonly Dictionary<string, IPlatformApi> _platforms = new();
     private readonly ILogger<UnifiedApiService> _logger;
 
+    // Static registry to allow cross-instance access (e.g., Settings vs Main)
+    private static readonly ConcurrentDictionary<string, IPlatformApi> s_platforms = new(StringComparer.OrdinalIgnoreCase);
+
     public UnifiedApiService(ILogger<UnifiedApiService> logger)
     {
         _logger = logger;
@@ -22,6 +26,7 @@ public class UnifiedApiService : IUnifiedApiService
     public void RegisterPlatform(IPlatformApi platformApi)
     {
         _platforms[platformApi.PlatformName] = platformApi;
+    s_platforms[platformApi.PlatformName] = platformApi; // ensure globally discoverable
         _logger.LogInformation("Registered platform: {Platform}", platformApi.PlatformName);
     }
 
@@ -296,7 +301,7 @@ public class UnifiedApiService : IUnifiedApiService
     }
     public void ClearE621PoolDetailsCache()
     {
-        if (_platforms.TryGetValue("e621", out var api))
+    if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
         {
             var m = api.GetType().GetMethod("ClearPoolDetailsCache");
             m?.Invoke(api, null);
@@ -306,11 +311,29 @@ public class UnifiedApiService : IUnifiedApiService
     // Lightweight metrics passthrough (used by Settings Admin view)
     public object? GetE621CacheMetrics()
     {
-        if (_platforms.TryGetValue("e621", out var api))
+    if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
         {
             var m = api.GetType().GetMethod("GetCacheMetrics");
             return m?.Invoke(api, null);
         }
         return null;
+    }
+
+    // Persistent cache passthroughs
+    public void LoadE621PersistentCacheIfEnabled()
+    {
+        if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
+        {
+            var m = api.GetType().GetMethod("LoadPersistentCacheIfEnabled");
+            m?.Invoke(api, null);
+        }
+    }
+    public void SaveE621PersistentCacheIfEnabled()
+    {
+        if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
+        {
+            var m = api.GetType().GetMethod("SavePersistentCacheIfEnabled");
+            m?.Invoke(api, null);
+        }
     }
 }
