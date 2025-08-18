@@ -21,6 +21,10 @@ public class E621Api : IPlatformApi
     private string? _username;
     private string? _apiKey;
     private string? _authQuery; // cached query string like login=USER&api_key=KEY
+    // In-memory cache for pool details to avoid repeated HTTP calls within a session
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (E621PoolDetail detail, DateTime expires)> _poolCache = new();
+    private static readonly SemaphoreSlim _poolFetchLimiter = new(initialCount: 3, maxCount: 3); // bounded concurrency
+    private static readonly TimeSpan _poolTtl = TimeSpan.FromMinutes(30);
 
     public E621Api(HttpClient httpClient, ILogger<E621Api> logger)
     {
@@ -175,74 +179,76 @@ public class E621Api : IPlatformApi
             var data = JsonSerializer.Deserialize<E621PostsResponse>(json, options) ?? new E621PostsResponse();
 
             // Map posts to items first
-            var items = data.Posts.Select(MapPostToMediaItem).ToList();
+            var allItems = data.Posts.Select(MapPostToMediaItem).ToList();
+            var rawCount = data.Posts.Count; // Use unfiltered count for pagination determination
 
-            // Prefetch pool context for posts that belong to a pool (limit to avoid too many API calls)
+            // If not authenticated with API key, drop items that lack a direct file URL (often require auth)
+            var items = string.IsNullOrWhiteSpace(_apiKey)
+                ? allItems.Where(i => !string.IsNullOrWhiteSpace(i.FullImageUrl)).ToList()
+                : allItems;
+
+            // Client-side rating filter for multi-rating selections
+            if (selectedRatings.Count > 0 && selectedRatings.Count < 3)
+            {
+                items = items.Where(i => selectedRatings.Contains(i.Rating)).ToList();
+            }
+
+            // Prefetch pool context only for items we keep, using cache + bounded concurrency
             try
             {
-                // Collect first pool id per post if available
-                var postPoolPairs = new List<(int postId, int poolId)>();
-                for (int i = 0; i < data.Posts.Count; i++)
+                var keepIds = new HashSet<int>(items.Select(i => int.TryParse(i.Id, out var x) ? x : -1).Where(x => x > 0));
+                if (keepIds.Count > 0)
                 {
-                    var p = data.Posts[i];
-                    var pools = p.Pools ?? p.Relationships?.Pools;
-                    if (pools != null && pools.Count > 0)
+                    var postPoolPairs = new List<(int postId, int poolId)>();
+                    foreach (var p in data.Posts)
                     {
-                        postPoolPairs.Add((p.Id, pools[0]));
-                    }
-                }
-                var poolIds = postPoolPairs.Select(t => t.poolId).Distinct().ToList();
-                const int poolCap = 20; // conservative cap per search page
-                if (poolIds.Count > 0)
-                {
-                    var detailsByPool = new Dictionary<int, E621PoolDetail>();
-                    int fetched = 0;
-                    foreach (var pid in poolIds)
-                    {
-                        if (fetched >= poolCap) break;
-                        var purl = AppendAuth($"https://e621.net/pools/{pid}.json");
-                        using var preq = new HttpRequestMessage(HttpMethod.Get, purl);
-                        preq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                        var presp = await _httpClient.SendAsync(preq);
-                        if (!presp.IsSuccessStatusCode) continue;
-                        var pjson = await presp.Content.ReadAsStringAsync();
-                        var pdet = JsonSerializer.Deserialize<E621PoolDetail>(pjson, options);
-                        if (pdet != null)
+                        if (!keepIds.Contains(p.Id)) continue;
+                        var pools = p.Pools ?? p.Relationships?.Pools;
+                        if (pools != null && pools.Count > 0)
                         {
-                            detailsByPool[pid] = pdet;
-                            fetched++;
-                            await Task.Delay(75); // be gentle
+                            postPoolPairs.Add((p.Id, pools[0]));
                         }
                     }
-                    if (detailsByPool.Count > 0)
+                    var poolIds = postPoolPairs.Select(t => t.poolId).Distinct().ToList();
+                    if (poolIds.Count > 0)
                     {
-                        // Build a map from post id to (poolId, name, index)
-                        var ctxMap = new Dictionary<int, (int poolId, string name, int page)>();
-                        foreach (var kv in detailsByPool)
+                        var detailsByPool = new Dictionary<int, E621PoolDetail>();
+                        // Fetch with bounded parallelism and caching
+                        var tasks = poolIds.Select(async pid =>
                         {
-                            var pid = kv.Key; var det = kv.Value;
-                            var name = det.Name ?? $"Pool {pid}";
-                            if (det.PostIds == null) continue;
-                            // For posts in current page only
-                            foreach (var pair in postPoolPairs.Where(pp => pp.poolId == pid))
+                            var det = await GetPoolDetailCachedAsync(pid, options, CancellationToken.None);
+                            lock (detailsByPool)
                             {
-                                var idx = det.PostIds.FindIndex(x => x == pair.postId);
-                                if (idx >= 0)
+                                if (det != null) detailsByPool[pid] = det;
+                            }
+                        });
+                        await Task.WhenAll(tasks);
+
+                        if (detailsByPool.Count > 0)
+                        {
+                            var ctxMap = new Dictionary<int, (int poolId, string name, int page)>();
+                            foreach (var kv in detailsByPool)
+                            {
+                                var pid = kv.Key; var det = kv.Value;
+                                var name = det.Name ?? $"Pool {pid}";
+                                if (det.PostIds == null) continue;
+                                foreach (var pair in postPoolPairs.Where(pp => pp.poolId == pid))
                                 {
-                                    ctxMap[pair.postId] = (pid, name, idx + 1);
+                                    var idx = det.PostIds.FindIndex(x => x == pair.postId);
+                                    if (idx >= 0) ctxMap[pair.postId] = (pid, name, idx + 1);
                                 }
                             }
-                        }
-                        if (ctxMap.Count > 0)
-                        {
-                            foreach (var item in items)
+                            if (ctxMap.Count > 0)
                             {
-                                if (int.TryParse(item.Id, out var iid) && ctxMap.TryGetValue(iid, out var info))
+                                foreach (var item in items)
                                 {
-                                    item.TagCategories ??= new Dictionary<string, List<string>>();
-                                    item.TagCategories["pool_id"] = new List<string> { info.poolId.ToString() };
-                                    item.TagCategories["pool_name"] = new List<string> { info.name };
-                                    item.TagCategories["page_number"] = new List<string> { info.page.ToString("D5") };
+                                    if (int.TryParse(item.Id, out var iid) && ctxMap.TryGetValue(iid, out var info))
+                                    {
+                                        item.TagCategories ??= new Dictionary<string, List<string>>();
+                                        item.TagCategories["pool_id"] = new List<string> { info.poolId.ToString() };
+                                        item.TagCategories["pool_name"] = new List<string> { info.name };
+                                        item.TagCategories["page_number"] = new List<string> { info.page.ToString("D5") };
+                                    }
                                 }
                             }
                         }
@@ -252,17 +258,6 @@ public class E621Api : IPlatformApi
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "Prefetching pool context during search failed");
-            }
-            var rawCount = data.Posts.Count; // Use unfiltered count for pagination determination
-            // If not authenticated with API key, drop items that lack a direct file URL (often require auth)
-            if (string.IsNullOrWhiteSpace(_apiKey))
-            {
-                items = items.Where(i => !string.IsNullOrWhiteSpace(i.FullImageUrl)).ToList();
-            }
-            // Client-side rating filter for multi-rating selections
-            if (selectedRatings.Count > 0 && selectedRatings.Count < 3)
-            {
-                items = items.Where(i => selectedRatings.Contains(i.Rating)).ToList();
             }
             _logger.LogInformation("e621 search returned {Count} posts", items.Count);
 
@@ -282,6 +277,54 @@ public class E621Api : IPlatformApi
             {
                 Errors = { [PlatformName] = ex.Message }
             };
+        }
+    }
+
+    private async Task<E621PoolDetail?> GetPoolDetailCachedAsync(int poolId, JsonSerializerOptions jsonOptions, CancellationToken ct)
+    {
+        try
+        {
+            if (_poolCache.TryGetValue(poolId, out var entry))
+            {
+                if (DateTime.UtcNow < entry.expires)
+                {
+                    return entry.detail;
+                }
+                else
+                {
+                    _ = _poolCache.TryRemove(poolId, out _);
+                }
+            }
+
+            await _poolFetchLimiter.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                // Double-check after acquiring the limiter
+                if (_poolCache.TryGetValue(poolId, out entry) && DateTime.UtcNow < entry.expires)
+                    return entry.detail;
+
+                var url = AppendAuth($"https://e621.net/pools/{poolId}.json");
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode) return null;
+                var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                var det = JsonSerializer.Deserialize<E621PoolDetail>(json, jsonOptions);
+                if (det != null)
+                {
+                    _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
+                }
+                return det;
+            }
+            finally
+            {
+                _poolFetchLimiter.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Pool detail fetch failed for {PoolId}", poolId);
+            return null;
         }
     }
 
@@ -321,28 +364,20 @@ public class E621Api : IPlatformApi
                 if (pools != null && pools.Count > 0)
                 {
                     var poolId = pools[0];
-                    var poolUrl = AppendAuth($"https://e621.net/pools/{poolId}.json");
-                    using var preq = new HttpRequestMessage(HttpMethod.Get, poolUrl);
-                    preq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                    var presp = await _httpClient.SendAsync(preq);
-                    if (presp.IsSuccessStatusCode)
+                    var det = await GetPoolDetailCachedAsync(poolId, options, CancellationToken.None);
+                    if (det != null)
                     {
-                        var pjson = await presp.Content.ReadAsStringAsync();
-                        var det = JsonSerializer.Deserialize<E621PoolDetail>(pjson, options);
-                        if (det != null)
+                        int page = 0;
+                        if (det.PostIds != null && int.TryParse(id, out var pid))
                         {
-                            int page = 0;
-                            if (det.PostIds != null && int.TryParse(id, out var pid))
-                            {
-                                var idx = det.PostIds.FindIndex(x => x == pid);
-                                if (idx >= 0) page = idx + 1;
-                            }
-                            item.TagCategories ??= new Dictionary<string, List<string>>();
-                            item.TagCategories["pool_id"] = new List<string> { poolId.ToString() };
-                            item.TagCategories["pool_name"] = new List<string> { det.Name ?? ($"Pool {poolId}") };
-                            if (page > 0)
-                                item.TagCategories["page_number"] = new List<string> { page.ToString("D5") };
+                            var idx = det.PostIds.FindIndex(x => x == pid);
+                            if (idx >= 0) page = idx + 1;
                         }
+                        item.TagCategories ??= new Dictionary<string, List<string>>();
+                        item.TagCategories["pool_id"] = new List<string> { poolId.ToString() };
+                        item.TagCategories["pool_name"] = new List<string> { det.Name ?? ($"Pool {poolId}") };
+                        if (page > 0)
+                            item.TagCategories["page_number"] = new List<string> { page.ToString("D5") };
                     }
                 }
             }
