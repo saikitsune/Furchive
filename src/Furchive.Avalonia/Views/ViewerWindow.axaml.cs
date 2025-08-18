@@ -50,19 +50,19 @@ public partial class ViewerWindow : Window
                 .FirstOrDefault(a => string.Equals(a.GetName().Name, "Avalonia.WebView", StringComparison.OrdinalIgnoreCase));
             if (asm == null)
             {
-                fallback?.IsVisible.Equals(true);
+                if (fallback != null) fallback.IsVisible = true;
                 return;
             }
             var webViewType = asm.GetType("Avalonia.WebView.WebView2");
             if (webViewType == null)
             {
-                fallback?.IsVisible.Equals(true);
+                if (fallback != null) fallback.IsVisible = true;
                 return;
             }
             var web = Activator.CreateInstance(webViewType) as Control;
             if (web == null)
             {
-                fallback?.IsVisible.Equals(true);
+                if (fallback != null) fallback.IsVisible = true;
                 return;
             }
             // Set Source property if exists and DataContext has FullImageUrl

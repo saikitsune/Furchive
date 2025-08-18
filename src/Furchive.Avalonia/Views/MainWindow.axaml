@@ -4,8 +4,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Furchive.Avalonia.ViewModels"
     xmlns:cvt="using:Furchive.Avalonia.Converters"
-        x:Class="Furchive.Avalonia.Views.MainWindow"
-        Width="1200" Height="800"
+    xmlns:beh="using:Furchive.Avalonia.Behaviors"
+    x:Class="Furchive.Avalonia.Views.MainWindow"
+    Width="1200" Height="800"
+    WindowState="Maximized"
     Title="Furchive (Avalonia Preview)"
     mc:Ignorable="d">
     <Window.Resources>
@@ -19,20 +21,26 @@
         <vm:MainViewModel />
     </Design.DataContext>
     <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
-        <StackPanel Orientation="Horizontal" Margin="8" Spacing="8">
-            <TextBox Width="420" Watermark="Search tags" Text="{Binding SearchQuery, Mode=TwoWay}"/>
-            <ComboBox Width="160" SelectedIndex="{Binding RatingFilterIndex, Mode=TwoWay}">
-                <ComboBoxItem Content="All"/>
-                <ComboBoxItem Content="Explicit"/>
-                <ComboBoxItem Content="Questionable"/>
-                <ComboBoxItem Content="Safe"/>
-            </ComboBox>
-            <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
-            <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
-            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
-            <Button Content="Open Downloads Folder" Click="OnOpenDownloadsFolder" HorizontalAlignment="Right"/>
-            <Button Content="Settings" Click="OnOpenSettings"/>
-        </StackPanel>
+        <!-- Top header: use DockPanel to keep right actions anchored and avoid overlap -->
+        <DockPanel Margin="8" LastChildFill="True">
+            <StackPanel Orientation="Horizontal" Spacing="8" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <Button Content="Open Downloads Folder" Click="OnOpenDownloadsFolder"/>
+                <Button Content="Settings" Click="OnOpenSettings"/>
+            </StackPanel>
+            <!-- WrapPanel to prevent overlap on narrow widths/DPI -->
+            <WrapPanel>
+                <TextBox Width="420" Watermark="Search tags" Text="{Binding SearchQuery, Mode=TwoWay}"/>
+                <ComboBox Width="160" SelectedIndex="{Binding RatingFilterIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="All"/>
+                    <ComboBoxItem Content="Explicit"/>
+                    <ComboBoxItem Content="Questionable"/>
+                    <ComboBoxItem Content="Safe"/>
+                </ComboBox>
+                <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
+                <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
+                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
+            </WrapPanel>
+        </DockPanel>
 
         <Grid Grid.Row="1" Margin="8,0,8,0">
             <Grid.ColumnDefinitions>
@@ -50,7 +58,10 @@
                 </StackPanel>
                 <TextBox Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
                 <Button Content="Soft Refresh" Command="{Binding SoftRefreshPoolsCommand}"/>
-                <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}">
+        <!-- Limit to ~5 items tall with scroll -->
+        <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}"
+            MaxHeight="170"
+            ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -148,7 +159,7 @@
                             <DataTemplate>
                                 <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
                                     <Grid RowDefinitions="Auto,Auto">
-                                        <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCache}}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <Image beh:RemoteImage.SourceUri="{Binding PreviewUrl}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         <TextBlock Text="▶" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6">
                                             <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}"/>
@@ -176,10 +187,47 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Download" Command="{Binding DataContext.DownloadSelectedCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding .}"/>
                         </StackPanel>
-                        <Image Source="{Binding PreviewUrl}" Stretch="Uniform" MaxHeight="300"/>
+                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}"/>
+                        <!-- Basic metadata -->
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding Artist}"/>
                         <TextBlock Text="{Binding Source}"/>
+
+                        <!-- Pool info if available -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding DataContext.PreviewPoolVisible, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <TextBlock Text="Pool:" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding DataContext.PreviewPoolDisplayName, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        </StackPanel>
+
+                        <!-- Description -->
+                        <TextBlock Text="Description" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxHeight="200"/>
+
+                        <!-- Categorized tag chips -->
+                        <TextBlock Text="Tags" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                        <ItemsControl ItemsSource="{Binding TagCategories}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,4,0,8">
+                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold"/>
+                                        <ItemsControl ItemsSource="{Binding Value}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border CornerRadius="12" Background="#333" Padding="6,2" Margin="0,4,4,0">
+                                                        <TextBlock Text="{Binding .}"/>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

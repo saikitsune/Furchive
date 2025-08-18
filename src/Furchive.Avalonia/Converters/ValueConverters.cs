@@ -82,11 +82,33 @@ public class FileTypeIsPlayableConverter : IValueConverter
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var ext = (value?.ToString() ?? string.Empty).Trim('.').ToLowerInvariant();
-        return ext is "gif" or "webm" or "mp4" or "avi" or "mov" or "mkv";
+        // Consider common video types as playable; treat GIF as an image so it shows in Image mode.
+        bool isPlayable = ext is "webm" or "mp4" or "avi" or "mov" or "mkv";
+        // Support optional inversion via ConverterParameter: pass False to get non-playable.
+        if (parameter is string ps && bool.TryParse(ps, out var pBool))
+            return pBool ? isPlayable : !isPlayable;
+        if (parameter is bool pb)
+            return pb ? isPlayable : !isPlayable;
+        return isPlayable;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
+}
+
+// Returns the first non-empty string from a list of bindings.
+public class FirstNonEmptyConverter : IMultiValueConverter
+{
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (values == null) return null;
+        foreach (var v in values)
+        {
+            var s = v?.ToString();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+        return null;
+    }
 }
 
 // Converts null to GridLength(0) and non-null to the provided pixel width (ConverterParameter) or Auto if not provided.

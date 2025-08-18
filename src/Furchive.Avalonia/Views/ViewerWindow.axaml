@@ -1,12 +1,14 @@
 <Window xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:cvt="using:Furchive.Avalonia.Converters"
+    xmlns:beh="using:Furchive.Avalonia.Behaviors"
     x:Class="Furchive.Avalonia.Views.ViewerWindow"
     x:Name="Root"
     Width="1000" Height="800" Title="Viewer">
     <Window.Resources>
-    <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable"/>
+        <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable"/>
         <cvt:ImageCacheConverter x:Key="ImageCache"/>
+        <cvt:FirstNonEmptyConverter x:Key="FirstNonEmpty"/>
     </Window.Resources>
     <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
         <StackPanel Orientation="Horizontal" Margin="8" Spacing="8">
@@ -29,7 +31,8 @@
                 <!-- Image mode -->
                 <Border Background="#202020" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}, ConverterParameter=False}">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                        <Image x:Name="PreviewImage" Stretch="Uniform" Source="{Binding FullImageUrl, Converter={StaticResource ImageCache}}"
+                        <Image x:Name="PreviewImage" Stretch="Uniform"
+                               beh:RemoteImage.SourceUri="{Binding PreviewUrl}"
                                PointerWheelChanged="OnImageWheel">
                             <Image.RenderTransform>
                                 <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}" ScaleY="{Binding #ZoomSlider.Value}"/>
