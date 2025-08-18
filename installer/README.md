@@ -18,7 +18,7 @@ This folder contains packaging scripts for building the Windows installer.
 ## Inno Setup
 
 - `inno/Furchive.iss` is the installer script.
-- `build-installer.ps1` publishes the app and compiles the installer. It downloads the WebView2 runtime if missing. You can override the WebView2 download source with `-WebView2Url` or `WEBVIEW2_URL` environment variable (e.g., to a GitHub Release asset).
+- `build-installer.ps1` publishes the app self-contained (bundles .NET) and compiles the installer. It downloads the WebView2 runtime if missing. You can override the WebView2 download source with `-WebView2Url` or `WEBVIEW2_URL` environment variable (e.g., to a GitHub Release asset).
 
 Usage:
 
@@ -39,7 +39,7 @@ The installer executable is output to `installer/inno/output/FurchiveSetup.exe`.
 A GitHub Actions workflow `.github/workflows/release.yml` builds the app and the installer when you push a tag like `v1.2.3`, and then creates a release uploading:
 
 - `FurchiveSetup.exe` (the installer)
-- `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` (the offline runtime installer)
+- `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` (the offline WebView2 runtime installer)
 
 To trigger a release:
 
@@ -52,3 +52,6 @@ git push origin v1.0.0
 - Creates Start Menu entry and optional Desktop shortcut
 - Installs WebView2 runtime silently (/install /silent /norestart) if not already present
 - Launches the app at the end (unless running silent)
+
+### What the installer does NOT do
+- It does not install the .NET Desktop Runtime. The app is published self-contained, so .NET is bundled with the app binaries.
