@@ -41,6 +41,18 @@
                     <ComboBoxItem Content="Fill"/>
                     <ComboBoxItem Content="Original"/>
                 </ComboBox>
+                <!-- Zoom control -->
+                <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <Button x:Name="zoomButton" Content="Zoom" Margin="6,0"/>
+                    <Popup x:Name="zoomPopup" PlacementTarget="{Binding ElementName=zoomButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" Padding="8" CornerRadius="4" BorderBrush="{DynamicResource SystemControlForegroundBaseHighBrush}" BorderThickness="1">
+                            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                <TextBlock x:Name="zoomPercentageText" Text="100%" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <Slider x:Name="zoomSlider" Orientation="Vertical" Minimum="10" Maximum="500" Value="105" Width="36" Height="160" IsSnapToTickEnabled="False"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </StackPanel>
             </StackPanel>
         </ToolBar>
 

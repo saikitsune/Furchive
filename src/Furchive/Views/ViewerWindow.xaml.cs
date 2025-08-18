@@ -28,6 +28,14 @@ public partial class ViewerWindow : Window
     private Stretch _currentStretch = Stretch.Uniform; // default Contain
     private bool _isVideo => (DataContext as MediaItem)?.FileExtension?.Trim('.').ToLowerInvariant() is "mp4" or "webm" or "mov" or "m4v";
     private readonly DispatcherTimer _timer;
+    // Zoom / pan state
+    private double _scale = 1.0; // 1.0 == 100%
+    // Fit scale: how much the image is scaled by layout/Viewbox relative to its native pixels
+    private double _fitScale = 1.0;
+    private System.Windows.Point _lastDragPoint;
+    private bool _isDragging = false;
+    private ScaleTransform _scaleTransform = new ScaleTransform(1.0, 1.0);
+    private TranslateTransform _translateTransform = new TranslateTransform(0, 0);
     private CancellationTokenSource? _loadCts;
     private string? _currentLocalPath;
     private int _currentIndexInList = -1;
@@ -42,6 +50,47 @@ public partial class ViewerWindow : Window
     _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) }; // retained if needed for future UI updates
         Loaded += (_, __) => ApplyStretch();
     this.Closed += ViewerWindow_Closed;
+    // Defer wiring until controls are loaded
+    this.Loaded += ViewerWindow_Loaded;
+    }
+
+    private void ViewerWindow_Loaded(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var img = FindName("imageViewer") as System.Windows.Controls.Image;
+            if (img != null)
+            {
+                var tg = new TransformGroup();
+                tg.Children.Add(_scaleTransform);
+                tg.Children.Add(_translateTransform);
+                img.RenderTransform = tg;
+                img.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+                // Mouse wheel zoom handled on ScrollViewer; panning handled via translate transform in preview handlers
+            }
+
+            var sv = FindName("contentScrollViewer") as System.Windows.Controls.ScrollViewer;
+            if (sv != null)
+            {
+                sv.PreviewMouseLeftButtonDown += ContentScrollViewer_PreviewMouseLeftButtonDown;
+                sv.PreviewMouseLeftButtonUp += ContentScrollViewer_PreviewMouseLeftButtonUp;
+                sv.PreviewMouseMove += ContentScrollViewer_PreviewMouseMove;
+                sv.PreviewMouseWheel += ContentScrollViewer_PreviewMouseWheel; // already wired earlier in some flows; safe to attach
+                sv.Cursor = System.Windows.Input.Cursors.Arrow;
+            }
+
+            var zb = FindName("zoomButton") as System.Windows.Controls.Button;
+            if (zb != null) zb.Click += (s, ev) => { try { var zp = FindName("zoomPopup") as System.Windows.Controls.Primitives.Popup; if (zp != null) zp.IsOpen = true; } catch { } };
+            var zs = FindName("zoomSlider") as System.Windows.Controls.Slider;
+            if (zs != null)
+            {
+                zs.ValueChanged += ZoomSlider_ValueChanged;
+                try { zs.Minimum = 10; zs.Maximum = 500; } catch { }
+                try { zs.Value = 100; } catch { }
+            }
+            UpdateZoomText();
+        }
+        catch { }
     }
 
     public void Initialize(MediaItem current, Func<Task<(string id, MediaItem? item)?>>? getNext, Func<Task<(string id, MediaItem? item)?>>? getPrev)
@@ -147,6 +196,7 @@ public partial class ViewerWindow : Window
             _ => Stretch.Uniform        // Contain
         };
         ApplyStretch();
+                            try { _ = Dispatcher.InvokeAsync(new Action(() => UpdateFitScaleAndSlider()), DispatcherPriority.Loaded); } catch { }
     }
 
     private void ApplyStretch()
@@ -159,6 +209,158 @@ public partial class ViewerWindow : Window
             ApplyWebVideoFit();
         }
         catch { /* ignore */ }
+    }
+
+    private void ZoomSlider_ValueChanged(object? sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        try
+        {
+            var v = e.NewValue; // slider value is total desired displayed percent (10..500)
+            var desiredTotal = v / 100.0;
+            // Compute required transform scale to achieve desired total displayed scale
+            var targetTransform = _fitScale > 0 ? desiredTotal / _fitScale : desiredTotal;
+            SetScale(targetTransform, preserveCenter: true);
+            UpdateZoomText();
+        }
+        catch { }
+    }
+
+    private void UpdateZoomText()
+    {
+        try
+        {
+            var txt = FindName("zoomPercentageText") as System.Windows.Controls.TextBlock;
+            if (txt != null) txt.Text = $"{Math.Round(_scale * _fitScale * 100)}%";
+        }
+        catch { }
+    }
+
+    private void SetScale(double newScale, bool preserveCenter)
+    {
+        if (newScale < 0.1) newScale = 0.1; // 10%
+    if (newScale > 5.0) newScale = 5.0; // 500%
+        var img = FindName("imageViewer") as System.Windows.Controls.Image;
+        if (img == null) { _scale = newScale; _scaleTransform.ScaleX = _scaleTransform.ScaleY = _scale; return; }
+
+    _scale = newScale;
+    _scaleTransform.ScaleX = _scaleTransform.ScaleY = _scale;
+        UpdateZoomText();
+        // Change cursor to hand when zoomed in
+        try
+        {
+            // Consider total displayed scale when deciding cursor
+            img.Cursor = (_scale * _fitScale) > 1.0 ? System.Windows.Input.Cursors.Hand : System.Windows.Input.Cursors.Arrow;
+        }
+        catch { }
+    }
+
+    private void Image_MouseWheel(object? sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+    // Not used: wheel handled on ScrollViewer PreviewMouseWheel instead
+    }
+
+    private void Image_MouseLeftButtonDown(object? sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        try
+        {
+            var img = sender as System.Windows.Controls.Image;
+            if (img == null) return;
+            // Deprecated: image-level panning not used when ScrollViewer handlers are attached.
+            // Keep method for backwards compatibility but do nothing here.
+            return;
+        }
+        catch { }
+    }
+
+    private void Image_MouseLeftButtonUp(object? sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        try
+        {
+            var img = sender as System.Windows.Controls.Image;
+            if (img == null) return;
+            // Deprecated: do nothing
+            return;
+        }
+        catch { }
+    }
+
+    private void Image_MouseMove(object? sender, System.Windows.Input.MouseEventArgs e)
+    {
+        // Deprecated image-level move handler (ScrollViewer handlers are used now)
+    }
+
+    private void ContentScrollViewer_PreviewMouseLeftButtonDown(object? sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        try
+        {
+            var sv = sender as System.Windows.Controls.ScrollViewer;
+            if (sv == null) return;
+            _isDragging = true;
+            _lastDragPoint = e.GetPosition(sv);
+            sv.CaptureMouse();
+            sv.Cursor = System.Windows.Input.Cursors.Hand;
+            e.Handled = true;
+        }
+        catch { }
+    }
+
+    private void ContentScrollViewer_PreviewMouseLeftButtonUp(object? sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        try
+        {
+            var sv = sender as System.Windows.Controls.ScrollViewer;
+            if (sv == null) return;
+            _isDragging = false;
+            try { sv.ReleaseMouseCapture(); } catch { }
+            sv.Cursor = System.Windows.Input.Cursors.Arrow;
+            e.Handled = true;
+        }
+        catch { }
+    }
+
+    private void ContentScrollViewer_PreviewMouseMove(object? sender, System.Windows.Input.MouseEventArgs e)
+    {
+        try
+        {
+            if (!_isDragging) return;
+            var sv = sender as System.Windows.Controls.ScrollViewer;
+            if (sv == null) return;
+            var pos = e.GetPosition(sv);
+            var diff = pos - _lastDragPoint;
+            _lastDragPoint = pos;
+            try { _translateTransform.X += diff.X; } catch { }
+            try { _translateTransform.Y += diff.Y; } catch { }
+            e.Handled = true;
+        }
+        catch { }
+    }
+
+    private void ContentScrollViewer_PreviewMouseWheel(object? sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        try
+        {
+            // Zoom instead of scrolling when Ctrl is pressed or when mouse over image area
+            // We'll always handle wheel as zoom for this viewer per user request
+            var delta = e.Delta;
+            var factor = delta > 0 ? 1.1 : 0.9;
+            var target = Math.Clamp(_scale * factor, 0.1, 5.0);
+            var sv = sender as System.Windows.Controls.ScrollViewer;
+            double oldScale = _scale;
+            SetScale(target, preserveCenter: false);
+            // Adjust scroll offsets proportionally to keep viewport roughly at same position
+            if (sv != null && oldScale > 0)
+            {
+                var ratio = _scale / oldScale;
+                var newH = sv.HorizontalOffset * ratio;
+                var newV = sv.VerticalOffset * ratio;
+                try { sv.ScrollToHorizontalOffset(newH); } catch { }
+                try { sv.ScrollToVerticalOffset(newV); } catch { }
+            }
+            // Reflect to slider
+            try { var zs = FindName("zoomSlider") as System.Windows.Controls.Slider; if (zs != null) zs.Value = _scale * _fitScale * 100; } catch { }
+            e.Handled = true;
+        }
+        catch { }
     }
 
     private void ViewerWindow_Closed(object? sender, EventArgs e)
@@ -351,6 +553,9 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                             ImageBehavior.SetAnimatedSource(img, bmp);
                             ImageBehavior.SetRepeatBehavior(img, RepeatBehavior.Forever);
                             ImageBehavior.SetAutoStart(img, true);
+                            // Reset pan on new content
+                            try { _translateTransform.X = 0; _translateTransform.Y = 0; } catch { }
+                                try { _ = Dispatcher.InvokeAsync(new Action(() => UpdateFitScaleAndSlider()), DispatcherPriority.Loaded); } catch { }
                         }
                     }
                     catch { }
@@ -369,7 +574,10 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
                             bmp.UriSource = new Uri(_currentLocalPath);
                             bmp.EndInit();
                             var img = (FindName("imageViewer") as System.Windows.Controls.Image)!;
-                            img.Source = bmp;
+                                img.Source = bmp;
+                            // Reset pan on new content
+                            try { _translateTransform.X = 0; _translateTransform.Y = 0; } catch { }
+                            try { _ = Dispatcher.InvokeAsync(new Action(() => UpdateFitScaleAndSlider()), DispatcherPriority.Loaded); } catch { }
                         }
                     }
                     catch { }
@@ -562,6 +770,74 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
             Stretch.Fill => "fill",
             _ => "contain"
         };
+    }
+
+    private void UpdateFitScaleAndSlider()
+    {
+        try
+        {
+            var img = FindName("imageViewer") as System.Windows.Controls.Image;
+            var imgBox = FindName("imageBox") as System.Windows.Controls.Viewbox;
+            var sv = FindName("contentScrollViewer") as System.Windows.Controls.ScrollViewer;
+            if (img == null || imgBox == null || sv == null) return;
+
+            // Determine the natural pixel size of the image
+            double imgW = 0, imgH = 0;
+            if (img.Source is BitmapSource bs)
+            {
+                imgW = bs.PixelWidth;
+                imgH = bs.PixelHeight;
+            }
+            if (imgW <= 0 || imgH <= 0)
+            {
+                // Fallback: assume fit scale 1
+                _fitScale = 1.0;
+            }
+            else
+            {
+                // Viewport available sizes
+                var vw = sv.ViewportWidth;
+                var vh = sv.ViewportHeight;
+                if (double.IsNaN(vw) || vw <= 0) vw = sv.ActualWidth;
+                if (double.IsNaN(vh) || vh <= 0) vh = sv.ActualHeight;
+                if (vw <= 0 || vh <= 0)
+                {
+                    _fitScale = 1.0;
+                }
+                else
+                {
+                    // Compute scale applied by Viewbox depending on Stretch
+                    switch (_currentStretch)
+                    {
+                        case Stretch.Uniform:
+                            var scaleX = vw / imgW;
+                            var scaleY = vh / imgH;
+                            _fitScale = Math.Min(scaleX, scaleY);
+                            break;
+                        case Stretch.UniformToFill:
+                            scaleX = vw / imgW;
+                            scaleY = vh / imgH;
+                            _fitScale = Math.Max(scaleX, scaleY);
+                            break;
+                        case Stretch.None:
+                            _fitScale = 1.0;
+                            break;
+                        case Stretch.Fill:
+                            _fitScale = (vw / imgW + vh / imgH) / 2.0;
+                            break;
+                        default:
+                            _fitScale = 1.0;
+                            break;
+                    }
+                    if (_fitScale <= 0) _fitScale = 1.0;
+                }
+            }
+
+            // Ensure slider bounds
+            try { var zs = FindName("zoomSlider") as System.Windows.Controls.Slider; if (zs != null) { zs.Minimum = 10; zs.Maximum = 500; zs.Value = Math.Clamp(_fitScale * _scale * 100, zs.Minimum, zs.Maximum); } } catch { }
+            UpdateZoomText();
+        }
+        catch { }
     }
 
     private void ApplyWebVideoFit()

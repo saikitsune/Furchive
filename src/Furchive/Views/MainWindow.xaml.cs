@@ -25,6 +25,12 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
+        try
+        {
+            var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(ver)) this.Title += " — v" + ver;
+        }
+        catch { }
     // Load persisted UI sizes first so initial selection uses saved widths
     TryLoadPanelSizes();
     DataContext = viewModel;
