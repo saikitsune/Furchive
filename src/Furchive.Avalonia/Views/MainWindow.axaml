@@ -3,10 +3,18 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Furchive.Avalonia.ViewModels"
+    xmlns:cvt="using:Furchive.Avalonia.Converters"
         x:Class="Furchive.Avalonia.Views.MainWindow"
         Width="1200" Height="800"
     Title="Furchive (Avalonia Preview)"
     mc:Ignorable="d">
+    <Window.Resources>
+        <cvt:DownloadEtaConverter x:Key="DownloadEta"/>
+        <cvt:DownloadStatusToBoolConverter x:Key="StatusIsDownloading" Target="Downloading"/>
+        <cvt:DownloadStatusToBoolConverter x:Key="StatusIsPaused" Target="Paused"/>
+        <cvt:DownloadStatusToBoolConverter x:Key="StatusIsActive" Targets="Downloading,Queued"/>
+        <cvt:DownloadStatusToBoolConverter x:Key="StatusIsFailed" Target="Failed"/>
+    </Window.Resources>
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
@@ -36,6 +44,9 @@
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="Pools" FontWeight="Bold"/>
                     <TextBlock Text="{Binding PoolsStatusText}"/>
+                    <ProgressBar Width="100" Height="10" Minimum="0" Maximum="100" IsVisible="{Binding IsPoolsLoading}" Value="{Binding PoolsProgressCurrent}"/>
+                    <Button Content="Rebuild Cache" Command="{Binding SoftRefreshPoolsCommand}"/>
+                    <Button Content="Cancel" Command="{Binding CancelPoolsUpdateCommand}" IsVisible="{Binding IsPoolsLoading}"/>
                 </StackPanel>
                 <TextBox Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
                 <Button Content="Soft Refresh" Command="{Binding SoftRefreshPoolsCommand}"/>
@@ -126,7 +137,7 @@
                     <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
                 </StackPanel>
                 <ScrollViewer Grid.Row="1" ScrollChanged="OnGalleryScrollChanged">
-                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" DoubleTapped="OnGalleryDoubleTapped">
+                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" DoubleTapped="OnGalleryDoubleTapped" KeyDown="OnGalleryKeyDown">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal"/>
@@ -189,12 +200,23 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Title" Binding="{Binding MediaItem.Title}" Width="2*"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
-                        <DataGridTextColumn Header="Progress" Binding="{Binding ProgressPercent}" Width="*"/>
-                        <DataGridTemplateColumn Header="Actions" Width="180">
+                        <DataGridTemplateColumn Header="Progress" Width="*">
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ProgressBar Width="120" Height="14" Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
+                                    <TextBlock Text="{Binding . , Converter={StaticResource DownloadEta}}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Actions" Width="240">
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Button Content="Open" Click="OnOpenDownloaded"/>
                                     <Button Content="Folder" Click="OnOpenDownloadedFolder"/>
+                                    <Button Content="Pause" Click="OnPauseJob" IsVisible="{Binding Status, Converter={StaticResource StatusIsDownloading}}"/>
+                                    <Button Content="Resume" Click="OnResumeJob" IsVisible="{Binding Status, Converter={StaticResource StatusIsPaused}}"/>
+                                    <Button Content="Cancel" Click="OnCancelJob" IsVisible="{Binding Status, Converter={StaticResource StatusIsActive}}"/>
+                                    <Button Content="Retry" Click="OnRetryJob" IsVisible="{Binding Status, Converter={StaticResource StatusIsFailed}}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn>

@@ -10,6 +10,9 @@ using Avalonia.Input;
 using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Furchive.Avalonia.Messages;
+using Furchive.Avalonia.Infrastructure;
 
 namespace Furchive.Avalonia.Views;
 
@@ -54,6 +57,16 @@ public partial class MainWindow : Window
             }
             catch { }
         };
+
+        // Listen for UI error messages and show a simple dialog
+        try
+        {
+            WeakReferenceMessenger.Default.Register<UiErrorMessage>(this, async (_, msg) =>
+            {
+                try { await DialogService.ShowInfoAsync(this, msg.Title, msg.Message); } catch { }
+            });
+        }
+        catch { }
     }
 
     private async void OnOpenDownloads(object? sender, RoutedEventArgs e)
@@ -136,5 +149,65 @@ public partial class MainWindow : Window
             }
         }
         catch { }
+    }
+
+    private void OnGalleryKeyDown(object? sender, KeyEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not ListBox lb) return;
+            var idx = vm.SearchResults.IndexOf(vm.SelectedMedia!);
+            int columns = Math.Max(1, (int)Math.Floor((lb.Bounds.Width) / Math.Max(1.0, vm.GalleryTileWidth + 12)));
+            int move = 0;
+            switch (e.Key)
+            {
+                case Key.Left: move = -1; break;
+                case Key.Right: move = +1; break;
+                case Key.Up: move = -columns; break;
+                case Key.Down: move = +columns; break;
+                case Key.PageUp: move = -columns * 3; break;
+                case Key.PageDown: move = +columns * 3; break;
+                default: return;
+            }
+            e.Handled = true;
+            if (vm.SearchResults.Count == 0) return;
+            if (idx < 0) idx = 0;
+            var newIdx = Math.Clamp(idx + move, 0, vm.SearchResults.Count - 1);
+            vm.SelectedMedia = vm.SearchResults[newIdx];
+            // Scroll into view
+            try { lb.ScrollIntoView(vm.SelectedMedia); } catch { }
+        }
+        catch { }
+    }
+
+    // Download queue button handlers
+    private async void OnPauseJob(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is DownloadJob job)
+        {
+            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.PauseDownloadAsync(job.Id); } catch { }
+        }
+    }
+    private async void OnResumeJob(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is DownloadJob job)
+        {
+            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.ResumeDownloadAsync(job.Id); } catch { }
+        }
+    }
+    private async void OnCancelJob(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is DownloadJob job)
+        {
+            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.CancelDownloadAsync(job.Id); } catch { }
+        }
+    }
+    private async void OnRetryJob(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is DownloadJob job)
+        {
+            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.RetryDownloadAsync(job.Id); } catch { }
+        }
     }
 }

@@ -32,7 +32,7 @@ jobs:
         run: dotnet build -c Release
       - name: Publish ${{ matrix.rid }}
         run: |
-          dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishTrimmed=false -o out/${{ matrix.rid }}
+          dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishTrimmed=false -p:EnableAvaloniaWebView=true -o out/${{ matrix.rid }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -60,7 +60,7 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Publish ${{ matrix.rid }} (ensure output exists)
         run: |
-          dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishTrimmed=false -o src/Furchive.Avalonia/publish/${{ matrix.rid }}
+          dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishTrimmed=false -p:EnableAvaloniaWebView=true -o src/Furchive.Avalonia/publish/${{ matrix.rid }}
       - name: Package (macOS DMG)
         if: startsWith(matrix.rid, 'osx')
         run: |

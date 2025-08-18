@@ -27,6 +27,10 @@
                         <TextBox x:Name="E621Key"/>
                     </StackPanel>
                 </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Custom User-Agent (optional)"/>
+                    <TextBox x:Name="CustomUserAgent"/>
+                </StackPanel>
 
                 <Separator/>
                 <TextBlock Text="Filename Templates" FontWeight="SemiBold"/>
