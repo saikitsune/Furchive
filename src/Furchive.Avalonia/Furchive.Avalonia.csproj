@@ -14,6 +14,9 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
+  <!-- Re-enable in-app video via Avalonia WebView (requires NuGet access) -->
+  <PackageReference Include="Avalonia.WebView" Version="11.0.10" />
+  <PackageReference Include="Avalonia.WebView.Desktop" Version="11.0.10" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
