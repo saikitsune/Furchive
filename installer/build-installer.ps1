@@ -38,7 +38,17 @@ if (-not [string]::IsNullOrWhiteSpace($Version) -and ($Version -ne $projectVersi
   Write-Warning "Provided -Version '$Version' differs from project version '$projectVersion'. Will use the app binary version to keep installer in sync."
 }
 
-# Ensure clean publish directory to avoid stale files
+# Ensure clean build/publish directories to avoid stale files/XAML caches
+$avaloniaBin = Join-Path $repo 'src/Furchive.Avalonia/bin'
+$avaloniaObj = Join-Path $repo 'src/Furchive.Avalonia/obj'
+if (Test-Path $avaloniaBin) {
+  Write-Host "Cleaning Avalonia bin directory $avaloniaBin ..."
+  Remove-Item -LiteralPath $avaloniaBin -Recurse -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $avaloniaObj) {
+  Write-Host "Cleaning Avalonia obj directory $avaloniaObj ..."
+  Remove-Item -LiteralPath $avaloniaObj -Recurse -Force -ErrorAction SilentlyContinue
+}
 if (Test-Path $publishDir) {
   Write-Host "Cleaning publish directory $publishDir ..."
   Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
