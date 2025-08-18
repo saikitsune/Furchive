@@ -8,7 +8,10 @@
             <StackPanel Spacing="10">
                 <StackPanel>
                     <TextBlock Text="Default Download Directory"/>
-                    <TextBox x:Name="DownloadDir"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBox x:Name="DownloadDir" Width="600"/>
+                        <Button Content="Browse…" Click="OnBrowseDownloadDir"/>
+                    </StackPanel>
                 </StackPanel>
 
                 <Separator/>

@@ -1,7 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Furchive.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace Furchive.Avalonia.Views;
 
@@ -65,4 +68,39 @@ public partial class SettingsWindow : Window
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
+
+    private async void OnBrowseDownloadDir(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var options = new FolderPickerOpenOptions
+            {
+                AllowMultiple = false
+            };
+            var current = DownloadDir.Text;
+            if (!string.IsNullOrWhiteSpace(current) && Directory.Exists(current))
+            {
+                try
+                {
+                    var suggested = await StorageProvider.TryGetFolderFromPathAsync(current);
+                    if (suggested != null)
+                    {
+                        options.SuggestedStartLocation = suggested;
+                    }
+                }
+                catch { }
+            }
+            var result = await StorageProvider.OpenFolderPickerAsync(options);
+            if (result != null && result.Count > 0)
+            {
+                var folder = result[0];
+                var path = folder.Path?.LocalPath;
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    DownloadDir.Text = path;
+                }
+            }
+        }
+        catch { }
+    }
 }

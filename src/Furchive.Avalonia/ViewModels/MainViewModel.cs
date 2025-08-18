@@ -161,10 +161,14 @@ public partial class MainViewModel : ObservableObject
         finally { if (Dispatcher.UIThread.CheckAccess()) IsSearching = false; else await Dispatcher.UIThread.InvokeAsync(() => IsSearching = false); }
     }
 
+    // Guard to prevent concurrent append calls triggered by rapid scroll events
+    private int _appendInFlight = 0;
+
     // Append next page into SearchResults without clearing
     public async Task<bool> AppendNextPageAsync()
     {
-        if (IsSearching || !HasNextPage) return false;
+        if (!HasNextPage) return false;
+        if (System.Threading.Interlocked.CompareExchange(ref _appendInFlight, 1, 0) != 0) return false;
         try
         {
             IsSearching = true;
@@ -196,7 +200,7 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = $"Append failed: {ex.Message}";
             return false;
         }
-        finally { IsSearching = false; }
+    finally { IsSearching = false; System.Threading.Interlocked.Exchange(ref _appendInFlight, 0); }
     }
 
     private async Task PrefetchNextPagesAsync(int currentPage)
