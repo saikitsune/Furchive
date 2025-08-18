@@ -5,6 +5,8 @@ using Avalonia.Interactivity;
 using Furchive.Core.Models;
 using System.Diagnostics;
 using System.IO;
+using Furchive.Core.Interfaces;
+using Avalonia.Input;
 
 namespace Furchive.Avalonia.Views;
 
@@ -31,6 +33,17 @@ public partial class MainWindow : Window
         await dlg.ShowDialog(this);
     }
 
+    private async void OnGalleryDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
+        {
+            var viewer = new ViewerWindow();
+            // Pass selected media to the viewer for now via DataContext
+            viewer.DataContext = vm.SelectedMedia;
+            await viewer.ShowDialog(this);
+        }
+    }
+
     private void OnOpenDownloaded(object? sender, RoutedEventArgs e)
     {
         if ((sender as Control)?.DataContext is DownloadJob job)
@@ -54,5 +67,18 @@ public partial class MainWindow : Window
                 try { Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true }); } catch { }
             }
         }
+    }
+
+    private void OnOpenDownloadsFolder(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var settings = App.Services?.GetService<ISettingsService>();
+            var dir = settings?.GetSetting<string>("DefaultDownloadDirectory", "");
+            if (string.IsNullOrWhiteSpace(dir)) return;
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+        }
+        catch { }
     }
 }

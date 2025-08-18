@@ -22,7 +22,7 @@
             <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
             <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
             <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
-            <Button Content="Downloads" Click="OnOpenDownloads" HorizontalAlignment="Right"/>
+            <Button Content="Open Downloads Folder" Click="OnOpenDownloadsFolder" HorizontalAlignment="Right"/>
             <Button Content="Settings" Click="OnOpenSettings"/>
         </StackPanel>
 
@@ -126,7 +126,7 @@
                     <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
                 </StackPanel>
                 <ScrollViewer Grid.Row="1">
-                    <ListBox ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}">
+                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" DoubleTapped="OnGalleryDoubleTapped">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal"/>
@@ -140,7 +140,7 @@
                                         <Image Source="{Binding PreviewUrl, Converter={StaticResource ImageCache}}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         <TextBlock Text="▶" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6">
-                                            <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding DataContext.IsSelectedDownloaded, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                            <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}"/>
                                         </StackPanel>
                                         <StackPanel Grid.Row="1" Margin="2,4,2,0">
                                             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>

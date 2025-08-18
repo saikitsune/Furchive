@@ -13,5 +13,6 @@
     <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable" />
     <cvt:NullToGridLengthConverter x:Key="NullToGridLength" />
   <cvt:ImageCacheConverter x:Key="ImageCache" />
+  <cvt:IsMediaDownloadedConverter x:Key="IsMediaDownloaded" />
   </Application.Resources>
 </Application>
