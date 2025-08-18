@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using Furchive.Core.Interfaces;
 using Avalonia.Input;
+using Avalonia.Controls.Primitives;
 
 namespace Furchive.Avalonia.Views;
 
@@ -78,6 +79,29 @@ public partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(dir)) return;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+        }
+        catch { }
+    }
+
+    private void OnGalleryScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not ScrollViewer sv) return;
+            var extent = sv.Extent.Height;
+            var viewport = sv.Viewport.Height;
+            var offset = sv.Offset.Y;
+            if (extent <= 0 || viewport <= 0) return;
+            var remaining = extent - (offset + viewport);
+            if (remaining <= viewport * 0.5 && vm.HasNextPage && !vm.IsSearching)
+            {
+                // Kick background prefetch for upcoming pages based on current page
+                // Fire-and-forget; VM handles throttling by settings
+                var _ = typeof(MainViewModel)
+                    .GetMethod("PrefetchNextPagesAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                    ?.Invoke(vm, new object[] { vm.CurrentPage });
+            }
         }
         catch { }
     }

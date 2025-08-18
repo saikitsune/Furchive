@@ -125,7 +125,7 @@
                     <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
                     <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
                 </StackPanel>
-                <ScrollViewer Grid.Row="1">
+                <ScrollViewer Grid.Row="1" ScrollChanged="OnGalleryScrollChanged">
                     <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" DoubleTapped="OnGalleryDoubleTapped">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
