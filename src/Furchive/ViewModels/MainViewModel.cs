@@ -21,6 +21,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IUnifiedApiService _apiService;
     private readonly IDownloadService _downloadService;
     private readonly ISettingsService _settingsService;
+    private readonly IThumbnailCacheService? _thumbCache;
+    private readonly ICpuWorkQueue? _cpuQueue;
     private readonly ILogger<MainViewModel> _logger;
     private readonly string _cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
     private readonly IPlatformApi? _e621Platform; // keep a handle to re-auth when settings change
@@ -187,13 +189,17 @@ public partial class MainViewModel : ObservableObject
         IUnifiedApiService apiService,
         IDownloadService downloadService,
         ISettingsService settingsService,
-        ILogger<MainViewModel> logger,
-        IEnumerable<IPlatformApi> platformApis)
+    ILogger<MainViewModel> logger,
+    IEnumerable<IPlatformApi> platformApis,
+    IThumbnailCacheService thumbCache,
+    ICpuWorkQueue cpuQueue)
     {
         _apiService = apiService;
         _downloadService = downloadService;
         _settingsService = settingsService;
         _logger = logger;
+    _thumbCache = thumbCache;
+    _cpuQueue = cpuQueue;
 
         // Register platform APIs
     foreach (var p in platformApis)
@@ -569,6 +575,28 @@ public partial class MainViewModel : ObservableObject
 
             // Kick off background prefetch of next N pages (settings: E621SearchPrefetchPagesAhead)
             _ = Task.Run(() => PrefetchNextPagesAsync(page));
+
+            // Optional: prewarm thumbnails using CPU work queue
+            try
+            {
+                var prewarm = _settingsService.GetSetting<bool>("ThumbnailPrewarmEnabled", true);
+                if (prewarm && _thumbCache != null && _cpuQueue != null)
+                {
+                    // Only queue visible page’s thumbnails to keep it light
+                    foreach (var item in result.Items)
+                    {
+                        var url = item.PreviewUrl ?? item.FullImageUrl;
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        if (_thumbCache.TryGetCachedPath(url) != null) continue;
+                        _cpuQueue.Enqueue(async ct =>
+                        {
+                            try { await _thumbCache.GetOrAddAsync(url, ct); }
+                            catch { }
+                        });
+                    }
+                }
+            }
+            catch { }
         }
         finally
         {

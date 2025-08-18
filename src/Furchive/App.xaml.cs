@@ -90,6 +90,8 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<IUnifiedApiService, UnifiedApiService>();
                 services.AddSingleton<IDownloadService, DownloadService>();
                 services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
+                services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
+                services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
 
                 // Platform APIs (will be registered in MainViewModel)
                 services.AddTransient<IPlatformApi>(sp =>
@@ -130,6 +132,20 @@ public partial class App : System.Windows.Application
             var settingsService = _host.Services.GetRequiredService<ISettingsService>();
             await settingsService.LoadAsync();
             LogStartup("Settings loaded.");
+
+            // Ensure defaults for new background worker settings
+            try
+            {
+                if (settingsService.GetSetting<int>("CpuWorkerDegree", -1) <= 0)
+                {
+                    var def = Math.Clamp(Environment.ProcessorCount / 2, 1, Environment.ProcessorCount);
+                    await settingsService.SetSettingAsync("CpuWorkerDegree", def);
+                }
+                // If not present, initialize ThumbnailPrewarmEnabled to true
+                var hasPrewarm = settingsService.GetSetting<string>("ThumbnailPrewarmEnabled", null);
+                if (string.IsNullOrEmpty(hasPrewarm)) await settingsService.SetSettingAsync("ThumbnailPrewarmEnabled", true);
+            }
+            catch { }
 
 
             // Clean temp viewer folder on startup
