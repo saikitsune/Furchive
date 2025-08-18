@@ -99,6 +99,8 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<PoolInfo> Pools { get; } = new();
     public ObservableCollection<PoolInfo> FilteredPools { get; } = new();
+    // Pinned Pools
+    public ObservableCollection<PoolInfo> PinnedPools { get; } = new();
 
     [ObservableProperty]
     private bool _isPoolsLoading = false;
@@ -117,7 +119,13 @@ public partial class MainViewModel : ObservableObject
 
     // Download button label switches in pool mode
     public string DownloadAllLabel => IsPoolMode ? "Download Pool" : "Download All";
-    partial void OnIsPoolModeChanged(bool value) => OnPropertyChanged(nameof(DownloadAllLabel));
+    partial void OnIsPoolModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DownloadAllLabel));
+        OnPropertyChanged(nameof(ShowPinPoolButton));
+    }
+
+    public bool ShowPinPoolButton => IsPoolMode && SelectedPool != null;
 
     // Track pools known to be empty (no visible posts). We'll exclude them from UI once detected.
     private HashSet<int> _excludedPoolIds = new();
@@ -217,6 +225,16 @@ public partial class MainViewModel : ObservableObject
 
         // Load initial settings
         LoadSettings();
+        // Load pinned pools from settings
+        try
+        {
+            var jsonPinned = _settingsService.GetSetting<string>("PinnedPools", "[]") ?? "[]";
+            var pinned = JsonSerializer.Deserialize<List<PoolInfo>>(jsonPinned) ?? new();
+            PinnedPools.Clear();
+            foreach (var p in pinned)
+                PinnedPools.Add(p);
+        }
+        catch { }
     // Initialize gallery scale
     GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
 
@@ -807,7 +825,8 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedPoolChanged(PoolInfo? value)
     {
-        // No auto-load to avoid accidental fetch; user clicks command instead
+    // No auto-load to avoid accidental fetch; user clicks command instead
+    OnPropertyChanged(nameof(ShowPinPoolButton));
     }
 
     private void ApplyPoolsFilter()
@@ -836,6 +855,46 @@ public partial class MainViewModel : ObservableObject
                 if (FilteredPools.Count >= 1000) break; // safety cap
             }
             PoolsStatusText = $"{FilteredPools.Count} pools";
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private async Task PinSelectedPoolAsync()
+    {
+        try
+        {
+            if (!IsPoolMode) return; // only pin while viewing a pool
+            var pool = SelectedPool;
+            if (pool == null) return;
+            if (!PinnedPools.Any(p => p.Id == pool.Id))
+            {
+                PinnedPools.Add(new PoolInfo { Id = pool.Id, Name = pool.Name, PostCount = pool.PostCount });
+                await PersistPinnedPoolsAsync();
+            }
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private async Task UnpinPoolAsync(PoolInfo? pool)
+    {
+        if (pool == null) return;
+        try
+        {
+            var existing = PinnedPools.FirstOrDefault(p => p.Id == pool.Id);
+            if (existing != null) PinnedPools.Remove(existing);
+            await PersistPinnedPoolsAsync();
+        }
+        catch { }
+    }
+
+    private async Task PersistPinnedPoolsAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(PinnedPools.ToList());
+            await _settingsService.SetSettingAsync("PinnedPools", json);
         }
         catch { }
     }
@@ -1013,9 +1072,9 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task LoadSelectedPoolAsync()
+    private async Task LoadSelectedPoolAsync(PoolInfo? fromPinned = null)
     {
-        var pool = SelectedPool;
+        var pool = fromPinned ?? SelectedPool;
     if (pool == null || IsSearching) return; // guard against concurrent loads
         try
         {
@@ -1027,6 +1086,8 @@ public partial class MainViewModel : ObservableObject
             // Pool mode loads ALL posts in pool order; ignore per-page setting
             IsPoolMode = true;
             CurrentPoolId = pool.Id;
+            // Synchronize SelectedPool with the pool being opened
+            SelectedPool = Pools.FirstOrDefault(p => p.Id == pool.Id) ?? pool;
             var items = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
             // If pool has no visible items, exclude it from UI and cache
             if (items == null || items.Count == 0)

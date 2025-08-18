@@ -85,6 +85,7 @@
                             <TextBox Width="210" Text="{Binding PoolSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search pools by name or ID"/>
                             <Button Content="Filter" Margin="6,0,0,0" Command="{Binding RunPoolsFilterCommand}"/>
                         </StackPanel>
+                        
                         <ListBox x:Name="poolsList"
                                  ItemsSource="{Binding FilteredPools}"
                                  SelectedItem="{Binding SelectedPool}"
@@ -200,7 +201,80 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         </ScrollViewer>
-                        
+                        <!-- Pin current pool while viewing a pool (moved under Saved Searches) -->
+                        <Button Content="📌 Pin Pool" Margin="0,10,0,6"
+                                Command="{Binding PinSelectedPoolCommand}"
+                                ToolTip="Pin the current pool for quick access"
+                                Visibility="{Binding ShowPinPoolButton, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <!-- Pinned Pools list (moved below Saved Searches) -->
+                        <TextBlock Text="Pinned Pools" Style="{StaticResource SubHeaderTextStyle}"/>
+                        <ListBox x:Name="pinnedPoolsList"
+                                 ItemsSource="{Binding PinnedPools}"
+                                 Height="130"  
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 Margin="0,0,8,0">
+                            <ListBox.Resources>
+                                <!-- Match Pools list scrollbar styling -->
+                                <Style TargetType="ScrollBar">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                    <Setter Property="Opacity" Value="0.9"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="Orientation" Value="Vertical">
+                                            <Setter Property="Width" Value="16"/>
+                                            <Setter Property="MinWidth" Value="16"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                    <Setter Property="Height" Value="26"/>
+                                    <Setter Property="Padding" Value="0,0,18,0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                    <!-- Remove default selection/mouseover visuals -->
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0"
+                                                Content="{Binding Name}" HorizontalAlignment="Left" Padding="4,2"
+                                                Command="{Binding DataContext.LoadSelectedPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Open this pool">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource TagButtonStyle}">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Grid.Column="1" Content="×" Width="22" Height="22" Margin="6,0,0,0"
+                                                Background="Red" Foreground="White" FontWeight="Bold"
+                                                Command="{Binding DataContext.UnpinPoolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Remove from pinned"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

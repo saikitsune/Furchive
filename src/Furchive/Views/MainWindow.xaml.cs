@@ -27,7 +27,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         try
         {
-            var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? string.Empty;
+            var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(4) ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(ver)) this.Title += " — v" + ver;
         }
         catch { }
@@ -36,6 +36,25 @@ public partial class MainWindow : Window
     DataContext = viewModel;
     // React to selection changes to animate preview pane
     viewModel.PropertyChanged += ViewModelOnPropertyChanged;
+        // Auto-scroll pinned pools when items change
+        try
+        {
+            viewModel.PinnedPools.CollectionChanged += (s, e) =>
+            {
+                // Only scroll when new items are added
+                if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (FindName("pinnedPoolsList") is System.Windows.Controls.ListBox lb && lb.Items.Count > 0)
+                        {
+                            lb.ScrollIntoView(lb.Items[lb.Items.Count - 1]);
+                        }
+                    }), DispatcherPriority.Background);
+                }
+            };
+        }
+        catch { }
         // Ensure preview starts hidden when nothing selected
         AnimatePreviewPane();
         _downloadsRefreshTimer.Tick += (_, __) =>
