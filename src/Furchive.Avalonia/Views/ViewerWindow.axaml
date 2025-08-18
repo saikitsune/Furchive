@@ -15,6 +15,9 @@
             <TextBlock Text="{Binding Title}"/>
             <TextBlock Text="·"/>
             <TextBlock Text="{Binding Artist}"/>
+            <TextBlock Text="·"/>
+            <TextBlock Text="Zoom" Margin="12,0,4,0"/>
+            <Slider x:Name="ZoomSlider" Width="160" Minimum="0.25" Maximum="4" Value="1" TickFrequency="0.25" SmallChange="0.1" LargeChange="0.5"/>
         </StackPanel>
 
         <!-- Image rendering; if video type, show a placeholder with actions -->
@@ -26,7 +29,12 @@
                 <!-- Image mode -->
                 <Border Background="#202020" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}, ConverterParameter=False}">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                        <Image Stretch="Uniform" Source="{Binding FullImageUrl, Converter={StaticResource ImageCache}}"/>
+                        <Image x:Name="PreviewImage" Stretch="Uniform" Source="{Binding FullImageUrl, Converter={StaticResource ImageCache}}"
+                               PointerWheelChanged="OnImageWheel">
+                            <Image.RenderTransform>
+                                <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}" ScaleY="{Binding #ZoomSlider.Value}"/>
+                            </Image.RenderTransform>
+                        </Image>
                     </ScrollViewer>
                 </Border>
                 <!-- Video mode: we attach WebView at runtime when available; otherwise show fallback -->

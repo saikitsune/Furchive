@@ -77,4 +77,18 @@ public partial class ViewerWindow : Window
         }
         catch { }
     }
+
+    private void OnImageWheel(object? sender, PointerWheelEventArgs e)
+    {
+        try
+        {
+            var slider = this.FindControl<Slider>("ZoomSlider");
+            if (slider == null) return;
+            var delta = e.Delta.Y > 0 ? 0.1 : -0.1;
+            var next = Math.Clamp(slider.Value + delta, slider.Minimum, slider.Maximum);
+            slider.Value = next;
+            e.Handled = true;
+        }
+        catch { }
+    }
 }
