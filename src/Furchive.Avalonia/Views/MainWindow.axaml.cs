@@ -9,7 +9,6 @@ using Furchive.Core.Interfaces;
 using Avalonia.Input;
 using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
-using System.Windows.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Furchive.Avalonia.Messages;
 using Furchive.Avalonia.Infrastructure;
