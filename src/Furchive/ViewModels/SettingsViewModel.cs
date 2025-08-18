@@ -42,6 +42,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _poolFilenameTemplate = string.Empty;
     [ObservableProperty] private bool _videoAutoplay = true;
     [ObservableProperty] private bool _videoStartMuted = false;
+    // Viewer rendering options
+    [ObservableProperty] private bool _viewerGpuAccelerationEnabled = true;
+    [ObservableProperty] private bool _viewerLazyDecodeEnabled = true;
     [ObservableProperty] private long _tempUsedBytes;
     [ObservableProperty] private string _tempPath = string.Empty;
     [ObservableProperty] private int _concurrentDownloads;
@@ -101,6 +104,8 @@ public partial class SettingsViewModel : ObservableObject
     // Playback
     VideoAutoplay = _settings.GetSetting<bool>("VideoAutoplay", true);
     VideoStartMuted = _settings.GetSetting<bool>("VideoStartMuted", false);
+    ViewerGpuAccelerationEnabled = _settings.GetSetting<bool>("ViewerGpuAccelerationEnabled", true);
+    ViewerLazyDecodeEnabled = _settings.GetSetting<bool>("ViewerLazyDecodeEnabled", true);
         // Pools cache info
         RefreshPoolsCacheInfo();
 
@@ -153,6 +158,8 @@ public partial class SettingsViewModel : ObservableObject
             // Playback
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted);
+            await _settings.SetSettingAsync("ViewerGpuAccelerationEnabled", ViewerGpuAccelerationEnabled);
+            await _settings.SetSettingAsync("ViewerLazyDecodeEnabled", ViewerLazyDecodeEnabled);
 
             // Pools update interval
             var interval = PoolsUpdateIntervalMinutes <= 0 ? 360 : PoolsUpdateIntervalMinutes;
