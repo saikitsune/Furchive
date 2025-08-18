@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+  - 'v*.*.*'
 
 permissions:
   contents: write
@@ -17,6 +17,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Derive VERSION from tag
+        shell: pwsh
+        run: |
+          $ver = $env:GITHUB_REF_NAME -replace '^v',''
+          echo "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -64,14 +70,13 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $version = (${env:GITHUB_REF_NAME} -replace '^v','')
-          powershell -ExecutionPolicy Bypass -File .\installer\build-installer.ps1 -Configuration Release -Runtime $env:RUNTIME -Version $version
+          powershell -ExecutionPolicy Bypass -File .\installer\build-installer.ps1 -Configuration Release -Runtime $env:RUNTIME -Version $env:VERSION
 
       - name: Upload artifact (installer)
         uses: actions/upload-artifact@v4
         with:
           name: FurchiveSetup
-          path: installer/inno/output/FurchiveSetup.exe
+          path: installer/inno/output/FurchiveSetup-${{ env.VERSION }}.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -80,7 +85,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            installer/inno/output/FurchiveSetup.exe
+            installer/inno/output/FurchiveSetup-${{ env.VERSION }}.exe
             installer/inno/MicrosoftEdgeWebView2RuntimeInstallerX64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
