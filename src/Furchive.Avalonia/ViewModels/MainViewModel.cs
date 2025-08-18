@@ -307,4 +307,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand] private async Task DeleteSavedSearchAsync(SavedSearch? ss) { if (ss == null) return; SavedSearches.Remove(ss); await PersistSavedSearchesAsync(); }
     [RelayCommand] private async Task ApplySavedSearchAsync(SavedSearch? ss) { if (ss == null) return; IncludeTags.Clear(); foreach (var t in ss.IncludeTags) IncludeTags.Add(t); ExcludeTags.Clear(); foreach (var t in ss.ExcludeTags) ExcludeTags.Add(t); RatingFilterIndex = ss.RatingFilterIndex; SearchQuery = ss.SearchQuery ?? string.Empty; await SearchAsync(); }
     private async Task PersistSavedSearchesAsync() { try { var json = JsonSerializer.Serialize(SavedSearches.ToList()); await _settingsService.SetSettingAsync("SavedSearches", json); } catch { } }
+
+    // Clears the current selection (bound to Esc)
+    [RelayCommand]
+    private void SelectNone() => SelectedMedia = null;
 }

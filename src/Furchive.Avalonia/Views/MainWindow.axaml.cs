@@ -9,6 +9,7 @@ using Furchive.Core.Interfaces;
 using Avalonia.Input;
 using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
+using System.Windows.Input;
 
 namespace Furchive.Avalonia.Views;
 
@@ -32,6 +33,26 @@ public partial class MainWindow : Window
             {
                 try { await vm.AppendNextPageAsync(); } catch { }
             }
+        };
+
+        // Keyboard shortcuts: Enter to search, Esc to clear selection
+        this.KeyDown += (s, e) =>
+        {
+            try
+            {
+                if (DataContext is not MainViewModel vm) return;
+                if (e.Key == Key.Enter)
+                {
+                    vm.SearchCommand.Execute(null);
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Escape)
+                {
+                    vm.SelectNoneCommand.Execute(null);
+                    e.Handled = true;
+                }
+            }
+            catch { }
         };
     }
 

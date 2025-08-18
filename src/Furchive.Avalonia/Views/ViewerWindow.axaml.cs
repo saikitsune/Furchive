@@ -1,9 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Furchive.Core.Models;
-using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Furchive.Core.Interfaces;
+using System;
+using Avalonia.Input;
 
 namespace Furchive.Avalonia.Views;
 
@@ -12,6 +13,7 @@ public partial class ViewerWindow : Window
     public ViewerWindow()
     {
         InitializeComponent();
+        this.KeyDown += (s, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();

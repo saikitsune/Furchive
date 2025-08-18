@@ -5,8 +5,8 @@
     xmlns:vm="using:Furchive.Avalonia.ViewModels"
         x:Class="Furchive.Avalonia.Views.MainWindow"
         Width="1200" Height="800"
-        Title="Furchive (Avalonia Preview)"
-        mc:Ignorable="d">
+    Title="Furchive (Avalonia Preview)"
+    mc:Ignorable="d">
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>

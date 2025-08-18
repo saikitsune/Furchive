@@ -24,7 +24,7 @@
                     </StackPanel>
                     <StackPanel Width="300">
                         <TextBlock Text="API Key"/>
-                        <controls:PasswordBox x:Name="E621Key"/>
+                        <TextBox x:Name="E621Key"/>
                     </StackPanel>
                 </StackPanel>
 

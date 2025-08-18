@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Avalonia.Data.Converters;
 using Furchive.Core.Interfaces;
 using Furchive.Core.Models;
@@ -50,7 +51,13 @@ public class IsMediaDownloadedConverter : IValueConverter
                 .Replace("{ext}", ext)
                 .Replace("{pool_name}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : string.Empty))
                 .Replace("{page_number}", Sanitize(item.TagCategories != null && item.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty));
-            var full = Path.Combine(defaultDir, rel);
+            // Normalize path separators and Unicode for cross-platform consistency
+            var relNorm = rel.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+            {
+                relNorm = relNorm.Normalize(System.Text.NormalizationForm.FormC);
+            }
+            var full = Path.Combine(defaultDir, relNorm);
             if (File.Exists(full)) return true;
             try
             {
@@ -60,6 +67,10 @@ public class IsMediaDownloadedConverter : IValueConverter
                     bool match(string file)
                     {
                         var name = Path.GetFileNameWithoutExtension(file);
+                        if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+                        {
+                            name = name?.Normalize(System.Text.NormalizationForm.FormC);
+                        }
                         return name != null && (name.Equals(item.Id, StringComparison.OrdinalIgnoreCase) || name.EndsWith("_" + item.Id, StringComparison.OrdinalIgnoreCase) || name.Contains(item.Id, StringComparison.OrdinalIgnoreCase));
                     }
                     foreach (var file in Directory.EnumerateFiles(poolsRoot, "*", SearchOption.AllDirectories))

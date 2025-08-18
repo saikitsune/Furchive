@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Furchive", "src\Furchive\Furchive.csproj", "{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Furchive.Core", "src\Furchive.Core\Furchive.Core.csproj", "{A7D6B5C4-1E3F-4B7A-8C9D-2E5F6A7B8C9D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Furchive.Tests", "tests\Furchive.Tests\Furchive.Tests.csproj", "{C9E8F7A6-3F5B-4C8D-9E0F-4F7A8B9C0D1E}"
@@ -23,18 +21,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Debug|x64.Build.0 = Debug|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Debug|x86.Build.0 = Debug|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Release|x64.ActiveCfg = Release|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Release|x64.Build.0 = Release|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Release|x86.ActiveCfg = Release|Any CPU
-		{B8E7C8A1-2F4D-4E8A-9B7C-3D5E6F7A8B9C}.Release|x86.Build.0 = Release|Any CPU
 		{A7D6B5C4-1E3F-4B7A-8C9D-2E5F6A7B8C9D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A7D6B5C4-1E3F-4B7A-8C9D-2E5F6A7B8C9D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A7D6B5C4-1E3F-4B7A-8C9D-2E5F6A7B8C9D}.Debug|x64.ActiveCfg = Debug|Any CPU
