@@ -252,4 +252,54 @@ public class UnifiedApiService : IUnifiedApiService
 
         return allSuggestions;
     }
+
+    // Cache maintenance passthroughs for E621 (no-op for others)
+    public void ClearE621SearchCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearSearchCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621TagSuggestCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearTagSuggestCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621PoolPostsCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearPoolPostsCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621FullPoolCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearFullPoolCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621PostDetailsCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearPostDetailsCache");
+            m?.Invoke(api, null);
+        }
+    }
+    public void ClearE621PoolDetailsCache()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("ClearPoolDetailsCache");
+            m?.Invoke(api, null);
+        }
+    }
 }

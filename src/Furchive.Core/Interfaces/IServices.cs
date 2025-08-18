@@ -130,6 +130,14 @@ public interface IUnifiedApiService
     /// Get all posts in a pool (original order) from a specific source.
     /// </summary>
     Task<List<MediaItem>> GetAllPoolPostsAsync(string source, int poolId, CancellationToken cancellationToken = default);
+
+    // Cache maintenance for e621 (no-op for others)
+    void ClearE621SearchCache();
+    void ClearE621TagSuggestCache();
+    void ClearE621PoolPostsCache();
+    void ClearE621FullPoolCache();
+    void ClearE621PostDetailsCache();
+    void ClearE621PoolDetailsCache();
 }
 
 /// <summary>

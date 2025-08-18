@@ -14,6 +14,7 @@ using Furchive.Views;
 using Furchive.Core.Platforms;
 using ModernWpf;
 using Furchive.Infrastructure;
+using System.Net.Http;
 
 namespace Furchive;
 
@@ -91,7 +92,13 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
 
                 // Platform APIs (will be registered in MainViewModel)
-                services.AddTransient<IPlatformApi, E621Api>();
+                services.AddTransient<IPlatformApi>(sp =>
+                {
+                    var http = sp.GetRequiredService<HttpClient>();
+                    var logger = sp.GetRequiredService<ILogger<E621Api>>();
+                    var settings = sp.GetService<ISettingsService>();
+                    return new E621Api(http, logger, settings);
+                });
                 // Removed other platforms (FurAffinity, InkBunny, Weasyl) to focus on e621 only
 
                 // ViewModels

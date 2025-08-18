@@ -17,20 +17,63 @@ public class E621Api : IPlatformApi
     
     private readonly HttpClient _httpClient;
     private readonly ILogger<E621Api> _logger;
+    private readonly ISettingsService? _settings;
     private string? _userAgent;
     private string? _username;
     private string? _apiKey;
     private string? _authQuery; // cached query string like login=USER&api_key=KEY
     // In-memory cache for pool details to avoid repeated HTTP calls within a session
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (E621PoolDetail detail, DateTime expires)> _poolCache = new();
-    private static readonly SemaphoreSlim _poolFetchLimiter = new(initialCount: 3, maxCount: 3); // bounded concurrency
-    private static readonly TimeSpan _poolTtl = TimeSpan.FromMinutes(30);
+    private readonly SemaphoreSlim _poolFetchLimiter; // bounded concurrency (configurable)
+    private readonly TimeSpan _poolTtl; // configurable
+    // Additional caches to speed up API flows
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (SearchResult result, DateTime expires)> _searchCache = new();
+    private readonly TimeSpan _searchTtl; // configurable
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<TagSuggestion> list, DateTime expires)> _tagSuggestCache = new();
+    private readonly TimeSpan _tagSuggestTtl; // configurable
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(int poolId, int page, int limit, bool authed), (SearchResult result, DateTime expires)> _poolPostsCache = new();
+    private readonly TimeSpan _poolPostsTtl; // configurable
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(int poolId, bool authed), (List<MediaItem> items, DateTime expires)> _poolAllCache = new();
+    private readonly TimeSpan _poolAllTtl; // configurable
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (MediaItem item, DateTime expires)> _postDetailsCache = new();
+    private readonly TimeSpan _postDetailsTtl; // configurable
 
-    public E621Api(HttpClient httpClient, ILogger<E621Api> logger)
+    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _settings = settings;
+
+        // Configure concurrency and TTLs from settings with sane defaults
+        int GetInt(string key, int fallback)
+        {
+            try
+            {
+                if (_settings == null) return fallback;
+                var v = _settings.GetSetting<int>(key, fallback);
+                return v == 0 ? fallback : v;
+            }
+            catch { return fallback; }
+        }
+
+        var maxConcurrency = Math.Clamp(GetInt("E621MaxPoolDetailConcurrency", 16), 1, 16);
+        _poolFetchLimiter = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+        _poolTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.Pools", 30), 1, 1440));
+        _searchTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.Search", 30), 1, 1440));
+        _tagSuggestTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.TagSuggest", 30), 1, 1440));
+        _poolPostsTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PoolPosts", 30), 1, 1440));
+        _poolAllTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PoolAll", 30), 1, 1440));
+        _postDetailsTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PostDetails", 30), 1, 1440));
     }
+
+    // Cache maintenance helpers (invoked from Settings)
+    public void ClearSearchCache() => _searchCache.Clear();
+    public void ClearTagSuggestCache() => _tagSuggestCache.Clear();
+    public void ClearPoolPostsCache() => _poolPostsCache.Clear();
+    public void ClearFullPoolCache() => _poolAllCache.Clear();
+    public void ClearPostDetailsCache() => _postDetailsCache.Clear();
+    public void ClearPoolDetailsCache() => _poolCache.Clear();
 
     public async Task<PlatformHealth> GetHealthAsync()
     {
@@ -122,6 +165,7 @@ public class E621Api : IPlatformApi
     {
         try
         {
+            // Build a cache key for searches after we build the tagQuery below
             // Ensure UA header is present if not authenticated yet
             if (string.IsNullOrWhiteSpace(_userAgent))
             {
@@ -167,6 +211,13 @@ public class E621Api : IPlatformApi
             var limit = Math.Clamp(parameters.Limit, 1, 100);
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={parameters.Page}";
             url = AppendAuthAndFilter(url, isPostsList: true);
+
+            // Try cache before hitting network
+            var cacheKey = $"{tagQuery}||p={parameters.Page}||l={limit}||authed={!string.IsNullOrWhiteSpace(_apiKey)}";
+            if (_searchCache.TryGetValue(cacheKey, out var cached) && DateTime.UtcNow < cached.expires)
+            {
+                return cached.result;
+            }
 
             _logger.LogInformation("e621 search: tags=\"{Tags}\", page={Page}, limit={Limit}", tagQuery, parameters.Page, limit);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -260,8 +311,7 @@ public class E621Api : IPlatformApi
                 _logger.LogDebug(ex, "Prefetching pool context during search failed");
             }
             _logger.LogInformation("e621 search returned {Count} posts", items.Count);
-
-            return new SearchResult
+            var resultObj = new SearchResult
             {
                 Items = items,
                 CurrentPage = parameters.Page,
@@ -269,6 +319,8 @@ public class E621Api : IPlatformApi
                 HasNextPage = rawCount >= limit,
                 TotalCount = 0
             };
+            _searchCache[cacheKey] = (resultObj, DateTime.UtcNow.Add(_searchTtl));
+            return resultObj;
         }
         catch (Exception ex)
         {
@@ -332,6 +384,12 @@ public class E621Api : IPlatformApi
     {
         try
         {
+            // Cache check for post details
+            var hasPostId = int.TryParse(id, out var postIdInt);
+            if (hasPostId && _postDetailsCache.TryGetValue(postIdInt, out var cached) && DateTime.UtcNow < cached.expires)
+            {
+                return cached.item;
+            }
             // Ensure UA header is present if not authenticated yet
             if (string.IsNullOrWhiteSpace(_userAgent))
             {
@@ -368,9 +426,9 @@ public class E621Api : IPlatformApi
                     if (det != null)
                     {
                         int page = 0;
-                        if (det.PostIds != null && int.TryParse(id, out var pid))
+                        if (det.PostIds != null && hasPostId)
                         {
-                            var idx = det.PostIds.FindIndex(x => x == pid);
+                            var idx = det.PostIds.FindIndex(x => x == postIdInt);
                             if (idx >= 0) page = idx + 1;
                         }
                         item.TagCategories ??= new Dictionary<string, List<string>>();
@@ -386,6 +444,11 @@ public class E621Api : IPlatformApi
                 _logger.LogDebug(ex, "Enriching media details with pool context failed for {Id}", id);
             }
 
+            // Cache the details before returning
+            if (hasPostId && item != null)
+            {
+                _postDetailsCache[postIdInt] = (item, DateTime.UtcNow.Add(_postDetailsTtl));
+            }
             return item;
         }
         catch (Exception ex)
@@ -399,6 +462,9 @@ public class E621Api : IPlatformApi
     {
         try
         {
+            var key = $"{query}|{limit}";
+            if (_tagSuggestCache.TryGetValue(key, out var cached) && DateTime.UtcNow < cached.expires)
+                return cached.list;
             // Ensure UA header is present if not authenticated yet
             if (string.IsNullOrWhiteSpace(_userAgent))
             {
@@ -422,12 +488,14 @@ public class E621Api : IPlatformApi
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var tags = JsonSerializer.Deserialize<List<E621Tag>>(json, options) ?? new();
 
-            return tags.Select(t => new TagSuggestion
+            var list = tags.Select(t => new TagSuggestion
             {
                 Tag = t.Name ?? string.Empty,
                 PostCount = t.PostCount,
                 Category = MapE621TagCategory(t.Category)
             }).ToList();
+            _tagSuggestCache[key] = (list, DateTime.UtcNow.Add(_tagSuggestTtl));
+            return list;
         }
         catch (Exception ex)
         {
@@ -592,6 +660,10 @@ public class E621Api : IPlatformApi
         try
         {
             EnsureUserAgent();
+            var authed = !string.IsNullOrWhiteSpace(_apiKey);
+            var key = (poolId, page, Math.Clamp(limit, 1, 100), authed);
+            if (_poolPostsCache.TryGetValue(key, out var cached) && DateTime.UtcNow < cached.expires)
+                return cached.result;
             // According to e621, you can query posts by pool: pool:ID
             // Preserve order in the pool by using order:pool (id asc within pool). We'll paginate client-side via page.
             var offset = (Math.Max(1, page) - 1) * Math.Clamp(limit, 1, 100);
@@ -613,13 +685,15 @@ public class E621Api : IPlatformApi
                 items = items.Where(i => !string.IsNullOrWhiteSpace(i.FullImageUrl)).ToList();
             }
 
-            return new SearchResult
+            var sr = new SearchResult
             {
                 Items = items,
                 CurrentPage = page,
                 HasNextPage = data.Posts.Count >= perPage,
                 TotalCount = 0
             };
+            _poolPostsCache[key] = (sr, DateTime.UtcNow.Add(_poolPostsTtl));
+            return sr;
         }
         catch (Exception ex)
         {
@@ -633,6 +707,10 @@ public class E621Api : IPlatformApi
         try
         {
             EnsureUserAgent();
+            var authed = !string.IsNullOrWhiteSpace(_apiKey);
+            var key = (poolId, authed);
+            if (_poolAllCache.TryGetValue(key, out var cached) && DateTime.UtcNow < cached.expires)
+                return cached.items;
             // First, fetch the pool metadata to get ordered post IDs
             var poolUrl = $"https://e621.net/pools/{poolId}.json";
             poolUrl = AppendAuth(poolUrl);
@@ -696,6 +774,7 @@ public class E621Api : IPlatformApi
                 {
                     if (byId.TryGetValue(id, out var item)) ordered.Add(item);
                 }
+                _poolAllCache[key] = (ordered, DateTime.UtcNow.Add(_poolAllTtl));
                 return ordered;
             }
         }

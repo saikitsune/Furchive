@@ -53,6 +53,17 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _poolsCacheFilePath = string.Empty;
     [ObservableProperty] private int _poolsUpdateIntervalMinutes;
 
+    // Search Cache (e621) – advanced tuning
+    [ObservableProperty] private int _e621MaxPoolDetailConcurrency; // 1-16
+    [ObservableProperty] private int _e621SearchTtlMinutes;         // 1-1440
+    [ObservableProperty] private int _e621TagSuggestTtlMinutes;     // 1-1440
+    [ObservableProperty] private int _e621PoolPostsTtlMinutes;      // 1-1440
+    [ObservableProperty] private int _e621PoolAllTtlMinutes;        // 1-1440
+    [ObservableProperty] private int _e621PostDetailsTtlMinutes;    // 1-1440
+    [ObservableProperty] private int _e621PoolsTtlMinutes;          // 1-1440 (pool metadata)
+    // Search prefetching
+    [ObservableProperty] private int _e621SearchPrefetchPagesAhead; // 0-5
+
     public SettingsViewModel(ISettingsService settings, IThumbnailCacheService thumbCache, ILogger<SettingsViewModel> logger, IUnifiedApiService api)
     {
         _settings = settings;
@@ -86,6 +97,16 @@ public partial class SettingsViewModel : ObservableObject
     // Pools incremental update interval (minutes)
     var defaultInterval = 360; // 6 hours
     PoolsUpdateIntervalMinutes = Math.Max(5, _settings.GetSetting<int>("PoolsUpdateIntervalMinutes", defaultInterval));
+
+    // Search Cache defaults (take effect on next app start)
+    E621MaxPoolDetailConcurrency = Math.Clamp(_settings.GetSetting<int>("E621MaxPoolDetailConcurrency", 16), 1, 16);
+    E621SearchTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.Search", 30), 1, 1440);
+    E621TagSuggestTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.TagSuggest", 30), 1, 1440);
+    E621PoolPostsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.PoolPosts", 30), 1, 1440);
+    E621PoolAllTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.PoolAll", 30), 1, 1440);
+    E621PostDetailsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.PostDetails", 30), 1, 1440);
+    E621PoolsTtlMinutes = Math.Clamp(_settings.GetSetting<int>("E621CacheTtlMinutes.Pools", 30), 1, 1440);
+    E621SearchPrefetchPagesAhead = Math.Clamp(_settings.GetSetting<int>("E621SearchPrefetchPagesAhead", 2), 0, 5);
     }
 
     [RelayCommand]
@@ -115,6 +136,16 @@ public partial class SettingsViewModel : ObservableObject
             // Pools update interval
             var interval = PoolsUpdateIntervalMinutes <= 0 ? 360 : PoolsUpdateIntervalMinutes;
             await _settings.SetSettingAsync("PoolsUpdateIntervalMinutes", interval);
+
+            // Search Cache (advanced)
+            await _settings.SetSettingAsync("E621MaxPoolDetailConcurrency", Math.Clamp(E621MaxPoolDetailConcurrency, 1, 16));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.Search", Math.Clamp(E621SearchTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.TagSuggest", Math.Clamp(E621TagSuggestTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.PoolPosts", Math.Clamp(E621PoolPostsTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.PoolAll", Math.Clamp(E621PoolAllTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.PostDetails", Math.Clamp(E621PostDetailsTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621CacheTtlMinutes.Pools", Math.Clamp(E621PoolsTtlMinutes, 1, 1440));
+            await _settings.SetSettingAsync("E621SearchPrefetchPagesAhead", Math.Clamp(E621SearchPrefetchPagesAhead, 0, 5));
 
             // Notify the rest of the app that settings have changed so UI can live-refresh
             WeakReferenceMessenger.Default.Send(new SettingsSavedMessage());

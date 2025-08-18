@@ -48,6 +48,21 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "Ready";
 
+    // Background caching progress (search prefetch)
+    [ObservableProperty]
+    private bool _isBackgroundCaching = false;
+
+    [ObservableProperty]
+    private int _backgroundCachingCurrent = 0;
+
+    [ObservableProperty]
+    private int _backgroundCachingTotal = 0;
+
+    public int BackgroundCachingPercent => BackgroundCachingTotal <= 0 ? 0 : (int)Math.Round(100.0 * BackgroundCachingCurrent / (double)BackgroundCachingTotal);
+
+    [ObservableProperty]
+    private int _backgroundCachingItemsFetched = 0;
+
     [ObservableProperty]
     private int _ratingFilterIndex = 0; // 0: All, 1: Explicit, 2: Questionable, 3: Safe
 
@@ -551,11 +566,106 @@ public partial class MainViewModel : ObservableObject
             else await App.Current.Dispatcher.InvokeAsync(() => StatusMessage = status);
             // Persist last session after a search completes
             try { await PersistLastSessionAsync(); } catch { }
+
+            // Kick off background prefetch of next N pages (settings: E621SearchPrefetchPagesAhead)
+            _ = Task.Run(() => PrefetchNextPagesAsync(page));
         }
         finally
         {
             if (App.Current.Dispatcher.CheckAccess()) IsSearching = false;
             else await App.Current.Dispatcher.InvokeAsync(() => IsSearching = false);
+        }
+    }
+
+    private async Task PrefetchNextPagesAsync(int currentPage)
+    {
+        try
+        {
+            var ahead = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchPagesAhead", 2), 0, 5);
+            if (ahead <= 0) return;
+
+            // Build common search parameters baseline
+            await EnsureE621AuthAsync();
+            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
+            var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var ratings = RatingFilterIndex switch
+            {
+                0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit },
+                1 => new List<ContentRating> { ContentRating.Explicit },
+                2 => new List<ContentRating> { ContentRating.Questionable },
+                3 => new List<ContentRating> { ContentRating.Safe },
+                _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }
+            };
+            var limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
+
+            var pages = Enumerable.Range(currentPage + 1, ahead).ToList();
+            if (pages.Count == 0) return;
+
+            // Progress setup
+            await App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsBackgroundCaching = true;
+                BackgroundCachingCurrent = 0;
+                BackgroundCachingTotal = pages.Count;
+                BackgroundCachingItemsFetched = 0;
+            });
+
+            // Fetch with small parallelism degree to speed up while being gentle on API
+            var degree = 2; // can make this a setting later
+            using var throttler = new SemaphoreSlim(degree);
+            var tasks = new List<Task>();
+            foreach (var p in pages)
+            {
+                await throttler.WaitAsync();
+                var task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var sr = await _apiService.SearchAsync(new SearchParameters
+                        {
+                            IncludeTags = includeTags,
+                            ExcludeTags = excludeTags,
+                            Sources = new List<string> { "e621" },
+                            Ratings = ratings,
+                            Sort = Furchive.Core.Models.SortOrder.Newest,
+                            Page = p,
+                            Limit = limit
+                        });
+                        await App.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            BackgroundCachingItemsFetched += sr.Items?.Count ?? 0;
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Prefetch page {Page} failed", p);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() =>
+                        {
+                            BackgroundCachingCurrent++;
+                            OnPropertyChanged(nameof(BackgroundCachingPercent));
+                        });
+                        throttler.Release();
+                    }
+                });
+                tasks.Add(task);
+            }
+            await Task.WhenAll(tasks);
+        }
+        catch { }
+        finally
+        {
+            await App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsBackgroundCaching = false;
+                BackgroundCachingTotal = 0;
+                BackgroundCachingCurrent = 0;
+                BackgroundCachingItemsFetched = 0;
+                OnPropertyChanged(nameof(BackgroundCachingPercent));
+            });
         }
     }
 

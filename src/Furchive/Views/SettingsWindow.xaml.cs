@@ -9,6 +9,7 @@ using System.Diagnostics;
 using WinForms = System.Windows.Forms;
 using CommunityToolkit.Mvvm.Messaging;
 using Furchive.Messages;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Furchive.Views;
 
@@ -130,5 +131,32 @@ public partial class SettingsWindow : Window
     {
         // Broadcast a soft refresh request; MainViewModel listens and triggers incremental update
         WeakReferenceMessenger.Default.Send(new PoolsSoftRefreshRequestedMessage());
+    }
+
+    private IUnifiedApiService? GetApi() => App.Services?.GetService<IUnifiedApiService>();
+
+    private void ClearE621SearchCache_Click(object sender, RoutedEventArgs e)
+    {
+        try { GetApi()?.ClearE621SearchCache(); } catch { }
+    }
+    private void ClearE621TagSuggestCache_Click(object sender, RoutedEventArgs e)
+    {
+        try { GetApi()?.ClearE621TagSuggestCache(); } catch { }
+    }
+    private void ClearE621PoolPostsCache_Click(object sender, RoutedEventArgs e)
+    {
+        try { GetApi()?.ClearE621PoolPostsCache(); } catch { }
+    }
+    private void ClearE621FullPoolCache_Click(object sender, RoutedEventArgs e)
+    {
+        try { GetApi()?.ClearE621FullPoolCache(); } catch { }
+    }
+    private void ClearE621PostDetailsCache_Click(object sender, RoutedEventArgs e)
+    {
+        try { GetApi()?.ClearE621PostDetailsCache(); } catch { }
+    }
+    private void ClearE621PoolDetailsCache_Click(object sender, RoutedEventArgs e)
+    {
+        try { GetApi()?.ClearE621PoolDetailsCache(); } catch { }
     }
 }
