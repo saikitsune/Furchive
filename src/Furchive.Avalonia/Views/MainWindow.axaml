@@ -10,40 +10,65 @@
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
-    <Grid RowDefinitions="Auto,*" ColumnDefinitions="*">
+    <Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="*">
         <StackPanel Orientation="Horizontal" Margin="8" Spacing="8">
-            <TextBox Width="400" Watermark="Search tags" Text="{Binding SearchText, Mode=TwoWay}"/>
-            <Button Content="Search"/>
-            <Button Content="Downloads" Click="OnOpenDownloads"/>
+            <TextBox Width="420" Watermark="Search tags" Text="{Binding SearchQuery, Mode=TwoWay}"/>
+            <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
+            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
+            <Button Content="Downloads" Click="OnOpenDownloads" HorizontalAlignment="Right"/>
             <Button Content="Settings" Click="OnOpenSettings"/>
         </StackPanel>
-        <Grid Grid.Row="1" ColumnDefinitions="260,*">
-            <Border Classes="Sidebar" Padding="8">
-                <StackPanel>
-                    <TextBlock Text="Pools" FontWeight="Bold"/>
-                    <ListBox>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
+
+        <Grid Grid.Row="1" ColumnDefinitions="260,*" Margin="8,0,8,0">
+            <StackPanel>
+                <TextBlock Text="Pools" FontWeight="Bold"/>
+                <TextBox Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
+                <Button Content="Soft Refresh" Command="{Binding SoftRefreshPoolsCommand}"/>
+                <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
                                 <TextBlock Text="{Binding Name}"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                                <TextBlock Text="{Binding PostCount}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Content="Load Pool" Command="{Binding LoadSelectedPoolCommand}"/>
+                <ItemsControl ItemsSource="{Binding PinnedPools}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="📌"/>
+                                <TextBlock Text="{Binding Name}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <Grid Grid.Column="1" RowDefinitions="Auto,*">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
+                    <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
+                    <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
+                    <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
                 </StackPanel>
-            </Border>
-            <ScrollViewer Grid.Column="1">
-                <WrapPanel Orientation="Horizontal" ItemWidth="220" ItemHeight="220">
-                    <!-- Placeholder for posts gallery -->
-                    <ItemsControl>
+                <ScrollViewer Grid.Row="1">
+                    <ItemsControl ItemsSource="{Binding SearchResults}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Margin="6" Width="200" Height="200">
-                                    <Image Stretch="UniformToFill"/>
+                                <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
+                                    <StackPanel>
+                                        <Image Source="{Binding PreviewUrl}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </WrapPanel>
-            </ScrollViewer>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

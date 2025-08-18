@@ -1,5 +1,16 @@
-<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Furchive.Avalonia.App" RequestedThemeVariant="Dark">
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Furchive.Avalonia.App" RequestedThemeVariant="Dark"
+             xmlns:cvt="using:Furchive.Avalonia.Converters">
   <Application.Styles>
     <FluentTheme />
   </Application.Styles>
+  <Application.Resources>
+    <cvt:InverseBooleanConverter x:Key="InverseBoolean" />
+    <cvt:NullToBooleanConverter x:Key="NullToBool" />
+    <cvt:BytesToStringConverter x:Key="BytesToString" />
+    <cvt:UppercaseConverter x:Key="Uppercase" />
+    <cvt:StringEqualsConverter x:Key="StringEquals" />
+    <cvt:NullToBoolVisibleConverter x:Key="NullToBoolVisible" />
+    <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable" />
+    <cvt:NullToGridLengthConverter x:Key="NullToGridLength" />
+  </Application.Resources>
 </Application>

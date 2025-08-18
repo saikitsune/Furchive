@@ -10,7 +10,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-    DataContext = App.Services?.GetService<MainViewModel>() ?? new MainViewModel();
+        if (App.Services != null)
+        {
+            DataContext = App.Services.GetRequiredService<MainViewModel>();
+        }
     }
 
     private async void OnOpenDownloads(object? sender, RoutedEventArgs e)
@@ -21,7 +24,7 @@ public partial class MainWindow : Window
 
     private async void OnOpenSettings(object? sender, RoutedEventArgs e)
     {
-        var dlg = new Window { Width = 800, Height = 600, Title = "Settings (placeholder)" };
-        await dlg.ShowDialog(this);
+    var dlg = new SettingsWindow();
+    await dlg.ShowDialog(this);
     }
 }
