@@ -159,8 +159,11 @@
                             <DataTemplate>
                                 <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
                                     <Grid RowDefinitions="Auto,Auto">
-                                        <Image beh:RemoteImage.SourceUri="{Binding PreviewUrl}" Stretch="UniformToFill" Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                        <TextBlock Text="▶" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}"/>
+                         <Image Stretch="UniformToFill"
+                             Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                             Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                             beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
+                                        <TextBlock FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">▶</TextBlock>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6">
                                             <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}"/>
                                         </StackPanel>
@@ -168,7 +171,7 @@
                                             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <TextBlock Text="{Binding Artist}" Foreground="Gray"/>
-                                                <TextBlock Text="·"/>
+                                                <TextBlock>·</TextBlock>
                                                 <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}"/>
                                             </StackPanel>
                                         </StackPanel>
@@ -187,7 +190,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Download" Command="{Binding DataContext.DownloadSelectedCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding .}"/>
                         </StackPanel>
-                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}"/>
+                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
                         <!-- Basic metadata -->
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding Artist}"/>
@@ -223,8 +226,8 @@
                                                             Padding="6,2"
                                                             Margin="0,4,4,0"
                                                             Cursor="Hand"
-                                                            PointerPressed="OnTagChipPointerPressed"
-                                                            ToolTip.Tip="Left-click: include tag • Right-click: exclude tag">
+                                                            ToolTip.Tip="Left-click: include tag; Right-click: exclude tag"
+                                                            PointerPressed="OnTagChipPointerPressed">
                                                         <TextBlock Text="{Binding .}"/>
                                                     </Border>
                                                 </DataTemplate>

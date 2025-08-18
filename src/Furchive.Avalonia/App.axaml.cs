@@ -65,8 +65,24 @@ public partial class App : Application
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var wnd = Services.GetRequiredService<MainWindow>();
-            desktop.MainWindow = wnd;
+            try
+            {
+                var logger = Services.GetService<ILogger<App>>();
+                var wnd = Services.GetRequiredService<MainWindow>();
+                desktop.MainWindow = wnd;
+                logger?.LogInformation("MainWindow created and assigned.");
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    var logger = Services?.GetService<ILogger<App>>();
+                    logger?.LogError(ex, "Failed to create or assign MainWindow");
+                }
+                catch { }
+                // Rethrow so the process exits with a clear error instead of silently closing
+                throw;
+            }
         }
         base.OnFrameworkInitializationCompleted();
     }

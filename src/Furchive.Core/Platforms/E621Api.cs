@@ -121,15 +121,16 @@ public class E621Api : IPlatformApi
         {
             // Test basic connectivity
             // e621 requires a valid User-Agent; ensure one is present even if not yet authenticated
-        if (string.IsNullOrWhiteSpace(_userAgent))
+            if (string.IsNullOrWhiteSpace(_userAgent))
             {
                 try
                 {
-            _httpClient.DefaultRequestHeaders.UserAgent.Clear();
-            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-            var username = Environment.UserName;
-            var defaultUa = $"Furchive/{version} (by {username})";
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
+                    _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                    var nameFromSettings = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact = string.IsNullOrWhiteSpace(nameFromSettings) ? (Environment.UserName ?? "Anon") : nameFromSettings.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact})";
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { /* ignore */ }
             }
@@ -214,7 +215,9 @@ public class E621Api : IPlatformApi
                 {
                     _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    var nameFromSettings = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact = string.IsNullOrWhiteSpace(nameFromSettings) ? (Environment.UserName ?? "Anon") : nameFromSettings.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact})";
                     _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { }
@@ -616,7 +619,9 @@ public class E621Api : IPlatformApi
                 {
                     _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    var nameFromSettings2 = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact2 = string.IsNullOrWhiteSpace(nameFromSettings2) ? (Environment.UserName ?? "Anon") : nameFromSettings2.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact2})";
                     _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { }
@@ -759,7 +764,9 @@ public class E621Api : IPlatformApi
                 {
                     _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    var nameFromSettings3 = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact3 = string.IsNullOrWhiteSpace(nameFromSettings3) ? (Environment.UserName ?? "Anon") : nameFromSettings3.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact3})";
                     _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { }
@@ -1294,7 +1301,9 @@ public class E621Api : IPlatformApi
             {
                 _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                 var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                var defaultUa = $"Furchive/{version} (by USERNAME)";
+                var nameFromSettings = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                var contact = string.IsNullOrWhiteSpace(nameFromSettings) ? (Environment.UserName ?? "Anon") : nameFromSettings.Trim();
+                var defaultUa = $"Furchive/{version} (by {contact})";
                 _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
             }
             catch { }

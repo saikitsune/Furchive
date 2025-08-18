@@ -1,8 +1,12 @@
 <Window xmlns="https://github.com/avaloniaui"
     xmlns:controls="using:Avalonia.Controls"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Furchive.Avalonia.Views.SettingsWindow"
         Width="800" Height="600" Title="Settings">
+    <Window.Resources>
+        <sys:String x:Key="FilenameTokens">Available tokens: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}</sys:String>
+    </Window.Resources>
     <Grid RowDefinitions="Auto,*" Margin="12">
         <TextBlock Text="Settings" FontSize="20"/>
         <ScrollViewer Grid.Row="1">
@@ -34,7 +38,7 @@
 
                 <Separator/>
                 <TextBlock Text="Filename Templates" FontWeight="SemiBold"/>
-                <TextBlock Text="{}Available tokens: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}" FontStyle="Italic"/>
+                <TextBlock Text="{StaticResource FilenameTokens}" FontStyle="Italic"/>
                 <StackPanel>
                     <TextBlock Text="Default Template"/>
                     <TextBox x:Name="FilenameTemplate"/>
@@ -75,7 +79,7 @@
                 </StackPanel>
 
                 <Separator/>
-                <TextBlock Text="Network &amp; Limits" FontWeight="SemiBold"/>
+                <TextBlock Text="Network and Limits" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <StackPanel Width="220">
                         <TextBlock Text="Network Timeout (seconds)"/>
