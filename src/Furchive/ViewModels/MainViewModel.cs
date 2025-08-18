@@ -611,8 +611,8 @@ public partial class MainViewModel : ObservableObject
                 BackgroundCachingItemsFetched = 0;
             });
 
-            // Fetch with small parallelism degree to speed up while being gentle on API
-            var degree = 2; // can make this a setting later
+            // Fetch with configurable small parallelism degree to speed up while being gentle on API
+            var degree = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchParallelism", 2), 1, 4);
             using var throttler = new SemaphoreSlim(degree);
             var tasks = new List<Task>();
             foreach (var p in pages)

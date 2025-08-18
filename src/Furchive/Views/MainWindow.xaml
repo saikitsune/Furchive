@@ -561,6 +561,12 @@
                 <TextBlock Text="{Binding StatusMessage}"/>
             </StatusBarItem>
             <StatusBarItem>
+                <StackPanel Orientation="Horizontal" Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="Searching:" Margin="0,0,6,0"/>
+                    <ProgressBar Width="120" Height="16" IsIndeterminate="True"/>
+                </StackPanel>
+            </StatusBarItem>
+            <StatusBarItem>
                 <StackPanel Orientation="Horizontal" Visibility="{Binding IsBackgroundCaching, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="Caching:" Margin="0,0,6,0"/>
                     <ProgressBar Width="140" Height="16" Minimum="0" Maximum="100" Value="{Binding BackgroundCachingPercent, Mode=OneWay}"/>

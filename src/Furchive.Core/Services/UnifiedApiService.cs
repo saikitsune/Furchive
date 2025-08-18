@@ -302,4 +302,15 @@ public class UnifiedApiService : IUnifiedApiService
             m?.Invoke(api, null);
         }
     }
+
+    // Lightweight metrics passthrough (used by Settings Admin view)
+    public object? GetE621CacheMetrics()
+    {
+        if (_platforms.TryGetValue("e621", out var api))
+        {
+            var m = api.GetType().GetMethod("GetCacheMetrics");
+            return m?.Invoke(api, null);
+        }
+        return null;
+    }
 }

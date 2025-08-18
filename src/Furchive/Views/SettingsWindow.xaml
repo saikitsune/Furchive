@@ -186,6 +186,11 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                     <TextBlock Text="(0-5)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
+                    <TextBlock Text="Prefetch parallelism:" VerticalAlignment="Center" Width="220"/>
+                    <TextBox Width="80" Text="{Binding E621SearchPrefetchParallelism, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="(1-4)" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
                     <TextBlock Text="Search results TTL (min):" VerticalAlignment="Center" Width="220"/>
                     <TextBox Width="80" Text="{Binding E621SearchTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621SearchCache_Click"/>
@@ -215,6 +220,17 @@ Placeholders: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_n
                     <TextBox Width="80" Text="{Binding E621PoolsTtlMinutes, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Clear" Margin="8,0,0,0" Click="ClearE621PoolDetailsCache_Click"/>
                 </StackPanel>
+            </StackPanel>
+
+            <Separator/>
+            <TextBlock Text="Admin" FontWeight="Bold" Margin="0,12,0,8"/>
+            <TextBlock FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="0,0,0,6"
+                       Text="Cache metrics help diagnose performance. Values reset on app restart."/>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="Refresh Cache Metrics" Command="{Binding RefreshCacheMetricsCommand}"/>
+                </StackPanel>
+                <TextBox Text="{Binding E621CacheMetricsText}" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Height="120"/>
             </StackPanel>
         </StackPanel>
     </ScrollViewer>
