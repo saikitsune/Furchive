@@ -35,9 +35,8 @@ function Get-ProjectVersion([string]$csprojPath) {
 $projectVersion = Get-ProjectVersion $appProj
 $effectiveVersion = $projectVersion
 if (-not [string]::IsNullOrWhiteSpace($Version) -and ($Version -ne $projectVersion)) {
-  Write-Warning "Provided -Version '$Version' differs from project version '$projectVersion'. Using project version to keep installer in sync."
+  Write-Warning "Provided -Version '$Version' differs from project version '$projectVersion'. Will use the app binary version to keep installer in sync."
 }
-Write-Host "Using version $effectiveVersion (project: $projectVersion)"
 
 # Ensure clean publish directory to avoid stale files
 if (Test-Path $publishDir) {
@@ -47,7 +46,25 @@ if (Test-Path $publishDir) {
 New-Item -ItemType Directory -Force -Path $publishDir | Out-Null
 
 Write-Host "Publishing app ($Configuration, $Runtime) to $publishDir..."
-& dotnet publish $appProj -c $Configuration -r $Runtime --self-contained true -p:PublishTrimmed=false -p:Version=$effectiveVersion -o $publishDir
+# Do not override version at publish time; let the project control the binary version
+& dotnet publish $appProj -c $Configuration -r $Runtime --self-contained true -p:PublishTrimmed=false -o $publishDir
+
+# After publish, read the actual app version from the produced EXE to ensure exact alignment
+$exePath = Join-Path $publishDir 'Furchive.exe'
+if (-not (Test-Path $exePath)) { throw "Published app not found: $exePath" }
+try {
+  $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
+  $binVer = $null
+  if ($fvi.FileVersion) { $binVer = $fvi.FileVersion }
+  if (-not $binVer -and $fvi.ProductVersion) { $binVer = $fvi.ProductVersion }
+  if ($binVer) {
+    # Normalize to digits and dots (strip possible metadata)
+    $norm = ($binVer -replace '[^0-9\.]', '')
+    if (-not [string]::IsNullOrWhiteSpace($norm)) { $effectiveVersion = $norm }
+  }
+} catch { }
+
+Write-Host "Using version $effectiveVersion (project: $projectVersion)"
 
 Write-Host "Compiling installer with Inno Setup..."
 # Download WebView2 Evergreen offline installer if not present.

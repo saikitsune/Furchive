@@ -57,6 +57,7 @@ public partial class ViewerWindow : Window
         _downloads = downloads;
         _settings = settings;
     _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) }; // retained if needed for future UI updates
+    try { this.UseLayoutRounding = true; } catch { }
         Loaded += (_, __) => ApplyStretch();
     this.Closed += ViewerWindow_Closed;
     // Defer wiring until controls are loaded
@@ -89,8 +90,8 @@ public partial class ViewerWindow : Window
                 // Improve scaling quality and cache for GPU pipeline
                 try
                 {
-                    System.Windows.Media.RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.Fant);
-                    img.CacheMode = new BitmapCache();
+                    System.Windows.Media.RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+                    img.SnapsToDevicePixels = true;
                 }
                 catch { }
                 // Mouse wheel zoom handled on ScrollViewer; panning handled via translate transform in preview handlers
@@ -99,6 +100,7 @@ public partial class ViewerWindow : Window
             var sv = FindName("contentScrollViewer") as System.Windows.Controls.ScrollViewer;
             if (sv != null)
             {
+                try { sv.UseLayoutRounding = true; } catch { }
                 sv.PreviewMouseLeftButtonDown += ContentScrollViewer_PreviewMouseLeftButtonDown;
                 sv.PreviewMouseLeftButtonUp += ContentScrollViewer_PreviewMouseLeftButtonUp;
                 sv.PreviewMouseMove += ContentScrollViewer_PreviewMouseMove;
@@ -114,6 +116,19 @@ public partial class ViewerWindow : Window
                     }
                 };
             }
+
+            // Ensure container also uses high-quality scaling
+            try
+            {
+                var imgBox = FindName("imageBox") as System.Windows.Controls.Viewbox;
+                if (imgBox != null)
+                {
+                    System.Windows.Media.RenderOptions.SetBitmapScalingMode(imgBox, BitmapScalingMode.HighQuality);
+                    imgBox.SnapsToDevicePixels = true;
+                    imgBox.UseLayoutRounding = true;
+                }
+            }
+            catch { }
 
             var zb = FindName("zoomButton") as System.Windows.Controls.Button;
             if (zb != null) zb.Click += (s, ev) => { try { var zp = FindName("zoomPopup") as System.Windows.Controls.Primitives.Popup; if (zp != null) zp.IsOpen = true; } catch { } };
@@ -532,30 +547,81 @@ public partial class ViewerWindow : Window
                 catch { }
             }
 
-            // If already downloaded to final location, prefer that; else use temp path
+            // Build best-quality-first candidates (always)
+            var candidates = await BuildBestUrlCandidatesAsync(item, ct);
+
+            // If already downloaded to final location, prefer that; else use temp path based on best candidate extension
             var localPath = GetDownloadedPathIfExists(item);
             if (string.IsNullOrEmpty(localPath))
-                localPath = GetTempPathFor(item);
+            {
+                var bestExt = TryGetExtensionFromUrl(candidates.FirstOrDefault()) ?? (string.IsNullOrWhiteSpace(item.FileExtension) ? "bin" : item.FileExtension);
+                localPath = GetTempPathForWithExt(item, bestExt);
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
 
-            // If already exists, use it immediately
             if (File.Exists(localPath))
             {
+                // Try to ensure the existing file is the best available by downloading the top candidate to a temp and replacing if it's larger/different
+                var best = candidates.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(best))
+                {
+                    var tmp = localPath + ".new";
+                    try
+                    {
+                        await DownloadToFileAsync(best!, tmp, p =>
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                overlayProgress.IsIndeterminate = false;
+                                overlayProgress.Value = p;
+                                overlayText.Text = $"Verifying {p:0}%";
+                            });
+                        }, ct);
+                        var oldSize = new FileInfo(localPath).Length;
+                        var newSize = new FileInfo(tmp).Length;
+                        // Replace if new file is significantly larger or sizes differ
+                        if (newSize > oldSize + 4096 || newSize != oldSize)
+                        {
+                            try { File.Copy(tmp, localPath, true); } catch { }
+                        }
+                    }
+                    catch { /* ignore verify failure */ }
+                    finally { try { if (File.Exists(tmp)) File.Delete(tmp); } catch { } }
+                }
                 _currentLocalPath = localPath;
             }
             else
             {
-                var remoteUrl = string.IsNullOrWhiteSpace(item.FullImageUrl) ? item.PreviewUrl : item.FullImageUrl;
-                await DownloadToFileAsync(remoteUrl, localPath, p =>
+                // No existing file: download in priority order
+                foreach (var url in candidates)
                 {
-                    Dispatcher.Invoke(() =>
+                    try
                     {
-            overlayProgress.IsIndeterminate = false;
-            overlayProgress.Value = p;
-            overlayText.Text = $"Downloading {p:0}%";
-                    });
-                }, ct);
-                _currentLocalPath = localPath;
+                        await DownloadToFileAsync(url, localPath, p =>
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                overlayProgress.IsIndeterminate = false;
+                                overlayProgress.Value = p;
+                                overlayText.Text = $"Downloading {p:0}%";
+                            });
+                        }, ct);
+                        _currentLocalPath = localPath;
+                        break;
+                    }
+                    catch (Exception)
+                    {
+                        try { if (File.Exists(localPath)) File.Delete(localPath); } catch { }
+                    }
+                }
+                if (string.IsNullOrWhiteSpace(_currentLocalPath))
+                {
+                    // Surface minimal error to user but keep UI stable
+                    overlayText.Text = "Failed to load image.";
+                    overlayProgress.IsIndeterminate = false;
+                    overlayProgress.Value = 0;
+                    return;
+                }
             }
 
             // Decide by actual local extension
@@ -699,6 +765,90 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
         catch { }
     }
 
+    private async Task<List<string>> BuildBestUrlCandidatesAsync(MediaItem item, CancellationToken ct)
+    {
+        var list = new List<string>();
+        try
+        {
+            // Always fetch latest details to get the true original URL
+            try
+            {
+                var details = await _api.GetMediaDetailsAsync(item.Source, item.Id);
+                if (details != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(details.FullImageUrl)) list.Add(details.FullImageUrl!);
+                    // Persist back to the item for subsequent operations
+                    if (!string.IsNullOrWhiteSpace(details.FullImageUrl)) item.FullImageUrl = details.FullImageUrl;
+                    if (!string.IsNullOrWhiteSpace(details.PreviewUrl) && string.IsNullOrWhiteSpace(item.PreviewUrl)) item.PreviewUrl = details.PreviewUrl;
+                    if (!string.IsNullOrWhiteSpace(details.FileExtension) && string.IsNullOrWhiteSpace(item.FileExtension)) item.FileExtension = details.FileExtension;
+                }
+            }
+            catch { }
+
+            // Include upgraded FullImageUrl if it looks like a sample/preview by mistake
+            if (!string.IsNullOrWhiteSpace(item.FullImageUrl))
+            {
+                var upFull = TryUpgradeE621ToOriginal(item.FullImageUrl!);
+                if (!string.IsNullOrWhiteSpace(upFull)) list.Add(upFull!);
+                list.Add(item.FullImageUrl!);
+            }
+
+            // If we have preview/sample, try to upgrade to original and include as fallback
+            if (!string.IsNullOrWhiteSpace(item.PreviewUrl))
+            {
+                var upgraded = TryUpgradeE621ToOriginal(item.PreviewUrl!);
+                if (!string.IsNullOrWhiteSpace(upgraded)) list.Add(upgraded!);
+                list.Add(item.PreviewUrl!);
+            }
+
+            // Deduplicate and normalize
+            list = list
+                .Select(u => NormalizeUrl(u))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch { }
+        return list;
+    }
+
+    private static string? TryUpgradeE621ToOriginal(string url)
+    {
+        try
+        {
+            // e621 preview URLs often contain '/preview/' and 'preview_' prefix
+            // sample URLs may contain '/sample/' and 'sample_' prefix
+            var u = url;
+            if (u.Contains("/data/preview/", StringComparison.OrdinalIgnoreCase))
+            {
+                u = u.Replace("/data/preview/", "/data/", StringComparison.OrdinalIgnoreCase);
+                var idx = u.LastIndexOf('/');
+                if (idx >= 0 && idx + 1 < u.Length)
+                {
+                    var path = u.Substring(0, idx + 1);
+                    var file = u.Substring(idx + 1);
+                    if (file.StartsWith("preview_", StringComparison.OrdinalIgnoreCase))
+                        u = path + file.Substring("preview_".Length);
+                }
+                return u;
+            }
+            if (u.Contains("/data/sample/", StringComparison.OrdinalIgnoreCase))
+            {
+                u = u.Replace("/data/sample/", "/data/", StringComparison.OrdinalIgnoreCase);
+                var idx = u.LastIndexOf('/');
+                if (idx >= 0 && idx + 1 < u.Length)
+                {
+                    var path = u.Substring(0, idx + 1);
+                    var file = u.Substring(idx + 1);
+                    if (file.StartsWith("sample_", StringComparison.OrdinalIgnoreCase))
+                        u = path + file.Substring("sample_".Length);
+                }
+                return u;
+            }
+        }
+        catch { }
+        return null;
+    }
+
     private static async Task EnsureWebView2InitializedAsync(WebView2 web)
     {
         // If already initialized, nothing to do
@@ -773,6 +923,15 @@ video{{width:100%;height:100%;object-fit:{fit};background:#000;}}
             return string.IsNullOrEmpty(ext) ? null : ext;
         }
         catch { return null; }
+    }
+
+    private string GetTempPathForWithExt(MediaItem item, string ext)
+    {
+        var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
+        var safeArtist = string.Join("_", (item.Artist ?? string.Empty).Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+        var safeTitle = string.Join("_", (item.Title ?? string.Empty).Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+        var file = $"{item.Source}_{item.Id}_{safeArtist}_{safeTitle}.{ext}";
+        return Path.Combine(tempDir, file);
     }
 
     private string? GetDownloadedPathIfExists(MediaItem item)
