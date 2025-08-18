@@ -13,6 +13,8 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Furchive.Avalonia.Messages;
 using Furchive.Avalonia.Infrastructure;
+using Avalonia;
+
 
 namespace Furchive.Avalonia.Views;
 
@@ -209,5 +211,30 @@ public partial class MainWindow : Window
         {
             try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.RetryDownloadAsync(job.Id); } catch { }
         }
+    }
+
+    private void OnTagChipPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not Control ctrl) return;
+            var tag = ctrl.DataContext as string;
+            if (string.IsNullOrWhiteSpace(tag)) return;
+            var props = e.GetCurrentPoint(ctrl);
+            if (props.Properties.IsRightButtonPressed)
+            {
+                // Right click → exclude
+                vm.AddExcludeTagCommand.Execute(tag);
+                e.Handled = true;
+            }
+            else if (props.Properties.IsLeftButtonPressed)
+            {
+                // Left click → include
+                vm.AddIncludeTagCommand.Execute(tag);
+                e.Handled = true;
+            }
+        }
+        catch { }
     }
 }

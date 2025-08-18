@@ -218,7 +218,13 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border CornerRadius="12" Background="#333" Padding="6,2" Margin="0,4,4,0">
+                                                    <Border CornerRadius="12"
+                                                            Background="#333"
+                                                            Padding="6,2"
+                                                            Margin="0,4,4,0"
+                                                            Cursor="Hand"
+                                                            PointerPressed="OnTagChipPointerPressed"
+                                                            ToolTip.Tip="Left-click: include tag • Right-click: exclude tag">
                                                         <TextBlock Text="{Binding .}"/>
                                                     </Border>
                                                 </DataTemplate>
