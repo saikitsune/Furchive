@@ -109,6 +109,10 @@
                     <TextBlock Text="Update Interval (minutes)"/>
                     <controls:NumericUpDown x:Name="PoolsUpdateIntervalMinutes" Minimum="5" Maximum="1440"/>
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Soft Refresh Pools" Click="OnSoftRefreshPools"/>
+                    <Button Content="Rebuild Pools Cache" Click="OnRebuildPoolsCache"/>
+                </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Content="Save" Click="OnSave"/>

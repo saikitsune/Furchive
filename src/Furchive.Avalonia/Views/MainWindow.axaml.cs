@@ -20,6 +20,10 @@ namespace Furchive.Avalonia.Views;
 public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _scrollDebounceTimer;
+    private ColumnDefinition? _leftCol;
+    private ColumnDefinition? _centerCol;
+    private ColumnDefinition? _rightCol;
+    private RowDefinition? _downloadsRow;
 
     public MainWindow()
     {
@@ -28,6 +32,40 @@ public partial class MainWindow : Window
         {
             DataContext = App.Services.GetRequiredService<MainViewModel>();
         }
+
+        // Set dynamic title with version: Furchive - VERSION
+        try
+        {
+            var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "";
+            this.Title = string.IsNullOrWhiteSpace(ver) ? "Furchive" : $"Furchive - {ver}";
+        }
+        catch { }
+
+        // Hook grid columns for persistence
+        try
+        {
+            var grid = this.FindControl<Grid>("MainColumnsGrid");
+            if (grid != null && grid.ColumnDefinitions?.Count >= 3)
+            {
+                _leftCol = grid.ColumnDefinitions[0];
+                _centerCol = grid.ColumnDefinitions[1];
+                _rightCol = grid.ColumnDefinitions[2];
+            }
+            RestoreSplitterSizes();
+        }
+        catch { }
+
+        // Hook downloads row for height persistence
+        try
+        {
+            var root = this.FindControl<Grid>("RootGrid");
+            if (root != null && root.RowDefinitions?.Count >= 4)
+            {
+                _downloadsRow = root.RowDefinitions[3];
+            }
+            RestoreDownloadsHeight();
+        }
+        catch { }
 
         _scrollDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _scrollDebounceTimer.Tick += async (_, __) =>
@@ -68,6 +106,25 @@ public partial class MainWindow : Window
             });
         }
         catch { }
+
+        // Auto-load pool when selection changes
+        try
+        {
+            if (DataContext is MainViewModel vm)
+            {
+        vm.PropertyChanged += async (_, args) =>
+                {
+                    if (args.PropertyName == nameof(MainViewModel.SelectedPool))
+                    {
+                        try { await vm.TriggerLoadSelectedPoolAsync(); } catch { }
+                    }
+                };
+            }
+        }
+        catch { }
+
+        // Persist sizes on close
+    this.Closing += (_, __) => { try { PersistSplitterSizes(); PersistDownloadsHeight(); } catch { } };
     }
 
     private async void OnOpenDownloads(object? sender, RoutedEventArgs e)
@@ -233,6 +290,56 @@ public partial class MainWindow : Window
                 vm.AddIncludeTagCommand.Execute(tag);
                 e.Handled = true;
             }
+        }
+        catch { }
+    }
+
+    private void RestoreSplitterSizes()
+    {
+        try
+        {
+            var settings = App.Services?.GetService<ISettingsService>();
+            if (settings == null || _leftCol == null || _rightCol == null) return;
+            var left = settings.GetSetting<double>("Ui.LeftPaneWidth", 260);
+            var right = settings.GetSetting<double>("Ui.RightPaneWidth", 360);
+            _leftCol.Width = new GridLength(Math.Max(180, left));
+            _rightCol.Width = new GridLength(Math.Max(300, right));
+            // Center takes the rest; no need to persist explicitly.
+        }
+        catch { }
+    }
+
+    private void PersistSplitterSizes()
+    {
+        try
+        {
+            var settings = App.Services?.GetService<ISettingsService>();
+            if (settings == null || _leftCol == null || _rightCol == null) return;
+            _ = settings.SetSettingAsync("Ui.LeftPaneWidth", _leftCol.ActualWidth);
+            _ = settings.SetSettingAsync("Ui.RightPaneWidth", _rightCol.ActualWidth);
+        }
+        catch { }
+    }
+
+    private void RestoreDownloadsHeight()
+    {
+        try
+        {
+            var settings = App.Services?.GetService<ISettingsService>();
+            if (settings == null || _downloadsRow == null) return;
+            var h = settings.GetSetting<double>("Ui.DownloadsHeight", 220);
+            _downloadsRow.Height = new GridLength(Math.Max(160, h));
+        }
+        catch { }
+    }
+
+    private void PersistDownloadsHeight()
+    {
+        try
+        {
+            var settings = App.Services?.GetService<ISettingsService>();
+            if (settings == null || _downloadsRow == null) return;
+            _ = settings.SetSettingAsync("Ui.DownloadsHeight", _downloadsRow.ActualHeight);
         }
         catch { }
     }

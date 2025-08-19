@@ -8,7 +8,7 @@
     x:Class="Furchive.Avalonia.Views.MainWindow"
     Width="1200" Height="800"
     WindowState="Maximized"
-    Title="Furchive (Avalonia Preview)"
+    Title="Furchive"
     mc:Ignorable="d">
     <Window.Resources>
         <cvt:DownloadEtaConverter x:Key="DownloadEta"/>
@@ -20,7 +20,7 @@
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
-    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto,*" ColumnDefinitions="*">
         <!-- Top header: use DockPanel to keep right actions anchored and avoid overlap -->
         <DockPanel Margin="8" LastChildFill="True">
             <StackPanel Orientation="Horizontal" Spacing="8" DockPanel.Dock="Right" HorizontalAlignment="Right">
@@ -42,22 +42,20 @@
             </WrapPanel>
         </DockPanel>
 
-        <Grid Grid.Row="1" Margin="8,0,8,0">
+    <Grid x:Name="MainColumnsGrid" Grid.Row="1" Margin="8,0,8,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="{Binding SelectedMedia, Converter={StaticResource NullToGridLength}, ConverterParameter=360}"/>
+        <ColumnDefinition Width="260"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="360"/>
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="Pools" FontWeight="Bold"/>
                     <TextBlock Text="{Binding PoolsStatusText}"/>
                     <ProgressBar Width="100" Height="10" Minimum="0" Maximum="100" IsVisible="{Binding IsPoolsLoading}" Value="{Binding PoolsProgressCurrent}"/>
-                    <Button Content="Rebuild Cache" Command="{Binding SoftRefreshPoolsCommand}"/>
                     <Button Content="Cancel" Command="{Binding CancelPoolsUpdateCommand}" IsVisible="{Binding IsPoolsLoading}"/>
                 </StackPanel>
                 <TextBox Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
-                <Button Content="Soft Refresh" Command="{Binding SoftRefreshPoolsCommand}"/>
         <!-- Limit to ~5 items tall with scroll -->
         <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}"
             MaxHeight="170"
@@ -72,7 +70,6 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Button Content="Load Pool" Command="{Binding LoadSelectedPoolCommand}"/>
                     <Button Content="📌 Pin" Command="{Binding PinSelectedPoolCommand}" IsVisible="{Binding ShowPinPoolButton}"/>
                 </StackPanel>
 
@@ -141,7 +138,7 @@
             </StackPanel>
 
             <Grid Grid.Column="1" RowDefinitions="Auto,*">
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                     <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
                     <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
                     <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
@@ -182,6 +179,11 @@
                     </ListBox>
                 </ScrollViewer>
             </Grid>
+
+            <!-- Splitter between left and center -->
+            <GridSplitter Grid.Column="0" HorizontalAlignment="Right" Width="4" Background="#444" ResizeDirection="Columns"/>
+            <!-- Splitter between center and right -->
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="4" Background="#444" ResizeDirection="Columns"/>
 
             <!-- Preview Pane -->
             <Border Grid.Column="2" Padding="8" IsVisible="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}">
@@ -241,8 +243,11 @@
                 </ScrollViewer>
             </Border>
         </Grid>
-        <!-- Downloads -->
-        <Border Grid.Row="2" Margin="8,8,8,8" Padding="6" BorderBrush="#333" BorderThickness="1">
+    <!-- Horizontal splitter above Downloads -->
+    <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#444" ResizeDirection="Rows"/>
+
+    <!-- Downloads -->
+    <Border x:Name="DownloadsPanel" Grid.Row="3" Margin="8,8,8,8" Padding="6" BorderBrush="#333" BorderThickness="1">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>

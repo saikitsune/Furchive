@@ -109,4 +109,14 @@ public partial class SettingsWindow : Window
         }
         catch { }
     }
+
+    private void OnSoftRefreshPools(object? sender, RoutedEventArgs e)
+    {
+        try { WeakReferenceMessenger.Default.Send(new PoolsSoftRefreshRequestedMessage(true)); } catch { }
+    }
+
+    private void OnRebuildPoolsCache(object? sender, RoutedEventArgs e)
+    {
+        try { WeakReferenceMessenger.Default.Send(new PoolsCacheRebuildRequestedMessage(true)); } catch { }
+    }
 }

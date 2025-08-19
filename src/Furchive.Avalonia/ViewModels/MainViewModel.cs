@@ -285,6 +285,8 @@ public partial class MainViewModel : ObservableObject
       HasNextPage = false; TotalCount = items.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); StatusMessage = $"Loaded pool {pool.Id}: {SearchResults.Count} items"; try { await PersistLastSessionAsync(); } catch { } }
     catch (Exception ex) { StatusMessage = $"Failed to load pool: {ex.Message}"; _logger.LogError(ex, "Pool load failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Load pool failed", ex.Message)); } catch { } }
       finally { IsSearching = false; } }
+
+    public Task TriggerLoadSelectedPoolAsync() => LoadSelectedPoolAsync(null);
     private async Task PerformPoolPageAsync(int poolId, int page, bool reset) { await Task.CompletedTask; }
     [RelayCommand] private async Task SoftRefreshPoolsAsync() { try { var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360)); await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes)); } catch (Exception ex) { _logger.LogWarning(ex, "Soft refresh pools failed"); } }
     private sealed class PoolsCache { public List<PoolInfo> Items { get; set; } = new(); public DateTime SavedAt { get; set; } }
