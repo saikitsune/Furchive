@@ -97,6 +97,22 @@ public partial class MainViewModel : ObservableObject
         // Pools: load from SQLite cache on startup; refresh only if empty
         // Synchronously load from SQLite so the list appears instantly; background work only if needed
         try { _cacheStore.InitializeAsync().GetAwaiter().GetResult(); } catch { }
+        // Migration guard: if DB has meta timestamp but zero pools, force a rebuild
+        try
+        {
+            var metaSaved = _cacheStore.GetPoolsSavedAtAsync().GetAwaiter().GetResult();
+            if (metaSaved.HasValue)
+            {
+                var existing = _cacheStore.GetAllPoolsAsync().GetAwaiter().GetResult() ?? new();
+                if (existing.Count == 0)
+                {
+                    _logger.LogInformation("Pools cache meta present but no pool rows found; auto-rebuilding cache");
+                    _poolsCacheLastSavedUtc = DateTime.MinValue; // ensure full refresh path
+                    _ = Task.Run(RefreshPoolsIfStaleAsync);
+                }
+            }
+        }
+        catch { }
         // Load pinned pools from SQLite
         try { var pinned = _cacheStore.GetPinnedPoolsAsync().GetAwaiter().GetResult() ?? new(); PinnedPools.Clear(); foreach (var p in pinned) PinnedPools.Add(p); } catch { }
         bool hadCachedStartup = false;
@@ -109,8 +125,8 @@ public partial class MainViewModel : ObservableObject
         }
         else
         {
-            // Cache exists -> kick a light incremental update in background
-            _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(5)));
+            // Cache exists -> kick a light incremental update in background only if we have a recent timestamp
+            _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360)))));
         }
         _ = RestoreLastSessionAsync();
     WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
@@ -302,8 +318,9 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var file = GetPoolsCacheFilePath();
-            if (File.Exists(file) && Pools.Any()) { return; }
+            // If DB already has pools loaded in-memory or on disk, skip full refresh
+            if (Pools.Any()) { return; }
+            try { var existing = await _cacheStore.GetAllPoolsAsync(); if (existing != null && existing.Any()) { Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in existing) { if (!p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0) Pools.Add(p); } ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; }); return; } } catch { }
             IsPoolsLoading = true;
             _poolsCts?.Cancel();
             _poolsCts = new CancellationTokenSource();

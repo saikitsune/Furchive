@@ -1,0 +1,141 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build-sln",
+			"type": "shell",
+			"command": "dotnet build .\\Furchive.sln -c Release",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-projects",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release; dotnet build .\\src\\Furchive.Core\\Furchive.Core.csproj -c Release",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-after-edits",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-after-fix",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-final",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "installer: build-inno",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\installer\\build-installer.ps1",
+				"-Configuration",
+				"Release",
+				"-Runtime",
+				"win-x64",
+				"-Version",
+				"1.0.0"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "build-after-sync-version",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-installer-after-iss-change",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-installer-1.0.6",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-installer-versioned",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-avalonia",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-avalonia-2",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "run: avalonia",
+			"type": "shell",
+			"command": "dotnet run --project .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Debug",
+			"isBackground": false
+		},
+		{
+			"label": "publish: all",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\publish-avalonia.ps1",
+				"-Configuration",
+				"Release"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-avalonia-after-guard",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-final",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		}
+	]
+}

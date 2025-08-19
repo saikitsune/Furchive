@@ -1,8 +1,5 @@
 ai/
-.vscode/
-docs/
 tests/
-OLDVERSION/
 **/installer/inno/output/
 
 # --- Standard .NET / Visual Studio build artifacts ---

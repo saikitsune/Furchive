@@ -74,9 +74,16 @@ CREATE TABLE IF NOT EXISTS pinned_pools (
         await using var conn = Create();
         await conn.OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // Replace the entire set to guarantee consistency
+        var del = conn.CreateCommand();
+        del.Transaction = (SqliteTransaction)tx;
+        del.CommandText = "DELETE FROM pools";
+        await del.ExecuteNonQueryAsync(ct);
+
         var cmd = conn.CreateCommand();
         cmd.Transaction = (SqliteTransaction)tx;
-        cmd.CommandText = "INSERT INTO pools(id,name,post_count) VALUES(@id,@name,@cnt) ON CONFLICT(id) DO UPDATE SET name=excluded.name, post_count=excluded.post_count";
+        cmd.CommandText = "INSERT INTO pools(id,name,post_count) VALUES(@id,@name,@cnt)";
         var pId = cmd.CreateParameter(); pId.ParameterName = "@id"; cmd.Parameters.Add(pId);
         var pName = cmd.CreateParameter(); pName.ParameterName = "@name"; cmd.Parameters.Add(pName);
         var pCnt = cmd.CreateParameter(); pCnt.ParameterName = "@cnt"; cmd.Parameters.Add(pCnt);
@@ -85,12 +92,14 @@ CREATE TABLE IF NOT EXISTS pinned_pools (
             pId.Value = p.Id; pName.Value = p.Name ?? string.Empty; pCnt.Value = p.PostCount;
             await cmd.ExecuteNonQueryAsync(ct);
         }
+
         // update meta timestamp
         var meta = conn.CreateCommand();
         meta.Transaction = (SqliteTransaction)tx;
         meta.CommandText = "INSERT INTO meta(key,value) VALUES('pools_saved_at', @v) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
         var v = meta.CreateParameter(); v.ParameterName = "@v"; v.Value = DateTime.UtcNow.ToString("O"); meta.Parameters.Add(v);
         await meta.ExecuteNonQueryAsync(ct);
+
         await tx.CommitAsync(ct);
     }
 
