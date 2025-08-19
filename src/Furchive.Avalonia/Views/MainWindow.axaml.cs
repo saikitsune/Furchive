@@ -13,6 +13,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Furchive.Avalonia.Messages;
 using Furchive.Avalonia.Infrastructure;
 using Avalonia;
+using Avalonia.Platform;
 
 
 namespace Furchive.Avalonia.Views;
@@ -28,6 +29,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+    // Ensure window icon is set from assets
+    try { this.Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Furchive/Assets/icon.ico"))); } catch { }
         if (App.Services != null)
         {
             DataContext = App.Services.GetRequiredService<MainViewModel>();
@@ -146,6 +149,29 @@ public partial class MainWindow : Window
                             }
                         }
                     };
+                }
+                catch { }
+
+                // Single-click to load a pinned pool
+                try
+                {
+                    var list = this.FindControl<ListBox>("PinnedPoolsList");
+                    if (list != null)
+                    {
+                        list.DoubleTapped -= OnPinnedPoolsDoubleTapped; // disable double-click behavior
+                        list.PointerReleased += (s, e) =>
+                        {
+                            try
+                            {
+                                if (e.InitialPressMouseButton != MouseButton.Left) return;
+                                var item = list.SelectedItem as PoolInfo;
+                                if (item == null) return;
+                                vm.LoadSelectedPoolCommand.Execute(item);
+                                e.Handled = true;
+                            }
+                            catch { }
+                        };
+                    }
                 }
                 catch { }
             }
@@ -385,5 +411,16 @@ public partial class MainWindow : Window
             _ = settings.SetSettingAsync("Ui.DownloadsHeight", _downloadsRow.ActualHeight);
         }
         catch { }
+    }
+
+    // Splitter drag completed handlers to persist immediately when user stops dragging
+    private void OnColumnSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        try { PersistSplitterSizes(); } catch { }
+    }
+
+    private void OnRowSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        try { PersistDownloadsHeight(); } catch { }
     }
 }

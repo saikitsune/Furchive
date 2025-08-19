@@ -35,5 +35,7 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  <!-- Make shared app icon available as an Avalonia resource -->
+  <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
   </ItemGroup>
 </Project>

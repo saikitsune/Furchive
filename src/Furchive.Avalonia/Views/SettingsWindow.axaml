@@ -2,8 +2,9 @@
     xmlns:controls="using:Avalonia.Controls"
     xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Furchive.Avalonia.Views.SettingsWindow"
-        Width="800" Height="600" Title="Settings">
+    x:Class="Furchive.Avalonia.Views.SettingsWindow"
+    Width="800" Height="600" Title="Settings"
+    Icon="avares://Furchive/Assets/icon.ico">
     <Window.Resources>
         <sys:String x:Key="FilenameTokens">Available tokens: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}</sys:String>
     </Window.Resources>

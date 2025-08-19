@@ -4,7 +4,8 @@
     xmlns:beh="using:Furchive.Avalonia.Behaviors"
     x:Class="Furchive.Avalonia.Views.ViewerWindow"
     x:Name="Root"
-    Width="1000" Height="800" Title="Viewer">
+    Width="1000" Height="800" Title="Viewer"
+    Icon="avares://Furchive/Assets/icon.ico">
     <Window.Resources>
         <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable"/>
         <cvt:ImageCacheConverter x:Key="ImageCache"/>

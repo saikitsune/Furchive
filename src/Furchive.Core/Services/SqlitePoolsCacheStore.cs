@@ -10,6 +10,8 @@ namespace Furchive.Core.Services;
 public sealed class SqlitePoolsCacheStore : IPoolsCacheStore
 {
     private readonly string _dbPath;
+    private readonly string _lastSessionDbPath;
+    private readonly string _pinnedPoolsDbPath;
     private readonly ILogger<SqlitePoolsCacheStore> _logger;
 
     public SqlitePoolsCacheStore(ILogger<SqlitePoolsCacheStore> logger)
@@ -17,13 +19,18 @@ public sealed class SqlitePoolsCacheStore : IPoolsCacheStore
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
         Directory.CreateDirectory(root);
         _dbPath = Path.Combine(root, "pools_cache.sqlite");
+        _lastSessionDbPath = Path.Combine(root, "last_session.sqlite");
+        _pinnedPoolsDbPath = Path.Combine(root, "pinned_pools.sqlite");
         _logger = logger;
     }
 
     private SqliteConnection Create() => new($"Data Source={_dbPath};Cache=Shared");
+    private SqliteConnection CreateLastSession() => new($"Data Source={_lastSessionDbPath};Cache=Shared");
+    private SqliteConnection CreatePinnedPools() => new($"Data Source={_pinnedPoolsDbPath};Cache=Shared");
 
     public async Task InitializeAsync(CancellationToken ct = default)
     {
+        // Main pools DB
         await using var conn = Create();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
@@ -45,13 +52,31 @@ CREATE TABLE IF NOT EXISTS pool_posts (
   file_ext TEXT,
   PRIMARY KEY (pool_id, post_id)
 );
+";
+        await cmd.ExecuteNonQueryAsync(ct);
+
+        // Last session DB
+        await using (var conn2 = CreateLastSession())
+        {
+            await conn2.OpenAsync(ct);
+            var cmd2 = conn2.CreateCommand();
+            cmd2.CommandText = @"CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);";
+            await cmd2.ExecuteNonQueryAsync(ct);
+        }
+
+        // Pinned pools DB
+        await using (var conn3 = CreatePinnedPools())
+        {
+            await conn3.OpenAsync(ct);
+            var cmd3 = conn3.CreateCommand();
+            cmd3.CommandText = @"
 CREATE TABLE IF NOT EXISTS pinned_pools (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     post_count INTEGER NOT NULL
-);
-";
-        await cmd.ExecuteNonQueryAsync(ct);
+);";
+            await cmd3.ExecuteNonQueryAsync(ct);
+        }
     }
 
     public async Task<List<PoolInfo>> GetAllPoolsAsync(CancellationToken ct = default)
@@ -181,7 +206,7 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
     // App state: LastSession JSON and PinnedPools
     public async Task SaveLastSessionAsync(string json, CancellationToken ct = default)
     {
-        await using var conn = Create();
+    await using var conn = CreateLastSession();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT INTO meta(key,value) VALUES('last_session', @v) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
@@ -191,7 +216,7 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
 
     public async Task<string?> LoadLastSessionAsync(CancellationToken ct = default)
     {
-        await using var conn = Create();
+    await using var conn = CreateLastSession();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT value FROM meta WHERE key='last_session'";
@@ -202,7 +227,7 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
     public async Task<List<PoolInfo>> GetPinnedPoolsAsync(CancellationToken ct = default)
     {
         var list = new List<PoolInfo>();
-        await using var conn = Create();
+    await using var conn = CreatePinnedPools();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT id, name, post_count FROM pinned_pools ORDER BY id";
@@ -216,7 +241,7 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
 
     public async Task SavePinnedPoolsAsync(IEnumerable<PoolInfo> pools, CancellationToken ct = default)
     {
-        await using var conn = Create();
+    await using var conn = CreatePinnedPools();
         await conn.OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         var del = conn.CreateCommand();

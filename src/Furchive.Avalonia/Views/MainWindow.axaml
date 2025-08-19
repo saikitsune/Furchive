@@ -9,6 +9,7 @@
     Width="1200" Height="800"
     WindowState="Maximized"
     Title="Furchive"
+    Icon="avares://Furchive/Assets/icon.ico"
     mc:Ignorable="d">
     <Window.Resources>
         <cvt:DownloadEtaConverter x:Key="DownloadEta"/>
@@ -127,8 +128,7 @@
                 <TextBlock Text="Pinned Pools" FontWeight="Bold" Margin="0,10,0,0"/>
                 <ListBox x:Name="PinnedPoolsList" ItemsSource="{Binding PinnedPools}"
                          MaxHeight="170"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         DoubleTapped="OnPinnedPoolsDoubleTapped">
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,2">
@@ -187,9 +187,9 @@
             </Grid>
 
             <!-- Splitter between left and center (invisible, still draggable) -->
-            <GridSplitter Grid.Column="0" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns"/>
+            <GridSplitter Grid.Column="0" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns" DragCompleted="OnColumnSplitterDragCompleted"/>
             <!-- Splitter between center and right (invisible, still draggable) -->
-            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns"/>
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns" DragCompleted="OnColumnSplitterDragCompleted"/>
 
             <!-- Preview Pane -->
             <Border Grid.Column="2" Padding="8" IsVisible="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}">
@@ -250,7 +250,7 @@
             </Border>
         </Grid>
     <!-- Horizontal splitter above Downloads (invisible, still draggable) -->
-    <GridSplitter Grid.Row="2" Height="2" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
+    <GridSplitter Grid.Row="2" Height="2" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows" DragCompleted="OnRowSplitterDragCompleted"/>
 
     <!-- Downloads -->
     <Border x:Name="DownloadsPanel" Grid.Row="3" Margin="8,8,8,8" Padding="6" BorderBrush="#333" BorderThickness="1">
