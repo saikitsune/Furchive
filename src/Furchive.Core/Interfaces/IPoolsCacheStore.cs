@@ -18,6 +18,7 @@ public interface IPoolsCacheStore
     // App state (moved from settings.json)
     Task SaveLastSessionAsync(string json, CancellationToken ct = default);
     Task<string?> LoadLastSessionAsync(CancellationToken ct = default);
+    Task ClearLastSessionAsync(CancellationToken ct = default);
     Task<List<PoolInfo>> GetPinnedPoolsAsync(CancellationToken ct = default);
     Task SavePinnedPoolsAsync(IEnumerable<PoolInfo> pools, CancellationToken ct = default);
 }

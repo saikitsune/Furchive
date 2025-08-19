@@ -209,6 +209,8 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
     await using var conn = CreateLastSession();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
+        cmd.CommandText = "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);";
+        await cmd.ExecuteNonQueryAsync(ct);
         cmd.CommandText = "INSERT INTO meta(key,value) VALUES('last_session', @v) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
         var p = cmd.CreateParameter(); p.ParameterName = "@v"; p.Value = json ?? string.Empty; cmd.Parameters.Add(p);
         await cmd.ExecuteNonQueryAsync(ct);
@@ -219,9 +221,22 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
     await using var conn = CreateLastSession();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
+        cmd.CommandText = "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);";
+        await cmd.ExecuteNonQueryAsync(ct);
         cmd.CommandText = "SELECT value FROM meta WHERE key='last_session'";
         var val = await cmd.ExecuteScalarAsync(ct) as string;
         return string.IsNullOrWhiteSpace(val) ? null : val;
+    }
+
+    public async Task ClearLastSessionAsync(CancellationToken ct = default)
+    {
+    await using var conn = CreateLastSession();
+        await conn.OpenAsync(ct);
+    var cmd = conn.CreateCommand();
+    cmd.CommandText = "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);";
+    await cmd.ExecuteNonQueryAsync(ct);
+        cmd.CommandText = "DELETE FROM meta WHERE key='last_session'";
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<List<PoolInfo>> GetPinnedPoolsAsync(CancellationToken ct = default)

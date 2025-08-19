@@ -115,7 +115,17 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay.IsChecked == true);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted.IsChecked == true);
             await _settings.SetSettingAsync("ViewerGpuAccelerationEnabled", ViewerGpuAccelerationEnabled.IsChecked == true);
-            await _settings.SetSettingAsync("LoadLastSessionEnabled", LoadLastSessionEnabled.IsChecked == true);
+            var loadLast = LoadLastSessionEnabled.IsChecked == true;
+            await _settings.SetSettingAsync("LoadLastSessionEnabled", loadLast);
+            if (!loadLast)
+            {
+                try
+                {
+                    var cache = App.Services?.GetService<IPoolsCacheStore>();
+                    if (cache != null) await cache.ClearLastSessionAsync();
+                }
+                catch { }
+            }
             // Advanced caches
             await _settings.SetSettingAsync("E621MaxPoolDetailConcurrency", Math.Clamp((int)(E621MaxPoolDetailConcurrency.Value ?? 16), 1, 16));
             await _settings.SetSettingAsync("E621CacheTtlMinutes.Search", Math.Clamp((int)(E621SearchTtlMinutes.Value ?? 10), 1, 1440));
@@ -285,7 +295,21 @@ public partial class SettingsWindow : Window
             if (!string.IsNullOrWhiteSpace(E621Key.Text)) creds["ApiKey"] = E621Key.Text!.Trim();
             var ok = await e621.AuthenticateAsync(creds);
             var health = await e621.GetHealthAsync();
-            var msg = health.IsAvailable ? ($"e621 {(health.IsAuthenticated ? "authenticated" : "reachable")}. RL remaining: {health.RateLimitRemaining}") : "e621 not reachable";
+            string msg;
+            if (!health.IsAvailable)
+            {
+                msg = "e621 not reachable";
+            }
+            else if (health.IsAuthenticated && ok)
+            {
+                var uname = (E621User.Text ?? string.Empty).Trim();
+                var ua = ComputedUserAgent.Text ?? string.Empty;
+                msg = $"e621 reachable and authenticated as {uname}\nUser-Agent: {ua}";
+            }
+            else
+            {
+                msg = "e621 reachable as Anon, not authenticated\nMake sure you're using both your Username and API Key as these are both needed to authenticate with the API";
+            }
             await DialogService.ShowInfoAsync(this, ok ? "Authenticated" : "Authentication", msg);
             if (ok && _settings != null)
             {

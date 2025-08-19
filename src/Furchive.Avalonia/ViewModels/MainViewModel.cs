@@ -26,6 +26,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IPlatformApi? _e621Platform;
 
     [ObservableProperty] private string _searchQuery = string.Empty;
+    partial void OnSearchQueryChanged(string value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
     [ObservableProperty] private bool _isE621Enabled = true;
     [ObservableProperty] private bool _isSearching = false;
     [ObservableProperty] private MediaItem? _selectedMedia;
@@ -37,6 +38,7 @@ public partial class MainViewModel : ObservableObject
     public int BackgroundCachingPercent => BackgroundCachingTotal <= 0 ? 0 : (int)Math.Round(100.0 * BackgroundCachingCurrent / (double)BackgroundCachingTotal);
     [ObservableProperty] private int _backgroundCachingItemsFetched = 0;
     [ObservableProperty] private int _ratingFilterIndex = 0;
+    partial void OnRatingFilterIndexChanged(int value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
 
     public ObservableCollection<MediaItem> SearchResults { get; } = new();
     public ObservableCollection<string> IncludeTags { get; } = new();
@@ -72,6 +74,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<SavedSearch> SavedSearches { get; } = new();
     public Dictionary<string, PlatformHealth> PlatformHealth { get; private set; } = new();
     [ObservableProperty] private int _currentPage = 1;
+    partial void OnCurrentPageChanged(int value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
     [ObservableProperty] private bool _hasNextPage = false;
     [ObservableProperty] private int _totalCount = 0;
     public bool CanGoPrev => CurrentPage > 1;
@@ -91,7 +94,7 @@ public partial class MainViewModel : ObservableObject
         foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
         _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
     LoadSettings();
-        GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
+    GalleryScale = _settingsService.GetSetting<double>("GalleryScale", 1.0);
         UpdateFavoritesVisibility();
         _ = Task.Run(() => AuthenticatePlatformsAsync(platformApis));
         _ = Task.Run(CheckPlatformHealthAsync);
@@ -135,7 +138,7 @@ public partial class MainViewModel : ObservableObject
     try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) { _ = RestoreLastSessionAsync(); } } catch { _ = RestoreLastSessionAsync(); }
     WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
-        WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", GalleryScale), 0.75, 1.5); } catch { } });
+    WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = _settingsService.GetSetting<double>("GalleryScale", GalleryScale); } catch { } });
         WeakReferenceMessenger.Default.Register<PoolsSoftRefreshRequestedMessage>(this, async (_, __) => { try { await SoftRefreshPoolsAsync(); } catch { } });
     }
 
@@ -175,10 +178,11 @@ public partial class MainViewModel : ObservableObject
         if (IsSearching) return;
         try { IsPoolMode = false; CurrentPoolId = null; await PerformSearchAsync(1, reset: true); }
     catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Search failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Search failed", ex.Message)); } catch { } }
+    finally { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     }
 
-    [RelayCommand] private async Task NextPageAsync() { if (!CanGoNext || IsSearching) return; try { if (IsPoolMode && CurrentPoolId.HasValue) { await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage + 1, reset: true); } else { await PerformSearchAsync(CurrentPage + 1, reset: true); } } catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Next page failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Next page failed", ex.Message)); } catch { } } }
-    [RelayCommand] private async Task PrevPageAsync() { if (!CanGoPrev || IsSearching) return; try { if (IsPoolMode && CurrentPoolId.HasValue) { await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage - 1, reset: true); } else { await PerformSearchAsync(CurrentPage - 1, reset: true); } } catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Prev page failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Prev page failed", ex.Message)); } catch { } } }
+    [RelayCommand] private async Task NextPageAsync() { if (!CanGoNext || IsSearching) return; try { if (IsPoolMode && CurrentPoolId.HasValue) { await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage + 1, reset: true); } else { await PerformSearchAsync(CurrentPage + 1, reset: true); } } catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Next page failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Next page failed", ex.Message)); } catch { } } finally { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
+    [RelayCommand] private async Task PrevPageAsync() { if (!CanGoPrev || IsSearching) return; try { if (IsPoolMode && CurrentPoolId.HasValue) { await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage - 1, reset: true); } else { await PerformSearchAsync(CurrentPage - 1, reset: true); } } catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Prev page failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Prev page failed", ex.Message)); } catch { } } finally { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
 
     private async Task PerformSearchAsync(int page, bool reset)
     {
@@ -196,6 +200,7 @@ public partial class MainViewModel : ObservableObject
             if (Dispatcher.UIThread.CheckAccess()) { foreach (var item in result.Items) { if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; } SearchResults.Add(item); } CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }
             else { await Dispatcher.UIThread.InvokeAsync(() => { foreach (var item in result.Items) { if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; } SearchResults.Add(item); } CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }); }
             var status = result.Errors.Any() ? $"Found {result.Items.Count} items with errors: {string.Join(", ", result.Errors.Keys)}" : $"Found {result.Items.Count} items"; if (Dispatcher.UIThread.CheckAccess()) StatusMessage = status; else await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = status);
+            try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
         }
         finally { if (Dispatcher.UIThread.CheckAccess()) IsSearching = false; else await Dispatcher.UIThread.InvokeAsync(() => IsSearching = false); }
     }
@@ -555,10 +560,10 @@ public partial class MainViewModel : ObservableObject
     private sealed class LastSession { public bool IsPoolMode { get; set; } public int? PoolId { get; set; } public string? SearchQuery { get; set; } public List<string> Include { get; set; } = new(); public List<string> Exclude { get; set; } = new(); public int RatingFilterIndex { get; set; } public int Page { get; set; } = 1; }
     public static (IEnumerable<string> include, IEnumerable<string> exclude) ParseQuery(string? query) { if (string.IsNullOrWhiteSpace(query)) return (Enumerable.Empty<string>(), Enumerable.Empty<string>()); var parts = query.Split(new[] { ' ', '\t', '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries); var include = new List<string>(); var exclude = new List<string>(); foreach (var raw in parts) { var t = raw.Trim(); if (t.StartsWith("-")) { t = t.Substring(1); if (!string.IsNullOrWhiteSpace(t)) exclude.Add(t); } else include.Add(t); } return (include, exclude); }
     public async Task<MediaItem?> FetchNextFromApiAsync(bool forward) { var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var (inc, exc) = ParseQuery(SearchQuery); var include = IncludeTags.Union(inc, StringComparer.OrdinalIgnoreCase).ToList(); var exclude = ExcludeTags.Union(exc, StringComparer.OrdinalIgnoreCase).ToList(); var page = Math.Max(1, CurrentPage + (forward ? 1 : -1)); var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) }); return result.Items.FirstOrDefault(); }
-    [RelayCommand] private void AddIncludeTag(string tag) { if (!string.IsNullOrWhiteSpace(tag) && !IncludeTags.Contains(tag)) { IncludeTags.Add(tag); } }
-    [RelayCommand] private void RemoveIncludeTag(string tag) { IncludeTags.Remove(tag); }
-    [RelayCommand] private void AddExcludeTag(string tag) { if (!string.IsNullOrWhiteSpace(tag) && !ExcludeTags.Contains(tag)) { ExcludeTags.Add(tag); } }
-    [RelayCommand] private void RemoveExcludeTag(string tag) { ExcludeTags.Remove(tag); }
+    [RelayCommand] private async Task AddIncludeTag(string tag) { if (!string.IsNullOrWhiteSpace(tag) && !IncludeTags.Contains(tag)) { IncludeTags.Add(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
+    [RelayCommand] private async Task RemoveIncludeTag(string tag) { IncludeTags.Remove(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
+    [RelayCommand] private async Task AddExcludeTag(string tag) { if (!string.IsNullOrWhiteSpace(tag) && !ExcludeTags.Contains(tag)) { ExcludeTags.Add(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
+    [RelayCommand] private async Task RemoveExcludeTag(string tag) { ExcludeTags.Remove(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     [RelayCommand] private async Task DownloadSelectedAsync() { if (SelectedMedia == null) return; try { var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"); var tempPath = GetTempPathFor(SelectedMedia); var finalPath = GenerateFinalPath(SelectedMedia, downloadPath); Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!); if (File.Exists(tempPath) && !File.Exists(finalPath)) { File.Move(tempPath, finalPath); StatusMessage = $"Saved from temp: {SelectedMedia.Title}"; OnPropertyChanged(nameof(IsSelectedDownloaded)); return; } await _downloadService.QueueDownloadAsync(SelectedMedia, downloadPath); StatusMessage = $"Queued download: {SelectedMedia.Title}"; } catch (Exception ex) { StatusMessage = $"Download failed: {ex.Message}"; _logger.LogError(ex, "Download failed for {Title}", SelectedMedia.Title); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Download failed", ex.Message)); } catch { } } }
     [RelayCommand] private async Task DownloadAllAsync() { if (!SearchResults.Any()) return; try { var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"); var toQueue = new List<MediaItem>(); foreach (var m in SearchResults) { var tempPath = GetTempPathFor(m); var finalPath = GenerateFinalPath(m, downloadPath); Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!); if (File.Exists(tempPath) && !File.Exists(finalPath)) { try { File.Move(tempPath, finalPath); } catch { toQueue.Add(m); } } else { toQueue.Add(m); } } if (toQueue.Any()) { if (IsPoolMode && CurrentPoolId.HasValue) { var label = SelectedPool?.Name ?? PreviewPoolName ?? "Pool"; await _downloadService.QueueAggregateDownloadsAsync("pool", toQueue, downloadPath, label); } else { await _downloadService.QueueMultipleDownloadsAsync(toQueue, downloadPath); } } StatusMessage = IsPoolMode ? $"Queued pool downloads ({SearchResults.Count} items)" : $"Queued {SearchResults.Count} downloads"; } catch (Exception ex) { StatusMessage = $"Batch download failed: {ex.Message}"; _logger.LogError(ex, "Batch download failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Batch download failed", ex.Message)); } catch { } } }
 
@@ -577,7 +582,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand] private async Task FavoritesAsync() { var user = _settingsService.GetSetting<string>("E621Username", "") ?? ""; if (string.IsNullOrWhiteSpace(user)) return; SearchQuery = $"fav:{user}"; IncludeTags.Clear(); ExcludeTags.Clear(); await SearchAsync(); }
     [RelayCommand] private async Task SaveSearchAsync() { var name = SaveSearchName?.Trim(); if (string.IsNullOrWhiteSpace(name)) return; var ss = new SavedSearch { Name = name, IncludeTags = IncludeTags.ToList(), ExcludeTags = ExcludeTags.ToList(), RatingFilterIndex = RatingFilterIndex, SearchQuery = SearchQuery }; var existing = SavedSearches.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)); if (existing != null) SavedSearches.Remove(existing); SavedSearches.Add(ss); await PersistSavedSearchesAsync(); SaveSearchName = string.Empty; }
     [RelayCommand] private async Task DeleteSavedSearchAsync(SavedSearch? ss) { if (ss == null) return; SavedSearches.Remove(ss); await PersistSavedSearchesAsync(); }
-    [RelayCommand] private async Task ApplySavedSearchAsync(SavedSearch? ss) { if (ss == null) return; IncludeTags.Clear(); foreach (var t in ss.IncludeTags) IncludeTags.Add(t); ExcludeTags.Clear(); foreach (var t in ss.ExcludeTags) ExcludeTags.Add(t); RatingFilterIndex = ss.RatingFilterIndex; SearchQuery = ss.SearchQuery ?? string.Empty; await SearchAsync(); }
+    [RelayCommand] private async Task ApplySavedSearchAsync(SavedSearch? ss) { if (ss == null) return; IncludeTags.Clear(); foreach (var t in ss.IncludeTags) IncludeTags.Add(t); ExcludeTags.Clear(); foreach (var t in ss.ExcludeTags) ExcludeTags.Add(t); RatingFilterIndex = ss.RatingFilterIndex; SearchQuery = ss.SearchQuery ?? string.Empty; await SearchAsync(); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     private async Task PersistSavedSearchesAsync() { try { var json = JsonSerializer.Serialize(SavedSearches.ToList()); await _settingsService.SetSettingAsync("SavedSearches", json); } catch { } }
 
     // Clears the current selection (bound to Esc)
