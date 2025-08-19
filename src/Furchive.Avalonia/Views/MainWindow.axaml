@@ -77,8 +77,8 @@
                 <!-- Include Tags -->
                 <TextBlock Text="Include Tags" FontWeight="Bold" Margin="0,10,0,0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBox x:Name="includeTagInput" Width="160" Watermark="tag"/>
-                    <Button Content="Add" Command="{Binding AddIncludeTagCommand}" CommandParameter="{Binding Path=Text, ElementName=includeTagInput}"/>
+                    <TextBox x:Name="includeTagInput" Width="160" Watermark="tag" KeyDown="OnIncludeTagKeyDown"/>
+                    <Button Content="Add" Click="OnAddIncludeTag"/>
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding IncludeTags}">
                     <ItemsControl.ItemTemplate>
@@ -93,8 +93,8 @@
                 <!-- Exclude Tags -->
                 <TextBlock Text="Exclude Tags" FontWeight="Bold" Margin="0,10,0,0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBox x:Name="excludeTagInput" Width="160" Watermark="-tag"/>
-                    <Button Content="Add" Command="{Binding AddExcludeTagCommand}" CommandParameter="{Binding Path=Text, ElementName=excludeTagInput}"/>
+                    <TextBox x:Name="excludeTagInput" Width="160" Watermark="-tag" KeyDown="OnExcludeTagKeyDown"/>
+                    <Button Content="Add" Click="OnAddExcludeTag"/>
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding ExcludeTags}">
                     <ItemsControl.ItemTemplate>
@@ -109,8 +109,8 @@
                 <!-- Saved Searches -->
                 <TextBlock Text="Saved Searches" FontWeight="Bold" Margin="0,10,0,0"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBox Width="160" Text="{Binding SaveSearchName, Mode=TwoWay}" Watermark="Name"/>
-                    <Button Content="Save" Command="{Binding SaveSearchCommand}"/>
+                    <TextBox x:Name="saveSearchInput" Width="160" Text="{Binding SaveSearchName, Mode=TwoWay}" Watermark="Name" KeyDown="OnSaveSearchKeyDown"/>
+                    <Button Content="Save" Click="OnSaveSearchClick"/>
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding SavedSearches}">
                     <ItemsControl.ItemTemplate>
@@ -148,7 +148,6 @@
                     <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
                     <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
                     <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
-                    <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
                 </StackPanel>
                 <ScrollViewer Grid.Row="1" ScrollChanged="OnGalleryScrollChanged">
                     <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" DoubleTapped="OnGalleryDoubleTapped" KeyDown="OnGalleryKeyDown">
@@ -162,20 +161,23 @@
                             <DataTemplate>
                                 <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
                                     <Grid RowDefinitions="Auto,Auto">
-                         <Image Stretch="UniformToFill"
+                                        <Image Stretch="UniformToFill"
                              Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
                              Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
                              beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
                                         <TextBlock FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">▶</TextBlock>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6">
-                                            <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="1" Margin="2,4,2,0">
+                                        <StackPanel Grid.Row="1" Margin="2,4,2,0" Spacing="2">
                                             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <TextBlock Text="{Binding Artist}" Foreground="Gray"/>
                                                 <TextBlock>·</TextBlock>
                                                 <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}"/>
+                                            </StackPanel>
+                                            <!-- ID and downloaded checkmark -->
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="ID:" Foreground="Gray"/>
+                                                <TextBlock Text="{Binding Id}"/>
+                                                <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </Grid>
@@ -196,9 +198,10 @@
                 <ScrollViewer DataContext="{Binding SelectedMedia}">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="Download" Command="{Binding DataContext.DownloadSelectedCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding .}"/>
+                            <Button Content="Open Browser" Click="OnOpenPreviewInBrowser" IsEnabled="{Binding .}"/>
+                            <Button Content="Open Viewer" Click="OnOpenPreviewInViewer" IsEnabled="{Binding .}"/>
                         </StackPanel>
-                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
+                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}" PointerPressed="OnPreviewImagePressed" Cursor="Hand"/>
                         <!-- Basic metadata -->
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding Artist}"/>

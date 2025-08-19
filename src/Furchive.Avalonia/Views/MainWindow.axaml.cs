@@ -14,6 +14,7 @@ using Furchive.Avalonia.Messages;
 using Furchive.Avalonia.Infrastructure;
 using Avalonia;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
 
 
 namespace Furchive.Avalonia.Views;
@@ -80,16 +81,22 @@ public partial class MainWindow : Window
             }
         };
 
-        // Keyboard shortcuts: Enter to search, Esc to clear selection
-        this.KeyDown += (s, e) =>
+        // Keyboard shortcuts: Enter to search, Esc to clear selection (but not while typing in text inputs)
+    this.KeyDown += (s, e) =>
         {
             try
             {
                 if (DataContext is not MainViewModel vm) return;
                 if (e.Key == Key.Enter)
                 {
-                    vm.SearchCommand.Execute(null);
-                    e.Handled = true;
+            // Avoid intercepting Enter when a TextBox has focus
+            var top = TopLevel.GetTopLevel(this);
+            var focused = top?.FocusManager?.GetFocusedElement();
+            if (focused is not TextBox)
+                    {
+                        vm.SearchCommand.Execute(null);
+                        e.Handled = true;
+                    }
                 }
                 else if (e.Key == Key.Escape)
                 {
@@ -215,6 +222,42 @@ public partial class MainWindow : Window
                 try { App.Services?.GetService<IPlatformShellService>()?.OpenPath(path); } catch { }
             }
         }
+    }
+
+    // Preview panel: open actions
+    private void OnOpenPreviewInBrowser(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm || vm.SelectedMedia is null) return;
+            var url = string.IsNullOrWhiteSpace(vm.SelectedMedia.SourceUrl) ? vm.SelectedMedia.FullImageUrl : vm.SelectedMedia.SourceUrl;
+            if (!string.IsNullOrWhiteSpace(url)) App.Services?.GetService<IPlatformShellService>()?.OpenUrl(url);
+        }
+        catch { }
+    }
+
+    private async void OnOpenPreviewInViewer(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm || vm.SelectedMedia is null) return;
+            var viewer = new ViewerWindow { DataContext = vm.SelectedMedia };
+            await viewer.ShowDialog(this);
+        }
+        catch { }
+    }
+
+    private void OnPreviewImagePressed(object? sender, PointerPressedEventArgs e)
+    {
+        try
+        {
+            if (sender is Visual vis && e.GetCurrentPoint(vis).Properties.IsLeftButtonPressed)
+            {
+                OnOpenPreviewInViewer(null, new RoutedEventArgs());
+                e.Handled = true;
+            }
+        }
+        catch { }
     }
 
     private void OnOpenDownloadedFolder(object? sender, RoutedEventArgs e)
@@ -361,6 +404,78 @@ public partial class MainWindow : Window
             }
         }
         catch { }
+    }
+
+    // Include/Exclude tag submit helpers
+    private void OnAddIncludeTag(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            var tb = this.FindControl<TextBox>("includeTagInput");
+            var tag = tb?.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                vm.AddIncludeTagCommand.Execute(tag);
+                tb!.Text = string.Empty;
+            }
+        }
+        catch { }
+    }
+
+    private void OnIncludeTagKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            OnAddIncludeTag(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+    }
+
+    private void OnAddExcludeTag(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            var tb = this.FindControl<TextBox>("excludeTagInput");
+            var tag = tb?.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                vm.AddExcludeTagCommand.Execute(tag);
+                tb!.Text = string.Empty;
+            }
+        }
+        catch { }
+    }
+
+    private void OnExcludeTagKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            OnAddExcludeTag(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+    }
+
+    private void OnSaveSearchClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            vm.SaveSearchCommand.Execute(null);
+            var tb = this.FindControl<TextBox>("saveSearchInput");
+            if (tb != null) tb.Text = string.Empty;
+        }
+        catch { }
+    }
+
+    private void OnSaveSearchKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            OnSaveSearchClick(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
     }
 
     private void RestoreSplitterSizes()

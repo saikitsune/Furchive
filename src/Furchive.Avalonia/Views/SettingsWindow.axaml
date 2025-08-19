@@ -28,6 +28,23 @@
                     </StackPanel>
                 </StackPanel>
                 <Separator/>
+                <TextBlock Text="Filename Templates" FontWeight="SemiBold"/>
+                <TextBlock Text="{StaticResource FilenameTokens}" FontStyle="Italic"/>
+                <StackPanel>
+                    <TextBlock Text="Default Template"/>
+                    <TextBox x:Name="FilenameTemplate"/>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Pool Template"/>
+                    <TextBox x:Name="PoolFilenameTemplate"/>
+                </StackPanel>
+                </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Auth">
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="0,8,0,0">
                 <TextBlock Text="e621 Credentials" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <StackPanel Width="300">
@@ -46,19 +63,7 @@
                     <TextBlock Text="User-Agent"/>
                     <TextBox x:Name="ComputedUserAgent" IsReadOnly="True"/>
                 </StackPanel>
-
-                <Separator/>
-                <TextBlock Text="Filename Templates" FontWeight="SemiBold"/>
-                <TextBlock Text="{StaticResource FilenameTokens}" FontStyle="Italic"/>
-                <StackPanel>
-                    <TextBlock Text="Default Template"/>
-                    <TextBox x:Name="FilenameTemplate"/>
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="Pool Template"/>
-                    <TextBox x:Name="PoolFilenameTemplate"/>
-                </StackPanel>
-                </StackPanel>
+                        </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
@@ -136,9 +141,12 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <TextBlock Text="Gallery item scale" Width="160" VerticalAlignment="Center"/>
-                    <Slider x:Name="GalleryScale" Minimum="0.75" Maximum="1.5" TickFrequency="0.05" Width="220"/>
+                    <Slider x:Name="GalleryScale" Minimum="0.5" Maximum="2.0" TickFrequency="0.05" Width="220"/>
                     <TextBlock Text="x"/>
                     <TextBlock Text="{Binding #GalleryScale.Value}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <CheckBox x:Name="LoadLastSessionEnabled" Content="Load last session on startup"/>
                 </StackPanel>
                 <Separator/>
                 <TextBlock Text="Viewer" FontWeight="SemiBold"/>

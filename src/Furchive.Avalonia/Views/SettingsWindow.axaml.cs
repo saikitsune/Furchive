@@ -59,7 +59,8 @@ public partial class SettingsWindow : Window
         catch { ThemeMode.SelectedIndex = 0; }
 
         // Gallery scale
-        try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
+    try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
+    try { LoadLastSessionEnabled.IsChecked = _settings?.GetSetting<bool>("LoadLastSessionEnabled", true) ?? true; } catch { LoadLastSessionEnabled.IsChecked = true; }
         // Computed UA
         try
         {
@@ -114,6 +115,7 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay.IsChecked == true);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted.IsChecked == true);
             await _settings.SetSettingAsync("ViewerGpuAccelerationEnabled", ViewerGpuAccelerationEnabled.IsChecked == true);
+            await _settings.SetSettingAsync("LoadLastSessionEnabled", LoadLastSessionEnabled.IsChecked == true);
             // Advanced caches
             await _settings.SetSettingAsync("E621MaxPoolDetailConcurrency", Math.Clamp((int)(E621MaxPoolDetailConcurrency.Value ?? 16), 1, 16));
             await _settings.SetSettingAsync("E621CacheTtlMinutes.Search", Math.Clamp((int)(E621SearchTtlMinutes.Value ?? 10), 1, 1440));

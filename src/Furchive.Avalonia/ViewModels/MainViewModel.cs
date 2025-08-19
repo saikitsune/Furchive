@@ -131,7 +131,8 @@ public partial class MainViewModel : ObservableObject
             // Cache exists -> kick a light incremental update in background only if we have a recent timestamp
             _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360)))));
         }
-        _ = RestoreLastSessionAsync();
+    // Restore last session only if enabled in settings
+    try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) { _ = RestoreLastSessionAsync(); } } catch { _ = RestoreLastSessionAsync(); }
     WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
         WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", GalleryScale), 0.75, 1.5); } catch { } });
@@ -474,7 +475,7 @@ public partial class MainViewModel : ObservableObject
                 try { await _cacheStore.UpsertPoolPostsAsync(pool.Id, items); } catch { }
             }
 
-            try { await PersistLastSessionAsync(); } catch { }
+            try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
         }
         catch (Exception ex)
         {
