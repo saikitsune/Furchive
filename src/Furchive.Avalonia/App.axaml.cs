@@ -72,6 +72,7 @@ public partial class App : Application
             services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
             services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
             services.AddSingleton<IPlatformShellService, PlatformShellService>();
+            services.AddSingleton<IPoolsCacheStore, SqlitePoolsCacheStore>();
             services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
             services.AddTransient<IPlatformApi>(sp =>
             {

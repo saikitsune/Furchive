@@ -13,6 +13,7 @@
   <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.7" />
   </ItemGroup>
 
   <!-- Exclude deprecated platform files (e621-only scope) -->

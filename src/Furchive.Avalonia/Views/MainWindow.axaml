@@ -125,7 +125,7 @@
 
                 <!-- Pinned Pools -->
                 <TextBlock Text="Pinned Pools" FontWeight="Bold" Margin="0,10,0,0"/>
-                <ListBox ItemsSource="{Binding PinnedPools}"
+                <ListBox x:Name="PinnedPoolsList" ItemsSource="{Binding PinnedPools}"
                          MaxHeight="170"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          DoubleTapped="OnPinnedPoolsDoubleTapped">
@@ -186,10 +186,10 @@
                 </ScrollViewer>
             </Grid>
 
-            <!-- Splitter between left and center -->
-            <GridSplitter Grid.Column="0" HorizontalAlignment="Right" Width="4" Background="#444" ResizeDirection="Columns"/>
-            <!-- Splitter between center and right -->
-            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="4" Background="#444" ResizeDirection="Columns"/>
+            <!-- Splitter between left and center (invisible, still draggable) -->
+            <GridSplitter Grid.Column="0" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns"/>
+            <!-- Splitter between center and right (invisible, still draggable) -->
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns"/>
 
             <!-- Preview Pane -->
             <Border Grid.Column="2" Padding="8" IsVisible="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}">
@@ -249,8 +249,8 @@
                 </ScrollViewer>
             </Border>
         </Grid>
-    <!-- Horizontal splitter above Downloads -->
-    <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#444" ResizeDirection="Rows"/>
+    <!-- Horizontal splitter above Downloads (invisible, still draggable) -->
+    <GridSplitter Grid.Row="2" Height="2" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows"/>
 
     <!-- Downloads -->
     <Border x:Name="DownloadsPanel" Grid.Row="3" Margin="8,8,8,8" Padding="6" BorderBrush="#333" BorderThickness="1">

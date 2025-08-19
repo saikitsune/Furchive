@@ -107,7 +107,7 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        // Auto-load pool when selection changes
+        // Auto-load pool when selection changes; auto-scroll pinned list on add
         try
         {
             if (DataContext is MainViewModel vm)
@@ -119,6 +119,35 @@ public partial class MainWindow : Window
                         try { await vm.TriggerLoadSelectedPoolAsync(); } catch { }
                     }
                 };
+
+                // Watch pinned pools collection changes to scroll to bottom
+                try
+                {
+                    vm.PinnedPools.CollectionChanged += (_, e) =>
+                    {
+                        if (e?.NewItems != null && e.NewItems.Count > 0)
+                        {
+                            var list = this.FindControl<ListBox>("PinnedPoolsList");
+                            if (list?.Items != null)
+                            {
+                                // Defer until layout updated
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    try
+                                    {
+                                        var last = vm.PinnedPools.LastOrDefault();
+                                        if (last != null)
+                                        {
+                                            list.ScrollIntoView(last);
+                                        }
+                                    }
+                                    catch { }
+                                }, DispatcherPriority.Background);
+                            }
+                        }
+                    };
+                }
+                catch { }
             }
         }
         catch { }
