@@ -36,7 +36,6 @@ public partial class SettingsWindow : Window
         DownloadDir.Text = _settings?.GetSetting<string>("DefaultDownloadDirectory", fallback) ?? fallback;
         E621User.Text = _settings?.GetSetting<string>("E621Username", "") ?? "";
         E621Key.Text = _settings?.GetSetting<string>("E621ApiKey", "") ?? "";
-        CustomUserAgent.Text = _settings?.GetSetting<string>("CustomUserAgent", "") ?? "";
         FilenameTemplate.Text = _settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}";
         PoolFilenameTemplate.Text = _settings?.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
         try { PrefetchPagesAhead.Value = _settings?.GetSetting<int>("E621SearchPrefetchPagesAhead", 2) ?? 2; } catch { PrefetchPagesAhead.Value = 2; }
@@ -66,8 +65,8 @@ public partial class SettingsWindow : Window
         {
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
             var user = _settings?.GetSetting<string>("E621Username", "") ?? "";
-            var contact = string.IsNullOrWhiteSpace(user) ? (Environment.UserName ?? "Anon") : user.Trim();
-            ComputedUserAgent.Text = _settings?.GetSetting<string>("CustomUserAgent", $"Furchive/{version} (by {contact})") ?? $"Furchive/{version} (by {contact})";
+            var contact = string.IsNullOrWhiteSpace(user) ? "Anon" : user.Trim();
+            ComputedUserAgent.Text = $"Furchive/{version} (by {contact})";
         }
         catch { }
 
@@ -90,7 +89,7 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("DefaultDownloadDirectory", DownloadDir.Text ?? string.Empty);
             await _settings.SetSettingAsync("E621Username", E621User.Text ?? string.Empty);
             await _settings.SetSettingAsync("E621ApiKey", E621Key.Text ?? string.Empty);
-            await _settings.SetSettingAsync("CustomUserAgent", CustomUserAgent.Text ?? string.Empty);
+            // UA is computed; nothing to save here
             await _settings.SetSettingAsync("FilenameTemplate", FilenameTemplate.Text ?? string.Empty);
             await _settings.SetSettingAsync("PoolFilenameTemplate", PoolFilenameTemplate.Text ?? string.Empty);
             await _settings.SetSettingAsync("E621SearchPrefetchPagesAhead", (int)(PrefetchPagesAhead.Value ?? 2));
@@ -272,21 +271,20 @@ public partial class SettingsWindow : Window
         catch { }
     }
 
-    private async void OnTestE621(object? sender, RoutedEventArgs e)
+    private async void OnAuthenticateE621(object? sender, RoutedEventArgs e)
     {
         try
         {
-            // Best-effort health via IPlatformApi if accessible through unified service registration
             var apis = App.Services?.GetServices<IPlatformApi>();
             var e621 = apis?.FirstOrDefault(p => p.PlatformName == "e621");
             if (e621 == null) return;
             var creds = new Dictionary<string, string> { ["UserAgent"] = ComputedUserAgent.Text ?? string.Empty };
             if (!string.IsNullOrWhiteSpace(E621User.Text)) creds["Username"] = E621User.Text!.Trim();
             if (!string.IsNullOrWhiteSpace(E621Key.Text)) creds["ApiKey"] = E621Key.Text!.Trim();
-            await e621.AuthenticateAsync(creds);
+            var ok = await e621.AuthenticateAsync(creds);
             var health = await e621.GetHealthAsync();
             var msg = health.IsAvailable ? ($"e621 {(health.IsAuthenticated ? "authenticated" : "reachable")}. RL remaining: {health.RateLimitRemaining}") : "e621 not reachable";
-            await DialogService.ShowInfoAsync(this, "e621", msg);
+            await DialogService.ShowInfoAsync(this, ok ? "Authenticated" : "Authentication", msg);
         }
         catch { }
     }

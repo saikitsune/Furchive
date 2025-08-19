@@ -124,7 +124,7 @@ public partial class MainViewModel : ObservableObject
 
     private async Task AuthenticatePlatformsAsync(IEnumerable<IPlatformApi> platformApis)
     {
-    string BuildUa() { var custom = _settingsService.GetSetting<string>("CustomUserAgent", "") ?? ""; if (!string.IsNullOrWhiteSpace(custom)) return custom; var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0"; var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim(); return $"Furchive/{version} (by {uname})"; }
+    string BuildUa() { var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0"; var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim(); return $"Furchive/{version} (by {uname})"; }
     var ua = BuildUa(); var euser = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? "";
         foreach (var p in platformApis)
         {
@@ -223,7 +223,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     private async Task EnsureE621AuthAsync()
-    { try { if (_e621Platform == null) return; string BuildUa() { var custom = _settingsService.GetSetting<string>("CustomUserAgent", "") ?? ""; if (!string.IsNullOrWhiteSpace(custom)) return custom; var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0"; var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim(); return $"Furchive/{version} (by {uname})"; } var ua = BuildUa(); var euser = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? ""; var creds = new Dictionary<string, string> { ["UserAgent"] = ua }; if (!string.IsNullOrWhiteSpace(euser)) creds["Username"] = euser; if (!string.IsNullOrWhiteSpace(ekey)) creds["ApiKey"] = ekey; await _e621Platform.AuthenticateAsync(creds); } catch { } }
+    { try { if (_e621Platform == null) return; string BuildUaLocal() { var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0"; var euserLocal = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var uname = string.IsNullOrWhiteSpace(euserLocal) ? "Anon" : euserLocal.Trim(); return $"Furchive/{version} (by {uname})"; } var ua = BuildUaLocal(); var euser = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var ekey = _settingsService.GetSetting<string>("E621ApiKey", "")?.Trim() ?? ""; var creds = new Dictionary<string, string> { ["UserAgent"] = ua }; if (!string.IsNullOrWhiteSpace(euser)) creds["Username"] = euser; if (!string.IsNullOrWhiteSpace(ekey)) creds["ApiKey"] = ekey; await _e621Platform.AuthenticateAsync(creds); } catch { } }
 
     private async Task EnsurePreviewPoolInfoAsync(MediaItem? item)
     {
