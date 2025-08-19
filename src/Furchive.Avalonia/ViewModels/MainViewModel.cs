@@ -99,13 +99,26 @@ public partial class MainViewModel : ObservableObject
         _ = Task.Run(async () =>
         {
             try { await _cacheStore.InitializeAsync(); } catch { }
-            try { await LoadPoolsFromDbAsync(); }
+            bool hadCached = false;
+            try { hadCached = await LoadPoolsFromDbAsync(); }
             catch { }
-            try { if (!Pools.Any()) { await RefreshPoolsIfStaleAsync(); } }
-            catch (Exception ex) { _logger.LogWarning(ex, "Pools refresh on missing cache failed"); }
+            try
+            {
+                if (!hadCached)
+                {
+                    // No cache available -> do initial full fetch once
+                    await RefreshPoolsIfStaleAsync();
+                }
+                else
+                {
+                    // Cache exists -> only do a small incremental update in background
+                    _ = IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(5));
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Pools refresh/incremental on startup failed"); }
         });
         _ = RestoreLastSessionAsync();
-    WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
+    WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
         WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", GalleryScale), 0.75, 1.5); } catch { } });
         WeakReferenceMessenger.Default.Register<PoolsSoftRefreshRequestedMessage>(this, async (_, __) => { try { await SoftRefreshPoolsAsync(); } catch { } });
@@ -264,7 +277,7 @@ public partial class MainViewModel : ObservableObject
     private async Task PersistPinnedPoolsAsync() { try { var json = JsonSerializer.Serialize(PinnedPools.ToList()); await _settingsService.SetSettingAsync("PinnedPools", json); } catch { } }
     private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "e621_pools.json");
 
-    private async Task LoadPoolsFromDbAsync()
+    private async Task<bool> LoadPoolsFromDbAsync()
     {
         try
         {
@@ -283,9 +296,11 @@ public partial class MainViewModel : ObservableObject
                 });
                 var saved = await _cacheStore.GetPoolsSavedAtAsync();
                 _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow.AddDays(-7);
+                return true;
             }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to load pools from DB"); }
+        return false;
     }
 
     private async Task RefreshPoolsIfStaleAsync()
