@@ -54,10 +54,21 @@ internal sealed class FileLogger : ILogger
             sb.AppendLine(exception.ToString());
         }
         var line = sb.ToString();
-        lock (_lock)
+        try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.AppendAllText(_path, line);
+            lock (_lock)
+            {
+                var dir = Path.GetDirectoryName(_path);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    try { Directory.CreateDirectory(dir); } catch { /* ignore */ }
+                }
+                try { File.AppendAllText(_path, line); } catch { /* ignore */ }
+            }
+        }
+        catch
+        {
+            // never let logging crash the app
         }
     }
 
