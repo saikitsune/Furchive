@@ -65,6 +65,7 @@ public partial class MainViewModel : ObservableObject
     public bool ShowPinPoolButton => IsPoolMode && SelectedPool != null && !PinnedPools.Any(p => p.Id == SelectedPool.Id);
     private HashSet<int> _excludedPoolIds = new();
     private CancellationTokenSource? _poolsCts;
+    private bool _rebuildScheduled = false;
 
     public partial class SavedSearch { public string Name { get; set; } = string.Empty; public List<string> IncludeTags { get; set; } = new(); public List<string> ExcludeTags { get; set; } = new(); public int RatingFilterIndex { get; set; } public string? SearchQuery { get; set; } }
     [ObservableProperty] private string _saveSearchName = string.Empty;
@@ -108,6 +109,8 @@ public partial class MainViewModel : ObservableObject
                 {
                     _logger.LogInformation("Pools cache meta present but no pool rows found; auto-rebuilding cache");
                     _poolsCacheLastSavedUtc = DateTime.MinValue; // ensure full refresh path
+                    _rebuildScheduled = true;
+                    try { Dispatcher.UIThread.Post(() => PoolsStatusText = "pools cache invalid — rebuilding…"); } catch { }
                     _ = Task.Run(RefreshPoolsIfStaleAsync);
                 }
             }
@@ -120,8 +123,8 @@ public partial class MainViewModel : ObservableObject
         catch { }
         if (!hadCachedStartup)
         {
-            // No cache -> do first-time full fetch (async)
-            _ = Task.Run(RefreshPoolsIfStaleAsync);
+            // No cache -> do first-time full fetch (async) unless already scheduled by guard
+            if (!_rebuildScheduled) _ = Task.Run(RefreshPoolsIfStaleAsync);
         }
         else
         {
@@ -332,8 +335,9 @@ public partial class MainViewModel : ObservableObject
             });
             var list = await _apiService.GetPoolsAsync("e621", progress, _poolsCts.Token);
             list = list.Where(p => !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0).ToList();
-            Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in list) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; });
-            try { await _cacheStore.UpsertPoolsAsync(Pools.ToList(), CancellationToken.None); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow; } catch { }
+            var snapshot = list.ToList();
+            Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in snapshot) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; });
+            try { await _cacheStore.UpsertPoolsAsync(snapshot, CancellationToken.None); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow; } catch { }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to refresh pools"); }
         finally { IsPoolsLoading = false; }
@@ -348,20 +352,22 @@ public partial class MainViewModel : ObservableObject
             var since = _poolsCacheLastSavedUtc == DateTime.MinValue ? DateTime.UtcNow.AddDays(-7) : _poolsCacheLastSavedUtc;
             var updates = await _apiService.GetPoolsUpdatedSinceAsync("e621", since);
             if (updates == null || updates.Count == 0) { PoolsStatusText = $"{Pools.Count} pools"; return; }
+            // Build the updated list first, then write it to DB and UI
+            var current = Pools.ToDictionary(p => p.Id);
+            foreach (var u in updates)
+            {
+                if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0) { current[u.Id] = u; }
+                else { current.Remove(u.Id); }
+            }
+            var updated = current.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
             Dispatcher.UIThread.Post(() =>
             {
-                var map = Pools.ToDictionary(p => p.Id);
-                foreach (var u in updates)
-                {
-                    if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0) { map[u.Id] = u; }
-                    else { map.Remove(u.Id); }
-                }
                 Pools.Clear();
-                foreach (var p in map.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)) Pools.Add(p);
+                foreach (var p in updated) Pools.Add(p);
                 ApplyPoolsFilter();
                 PoolsStatusText = $"{Pools.Count} pools";
             });
-            try { await _cacheStore.UpsertPoolsAsync(Pools.ToList(), CancellationToken.None); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow; } catch { }
+            try { await _cacheStore.UpsertPoolsAsync(updated, CancellationToken.None); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow; } catch { }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Incremental pool update failed"); }
         finally { /* no auto-reschedule; run only when explicitly requested */ }
