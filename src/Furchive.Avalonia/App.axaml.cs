@@ -25,7 +25,7 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override async void OnFrameworkInitializationCompleted()
+    public override void OnFrameworkInitializationCompleted()
     {
         var builder = Host.CreateDefaultBuilder();
         builder.ConfigureServices((context, services) =>
@@ -60,15 +60,44 @@ public partial class App : Application
             services.AddTransient<MainWindow>();
         });
         _host = builder.Build();
-        await _host.StartAsync();
+        // Start host synchronously to avoid returning before MainWindow is created
+        _host.StartAsync().GetAwaiter().GetResult();
         Services = _host.Services;
+
+        // Ensure settings are loaded from disk before creating any windows/view models
+        try
+        {
+            var sp = Services;
+            if (sp != null)
+            {
+                var settings = sp.GetService<ISettingsService>();
+                if (settings != null)
+                {
+                    // Load settings synchronously to guarantee availability
+                    settings.LoadAsync().GetAwaiter().GetResult();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (Services is IServiceProvider sp)
+                {
+                    var logger = sp.GetService<ILogger<App>>();
+                    logger?.LogError(ex, "Failed to load settings at startup");
+                }
+            }
+            catch { }
+        }
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             try
             {
-                var logger = Services.GetService<ILogger<App>>();
-                var wnd = Services.GetRequiredService<MainWindow>();
+                var sp = _host!.Services;
+                var logger = sp.GetService<ILogger<App>>();
+                var wnd = sp.GetRequiredService<MainWindow>();
                 desktop.MainWindow = wnd;
                 logger?.LogInformation("MainWindow created and assigned.");
             }
