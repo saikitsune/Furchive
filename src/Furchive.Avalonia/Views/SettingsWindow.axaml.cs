@@ -285,6 +285,22 @@ public partial class SettingsWindow : Window
             var health = await e621.GetHealthAsync();
             var msg = health.IsAvailable ? ($"e621 {(health.IsAuthenticated ? "authenticated" : "reachable")}. RL remaining: {health.RateLimitRemaining}") : "e621 not reachable";
             await DialogService.ShowInfoAsync(this, ok ? "Authenticated" : "Authentication", msg);
+            if (ok && _settings != null)
+            {
+                // Persist credentials on success
+                await _settings.SetSettingAsync("E621Username", E621User.Text?.Trim() ?? string.Empty);
+                await _settings.SetSettingAsync("E621ApiKey", E621Key.Text?.Trim() ?? string.Empty);
+                // Update computed UA display immediately
+                try
+                {
+                    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                    var contact = string.IsNullOrWhiteSpace(E621User.Text) ? "Anon" : E621User.Text!.Trim();
+                    ComputedUserAgent.Text = $"Furchive/{version} (by {contact})";
+                }
+                catch { }
+                // Notify rest of app
+                try { WeakReferenceMessenger.Default.Send(new SettingsSavedMessage()); } catch { }
+            }
         }
         catch { }
     }

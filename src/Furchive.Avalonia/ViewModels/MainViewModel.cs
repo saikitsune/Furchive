@@ -94,7 +94,14 @@ public partial class MainViewModel : ObservableObject
         UpdateFavoritesVisibility();
         _ = Task.Run(() => AuthenticatePlatformsAsync(platformApis));
         _ = Task.Run(CheckPlatformHealthAsync);
-        _ = Task.Run(async () => { try { await LoadPoolsFromCacheAsync(); } catch { } try { await StartOrKickIncrementalAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools incremental scheduler failed"); } });
+        // Pools: load from cache on startup; only hit network if cache file is missing
+        _ = Task.Run(async () =>
+        {
+            try { await LoadPoolsFromCacheAsync(); }
+            catch { }
+            try { if (!File.Exists(GetPoolsCacheFilePath())) { await RefreshPoolsIfStaleAsync(); } }
+            catch (Exception ex) { _logger.LogWarning(ex, "Pools refresh on missing cache failed"); }
+        });
         _ = RestoreLastSessionAsync();
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { await LoadPoolsFromCacheAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
@@ -263,20 +270,66 @@ public partial class MainViewModel : ObservableObject
 
     private async Task RefreshPoolsIfStaleAsync()
     {
-        try { var file = GetPoolsCacheFilePath(); if (File.Exists(file) && Pools.Any()) { return; } IsPoolsLoading = true; _poolsCts?.Cancel(); _poolsCts = new CancellationTokenSource(); PoolsProgressCurrent = 0; PoolsProgressTotal = 0; PoolsProgressHasTotal = false; PoolsStatusText = "(0) updating…"; var progress = new Progress<(int current, int? total)>(tuple => { PoolsProgressCurrent = tuple.current; PoolsProgressHasTotal = tuple.total.HasValue; PoolsProgressTotal = tuple.total ?? 0; PoolsStatusText = PoolsProgressHasTotal ? $"({PoolsProgressCurrent}/{PoolsProgressTotal}) updating…" : $"({PoolsProgressCurrent}) updating…"; }); var list = await _apiService.GetPoolsAsync("e621", progress, _poolsCts.Token); list = list.Where(p => !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0).ToList(); Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in list) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; }); Directory.CreateDirectory(_cacheDir); var now = DateTime.UtcNow; var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now }); await File.WriteAllTextAsync(file, json); _poolsCacheLastSavedUtc = now; }
+        try
+        {
+            var file = GetPoolsCacheFilePath();
+            if (File.Exists(file) && Pools.Any()) { return; }
+            IsPoolsLoading = true;
+            _poolsCts?.Cancel();
+            _poolsCts = new CancellationTokenSource();
+            PoolsProgressCurrent = 0; PoolsProgressTotal = 0; PoolsProgressHasTotal = false; PoolsStatusText = "(0) updating…";
+            var progress = new Progress<(int current, int? total)>(tuple =>
+            {
+                PoolsProgressCurrent = tuple.current; PoolsProgressHasTotal = tuple.total.HasValue; PoolsProgressTotal = tuple.total ?? 0;
+                PoolsStatusText = PoolsProgressHasTotal ? $"({PoolsProgressCurrent}/{PoolsProgressTotal}) updating…" : $"({PoolsProgressCurrent}) updating…";
+            });
+            var list = await _apiService.GetPoolsAsync("e621", progress, _poolsCts.Token);
+            list = list.Where(p => !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0).ToList();
+            Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in list) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; });
+            Directory.CreateDirectory(_cacheDir);
+            var now = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
+            await File.WriteAllTextAsync(file, json);
+            _poolsCacheLastSavedUtc = now;
+        }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to refresh pools"); }
-        finally { IsPoolsLoading = false; _ = Task.Run(() => StartOrKickIncrementalAsync()); }
+        finally { IsPoolsLoading = false; }
     }
 
     private DateTime _poolsCacheLastSavedUtc = DateTime.MinValue;
     private async Task IncrementalUpdatePoolsAsync(TimeSpan interval)
     {
-        try { PoolsStatusText = "checking updates…"; var since = _poolsCacheLastSavedUtc == DateTime.MinValue ? DateTime.UtcNow.AddDays(-7) : _poolsCacheLastSavedUtc; var updates = await _apiService.GetPoolsUpdatedSinceAsync("e621", since); if (updates == null || updates.Count == 0) { PoolsStatusText = $"{Pools.Count} pools"; return; } Dispatcher.UIThread.Post(() => { var map = Pools.ToDictionary(p => p.Id); foreach (var u in updates) { if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0) { map[u.Id] = u; } else { map.Remove(u.Id); } } Pools.Clear(); foreach (var p in map.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; }); var file = GetPoolsCacheFilePath(); Directory.CreateDirectory(_cacheDir); var now = DateTime.UtcNow; var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now }); await File.WriteAllTextAsync(file, json); _poolsCacheLastSavedUtc = now; }
+        try
+        {
+            PoolsStatusText = "checking updates…";
+            var since = _poolsCacheLastSavedUtc == DateTime.MinValue ? DateTime.UtcNow.AddDays(-7) : _poolsCacheLastSavedUtc;
+            var updates = await _apiService.GetPoolsUpdatedSinceAsync("e621", since);
+            if (updates == null || updates.Count == 0) { PoolsStatusText = $"{Pools.Count} pools"; return; }
+            Dispatcher.UIThread.Post(() =>
+            {
+                var map = Pools.ToDictionary(p => p.Id);
+                foreach (var u in updates)
+                {
+                    if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0) { map[u.Id] = u; }
+                    else { map.Remove(u.Id); }
+                }
+                Pools.Clear();
+                foreach (var p in map.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)) Pools.Add(p);
+                ApplyPoolsFilter();
+                PoolsStatusText = $"{Pools.Count} pools";
+            });
+            var file = GetPoolsCacheFilePath();
+            Directory.CreateDirectory(_cacheDir);
+            var now = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(new PoolsCache { Items = Pools.ToList(), SavedAt = now });
+            await File.WriteAllTextAsync(file, json);
+            _poolsCacheLastSavedUtc = now;
+        }
         catch (Exception ex) { _logger.LogWarning(ex, "Incremental pool update failed"); }
-        finally { _ = Task.Delay(interval).ContinueWith(async _ => { await StartOrKickIncrementalAsync(); }); }
+        finally { /* no auto-reschedule; run only when explicitly requested */ }
     }
 
-    private async Task StartOrKickIncrementalAsync() { try { var file = GetPoolsCacheFilePath(); if (!File.Exists(file) || !Pools.Any()) { await RefreshPoolsIfStaleAsync(); } } catch { } var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360)); await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes)); }
+    private async Task StartOrKickIncrementalAsync() { try { var file = GetPoolsCacheFilePath(); if (!File.Exists(file) || !Pools.Any()) { await RefreshPoolsIfStaleAsync(); return; } } catch { } /* Startup no longer auto-runs incremental. This method retained for compatibility if invoked elsewhere. */ }
     [RelayCommand] private void CancelPoolsUpdate() { try { _poolsCts?.Cancel(); } catch { } }
     [RelayCommand] private void RunPoolsFilter() => ApplyPoolsFilter();
     [RelayCommand] private async Task LoadSelectedPoolAsync(PoolInfo? fromPinned = null)

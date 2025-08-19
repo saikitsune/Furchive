@@ -175,6 +175,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnPinnedPoolsDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not ListBox lb) return;
+            var item = lb.SelectedItem as PoolInfo;
+            if (item == null) return;
+            vm.LoadSelectedPoolCommand.Execute(item);
+            e.Handled = true;
+        }
+        catch { }
+    }
+
     private void OnOpenDownloadsFolder(object? sender, RoutedEventArgs e)
     {
         try
