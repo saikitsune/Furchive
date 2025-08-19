@@ -35,6 +35,13 @@
                     <TextBlock Text="Custom User-Agent (optional)"/>
                     <TextBox x:Name="CustomUserAgent"/>
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Width="600">
+                        <TextBlock Text="Computed User-Agent"/>
+                        <TextBox x:Name="ComputedUserAgent" IsReadOnly="True"/>
+                    </StackPanel>
+                    <Button Content="Test e621" Click="OnTestE621"/>
+                </StackPanel>
 
                 <Separator/>
                 <TextBlock Text="Filename Templates" FontWeight="SemiBold"/>
@@ -76,6 +83,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <CheckBox x:Name="SaveMetadataJson" Content="Save metadata .json next to file"/>
                     <CheckBox x:Name="UseOriginalFilename" Content="Use original filename when available"/>
+                    <Button Content="Open downloads folder" Click="OnOpenDownloadsFolder"/>
                 </StackPanel>
 
                 <Separator/>
@@ -98,8 +106,135 @@
                         <TextBlock Text="CPU Worker Degree"/>
                         <controls:NumericUpDown x:Name="CpuWorkerDegree" Minimum="1" Maximum="64"/>
                     </StackPanel>
-                    <StackPanel Width="220">
+                    <StackPanel VerticalAlignment="Center">
                         <CheckBox x:Name="ThumbnailPrewarmEnabled" Content="Prewarm thumbnails in background"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <Separator/>
+                <TextBlock Text="Appearance" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Theme" Width="160" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="ThemeMode" Width="160" SelectionChanged="OnThemeSelectionChanged">
+                        <ComboBoxItem Content="System"/>
+                        <ComboBoxItem Content="Light"/>
+                        <ComboBoxItem Content="Dark"/>
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="Gallery item scale" Width="160" VerticalAlignment="Center"/>
+                    <Slider x:Name="GalleryScale" Minimum="0.75" Maximum="1.5" TickFrequency="0.05" Width="220"/>
+                    <TextBlock Text="x"/>
+                    <TextBlock Text="{Binding #GalleryScale.Value}"/>
+                </StackPanel>
+
+                <Separator/>
+                <TextBlock Text="Viewer" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <CheckBox x:Name="VideoAutoplay" Content="Autoplay videos"/>
+                    <CheckBox x:Name="VideoStartMuted" Content="Start muted"/>
+                    <CheckBox x:Name="ViewerGpuAccelerationEnabled" Content="Enable GPU acceleration"/>
+                </StackPanel>
+
+                <Separator/>
+                <TextBlock Text="Cache" FontWeight="SemiBold"/>
+                <StackPanel>
+                    <TextBlock Text="Cache path"/>
+                    <TextBox x:Name="CachePath" IsReadOnly="True" Width="600"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Used:"/>
+                        <TextBlock x:Name="CacheUsed"/>
+                        <Button Content="Refresh" Click="OnRefreshCacheInfo"/>
+                        <Button Content="Clear" Click="OnClearCache"/>
+                        <Button Content="Open" Click="OnOpenCacheFolder"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <Separator/>
+                <TextBlock Text="Temp" FontWeight="SemiBold"/>
+                <StackPanel>
+                    <TextBlock Text="Temp path"/>
+                    <TextBox x:Name="TempPath" IsReadOnly="True" Width="600"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Used:"/>
+                        <TextBlock x:Name="TempUsed"/>
+                        <Button Content="Refresh" Click="OnRefreshTempInfo"/>
+                        <Button Content="Clear" Click="OnClearTemp"/>
+                        <Button Content="Open" Click="OnOpenTempFolder"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <Separator/>
+                <TextBlock Text="Advanced: e621 Cache TTLs" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Width="220">
+                        <TextBlock Text="Pool detail concurrency"/>
+                        <controls:NumericUpDown x:Name="E621MaxPoolDetailConcurrency" Minimum="1" Maximum="16"/>
+                    </StackPanel>
+                    <StackPanel Width="220">
+                        <TextBlock Text="Search TTL (min)"/>
+                        <controls:NumericUpDown x:Name="E621SearchTtlMinutes" Minimum="1" Maximum="1440"/>
+                    </StackPanel>
+                    <StackPanel Width="220">
+                        <TextBlock Text="TagSuggest TTL (min)"/>
+                        <controls:NumericUpDown x:Name="E621TagSuggestTtlMinutes" Minimum="1" Maximum="1440"/>
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Width="220">
+                        <TextBlock Text="Pool Posts TTL (min)"/>
+                        <controls:NumericUpDown x:Name="E621PoolPostsTtlMinutes" Minimum="1" Maximum="1440"/>
+                    </StackPanel>
+                    <StackPanel Width="220">
+                        <TextBlock Text="Full Pool TTL (min)"/>
+                        <controls:NumericUpDown x:Name="E621PoolAllTtlMinutes" Minimum="1" Maximum="1440"/>
+                    </StackPanel>
+                    <StackPanel Width="220">
+                        <TextBlock Text="Post Details TTL (min)"/>
+                        <controls:NumericUpDown x:Name="E621PostDetailsTtlMinutes" Minimum="1" Maximum="1440"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Clear Search Cache" Click="OnClearE621SearchCache"/>
+                    <Button Content="Clear TagSuggest Cache" Click="OnClearE621TagSuggestCache"/>
+                    <Button Content="Clear Pool Posts Cache" Click="OnClearE621PoolPostsCache"/>
+                    <Button Content="Clear Full Pool Cache" Click="OnClearE621FullPoolCache"/>
+                    <Button Content="Clear Post Details Cache" Click="OnClearE621PostDetailsCache"/>
+                    <Button Content="Clear Pool Details Cache" Click="OnClearE621PoolDetailsCache"/>
+                </StackPanel>
+
+                <Separator/>
+                <TextBlock Text="Persistent Cache" FontWeight="SemiBold"/>
+                <StackPanel>
+                    <CheckBox x:Name="E621PersistentCacheEnabled" Content="Enable persistent cache"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Width="220">
+                            <TextBlock Text="Search max entries"/>
+                            <controls:NumericUpDown x:Name="E621PersistentCacheMaxEntries_Search" Minimum="50" Maximum="5000"/>
+                        </StackPanel>
+                        <StackPanel Width="220">
+                            <TextBlock Text="TagSuggest max entries"/>
+                            <controls:NumericUpDown x:Name="E621PersistentCacheMaxEntries_TagSuggest" Minimum="50" Maximum="10000"/>
+                        </StackPanel>
+                        <StackPanel Width="220">
+                            <TextBlock Text="PoolPosts max entries"/>
+                            <controls:NumericUpDown x:Name="E621PersistentCacheMaxEntries_PoolPosts" Minimum="50" Maximum="5000"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Width="220">
+                            <TextBlock Text="FullPool max entries"/>
+                            <controls:NumericUpDown x:Name="E621PersistentCacheMaxEntries_FullPool" Minimum="50" Maximum="5000"/>
+                        </StackPanel>
+                        <StackPanel Width="220">
+                            <TextBlock Text="PostDetails max entries"/>
+                            <controls:NumericUpDown x:Name="E621PersistentCacheMaxEntries_PostDetails" Minimum="50" Maximum="20000"/>
+                        </StackPanel>
+                        <StackPanel Width="220">
+                            <TextBlock Text="PoolDetails max entries"/>
+                            <controls:NumericUpDown x:Name="E621PersistentCacheMaxEntries_PoolDetails" Minimum="50" Maximum="10000"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
@@ -108,6 +243,17 @@
                 <StackPanel Width="220">
                     <TextBlock Text="Update Interval (minutes)"/>
                     <controls:NumericUpDown x:Name="PoolsUpdateIntervalMinutes" Minimum="5" Maximum="1440"/>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="Pools cache file"/>
+                    <TextBox x:Name="PoolsCacheFilePath" IsReadOnly="True" Width="600"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Cached pools:"/>
+                        <TextBlock x:Name="PoolsCachedCount"/>
+                        <TextBlock Text="Last updated:" Margin="12,0,0,0"/>
+                        <TextBlock x:Name="PoolsLastCachedAt"/>
+                        <Button Content="Refresh Info" Click="OnRefreshPoolsCacheInfo"/>
+                    </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Content="Soft Refresh Pools" Click="OnSoftRefreshPools"/>
