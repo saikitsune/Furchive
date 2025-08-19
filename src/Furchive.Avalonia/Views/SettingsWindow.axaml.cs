@@ -74,10 +74,10 @@ public partial class SettingsWindow : Window
         RefreshCacheInfo();
         RefreshTempInfo();
 
-        // Pools info
+        // Pools info (SQLite db)
         try
         {
-            PoolsCacheFilePath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621_pools.json");
+            PoolsCacheFilePath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "pools_cache.sqlite");
         }
         catch { }
     }
@@ -309,19 +309,35 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621_pools.json");
+            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "pools_cache.sqlite");
             PoolsCacheFilePath.Text = file;
             if (File.Exists(file))
             {
-                PoolsLastCachedAt.Text = File.GetLastWriteTime(file).ToString("G");
+                // Read meta and pool count from SQLite
                 try
                 {
-                    var json = File.ReadAllText(file);
-                    // very light count: count of occurrences of "Id":
-                    var count = json.Split("\"Id\"", StringSplitOptions.RemoveEmptyEntries).Length - 1;
-                    PoolsCachedCount.Text = count.ToString();
+                    using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={file};Cache=Shared");
+                    conn.Open();
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = "SELECT value FROM meta WHERE key='pools_saved_at'";
+                        var val = cmd.ExecuteScalar() as string;
+                        if (!string.IsNullOrWhiteSpace(val))
+                        {
+                            if (DateTime.TryParse(val, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                                PoolsLastCachedAt.Text = dt.ToLocalTime().ToString("G");
+                            else PoolsLastCachedAt.Text = val;
+                        }
+                        else PoolsLastCachedAt.Text = "(unknown)";
+                    }
+                    using (var cmd2 = conn.CreateCommand())
+                    {
+                        cmd2.CommandText = "SELECT COUNT(1) FROM pools";
+                        var count = Convert.ToInt32(cmd2.ExecuteScalar());
+                        PoolsCachedCount.Text = count.ToString();
+                    }
                 }
-                catch { PoolsCachedCount.Text = "?"; }
+                catch { PoolsLastCachedAt.Text = "(error)"; PoolsCachedCount.Text = "?"; }
             }
             else { PoolsLastCachedAt.Text = "(none)"; PoolsCachedCount.Text = "0"; }
         }

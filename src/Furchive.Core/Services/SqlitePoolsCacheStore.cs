@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS pool_posts (
   file_ext TEXT,
   PRIMARY KEY (pool_id, post_id)
 );
+CREATE TABLE IF NOT EXISTS pinned_pools (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    post_count INTEGER NOT NULL
+);
 ";
         await cmd.ExecuteNonQueryAsync(ct);
     }
@@ -159,6 +164,66 @@ VALUES(@pid,@id,@src,@title,@artist,@purl,@furl,@ext)";
             pPurl.Value = m.PreviewUrl ?? string.Empty;
             pFurl.Value = m.FullImageUrl ?? string.Empty;
             pExt.Value = m.FileExtension ?? string.Empty;
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        await tx.CommitAsync(ct);
+    }
+
+    // App state: LastSession JSON and PinnedPools
+    public async Task SaveLastSessionAsync(string json, CancellationToken ct = default)
+    {
+        await using var conn = Create();
+        await conn.OpenAsync(ct);
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT INTO meta(key,value) VALUES('last_session', @v) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
+        var p = cmd.CreateParameter(); p.ParameterName = "@v"; p.Value = json ?? string.Empty; cmd.Parameters.Add(p);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<string?> LoadLastSessionAsync(CancellationToken ct = default)
+    {
+        await using var conn = Create();
+        await conn.OpenAsync(ct);
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT value FROM meta WHERE key='last_session'";
+        var val = await cmd.ExecuteScalarAsync(ct) as string;
+        return string.IsNullOrWhiteSpace(val) ? null : val;
+    }
+
+    public async Task<List<PoolInfo>> GetPinnedPoolsAsync(CancellationToken ct = default)
+    {
+        var list = new List<PoolInfo>();
+        await using var conn = Create();
+        await conn.OpenAsync(ct);
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, name, post_count FROM pinned_pools ORDER BY id";
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+        {
+            list.Add(new PoolInfo { Id = r.GetInt32(0), Name = r.GetString(1), PostCount = r.GetInt32(2) });
+        }
+        return list;
+    }
+
+    public async Task SavePinnedPoolsAsync(IEnumerable<PoolInfo> pools, CancellationToken ct = default)
+    {
+        await using var conn = Create();
+        await conn.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var del = conn.CreateCommand();
+        del.Transaction = (SqliteTransaction)tx;
+        del.CommandText = "DELETE FROM pinned_pools";
+        await del.ExecuteNonQueryAsync(ct);
+
+        var cmd = conn.CreateCommand();
+        cmd.Transaction = (SqliteTransaction)tx;
+        cmd.CommandText = "INSERT INTO pinned_pools(id,name,post_count) VALUES(@id,@name,@cnt)";
+        var pId = cmd.CreateParameter(); pId.ParameterName = "@id"; cmd.Parameters.Add(pId);
+        var pName = cmd.CreateParameter(); pName.ParameterName = "@name"; cmd.Parameters.Add(pName);
+        var pCnt = cmd.CreateParameter(); pCnt.ParameterName = "@cnt"; cmd.Parameters.Add(pCnt);
+        foreach (var p in pools)
+        {
+            pId.Value = p.Id; pName.Value = p.Name ?? string.Empty; pCnt.Value = p.PostCount;
             await cmd.ExecuteNonQueryAsync(ct);
         }
         await tx.CommitAsync(ct);

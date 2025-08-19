@@ -90,33 +90,28 @@ public partial class MainViewModel : ObservableObject
         foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
         _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
     LoadSettings();
-        try { var jsonPinned = _settingsService.GetSetting<string>("PinnedPools", "[]") ?? "[]"; var pinned = JsonSerializer.Deserialize<List<PoolInfo>>(jsonPinned) ?? new(); PinnedPools.Clear(); foreach (var p in pinned) PinnedPools.Add(p); } catch { }
         GalleryScale = Math.Clamp(_settingsService.GetSetting<double>("GalleryScale", 1.0), 0.75, 1.5);
         UpdateFavoritesVisibility();
         _ = Task.Run(() => AuthenticatePlatformsAsync(platformApis));
         _ = Task.Run(CheckPlatformHealthAsync);
         // Pools: load from SQLite cache on startup; refresh only if empty
-        _ = Task.Run(async () =>
+        // Synchronously load from SQLite so the list appears instantly; background work only if needed
+        try { _cacheStore.InitializeAsync().GetAwaiter().GetResult(); } catch { }
+        // Load pinned pools from SQLite
+        try { var pinned = _cacheStore.GetPinnedPoolsAsync().GetAwaiter().GetResult() ?? new(); PinnedPools.Clear(); foreach (var p in pinned) PinnedPools.Add(p); } catch { }
+        bool hadCachedStartup = false;
+        try { hadCachedStartup = LoadPoolsFromDbAsync().GetAwaiter().GetResult(); }
+        catch { }
+        if (!hadCachedStartup)
         {
-            try { await _cacheStore.InitializeAsync(); } catch { }
-            bool hadCached = false;
-            try { hadCached = await LoadPoolsFromDbAsync(); }
-            catch { }
-            try
-            {
-                if (!hadCached)
-                {
-                    // No cache available -> do initial full fetch once
-                    await RefreshPoolsIfStaleAsync();
-                }
-                else
-                {
-                    // Cache exists -> only do a small incremental update in background
-                    _ = IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(5));
-                }
-            }
-            catch (Exception ex) { _logger.LogWarning(ex, "Pools refresh/incremental on startup failed"); }
-        });
+            // No cache -> do first-time full fetch (async)
+            _ = Task.Run(RefreshPoolsIfStaleAsync);
+        }
+        else
+        {
+            // Cache exists -> kick a light incremental update in background
+            _ = Task.Run(() => IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(5)));
+        }
         _ = RestoreLastSessionAsync();
     WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
@@ -274,8 +269,8 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand] private async Task PinSelectedPoolAsync() { try { if (!IsPoolMode) return; var pool = SelectedPool; if (pool == null) return; if (!PinnedPools.Any(p => p.Id == pool.Id)) { PinnedPools.Add(new PoolInfo { Id = pool.Id, Name = pool.Name, PostCount = pool.PostCount }); await PersistPinnedPoolsAsync(); } } catch { } }
     [RelayCommand] private async Task UnpinPoolAsync(PoolInfo? pool) { if (pool == null) return; try { var existing = PinnedPools.FirstOrDefault(p => p.Id == pool.Id); if (existing != null) PinnedPools.Remove(existing); await PersistPinnedPoolsAsync(); } catch { } }
-    private async Task PersistPinnedPoolsAsync() { try { var json = JsonSerializer.Serialize(PinnedPools.ToList()); await _settingsService.SetSettingAsync("PinnedPools", json); } catch { } }
-    private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "e621_pools.json");
+    private async Task PersistPinnedPoolsAsync() { try { await _cacheStore.SavePinnedPoolsAsync(PinnedPools.ToList()); } catch { } }
+    private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "pools_cache.sqlite");
 
     private async Task<bool> LoadPoolsFromDbAsync()
     {
@@ -469,9 +464,70 @@ public partial class MainViewModel : ObservableObject
     public Task TriggerLoadSelectedPoolAsync() => LoadSelectedPoolAsync(null);
     private async Task PerformPoolPageAsync(int poolId, int page, bool reset) { await Task.CompletedTask; }
     [RelayCommand] private async Task SoftRefreshPoolsAsync() { try { var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360)); await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes)); } catch (Exception ex) { _logger.LogWarning(ex, "Soft refresh pools failed"); } }
-    // JSON cache replaced by SQLite-backed store
-    private async Task PersistLastSessionAsync() { try { var session = new LastSession { IsPoolMode = IsPoolMode, PoolId = CurrentPoolId, SearchQuery = SearchQuery, Include = IncludeTags.ToList(), Exclude = ExcludeTags.ToList(), RatingFilterIndex = RatingFilterIndex, Page = CurrentPage }; var json = JsonSerializer.Serialize(session); await _settingsService.SetSettingAsync("LastSession", json); } catch { } }
-    private async Task RestoreLastSessionAsync() { try { var json = _settingsService.GetSetting<string>("LastSession", null); if (string.IsNullOrWhiteSpace(json)) return; var session = JsonSerializer.Deserialize<LastSession>(json); if (session == null) return; RatingFilterIndex = session.RatingFilterIndex; SearchQuery = session.SearchQuery ?? string.Empty; IncludeTags.Clear(); foreach (var t in (session.Include ?? new())) IncludeTags.Add(t); ExcludeTags.Clear(); foreach (var t in (session.Exclude ?? new())) ExcludeTags.Add(t); if (session.IsPoolMode && session.PoolId.HasValue) { CurrentPoolId = session.PoolId; IsPoolMode = true; SelectedPool = Pools.FirstOrDefault(p => p.Id == session.PoolId.Value); await EnsureE621AuthAsync(); var items = await _apiService.GetAllPoolPostsAsync("e621", session.PoolId.Value); if (items != null && items.Count > 0) { SearchResults.Clear(); var poolName = SelectedPool?.Name ?? (items.FirstOrDefault()?.TagCategories?.GetValueOrDefault("pool_name")?.FirstOrDefault() ?? ""); for (int i = 0; i < items.Count; i++) { var pageNum = (i + 1).ToString("D5"); items[i].TagCategories ??= new Dictionary<string, List<string>>(); items[i].TagCategories["pool_name"] = new List<string> { poolName }; items[i].TagCategories["page_number"] = new List<string> { pageNum }; if (string.IsNullOrWhiteSpace(items[i].PreviewUrl) && !string.IsNullOrWhiteSpace(items[i].FullImageUrl)) items[i].PreviewUrl = items[i].FullImageUrl; SearchResults.Add(items[i]); } CurrentPage = 1; HasNextPage = false; TotalCount = items.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); StatusMessage = $"Restored last pool: {session.PoolId}"; return; } } await PerformSearchAsync(Math.Max(1, session.Page), reset: true); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to restore last session"); } }
+    // Persist last session in SQLite via IPoolsCacheStore
+    private async Task PersistLastSessionAsync()
+    {
+        try
+        {
+            var session = new LastSession
+            {
+                IsPoolMode = IsPoolMode,
+                PoolId = CurrentPoolId,
+                SearchQuery = SearchQuery,
+                Include = IncludeTags.ToList(),
+                Exclude = ExcludeTags.ToList(),
+                RatingFilterIndex = RatingFilterIndex,
+                Page = CurrentPage
+            };
+            var json = JsonSerializer.Serialize(session);
+            await _cacheStore.SaveLastSessionAsync(json);
+        }
+        catch { }
+    }
+
+    private async Task RestoreLastSessionAsync()
+    {
+        try
+        {
+            var json = await _cacheStore.LoadLastSessionAsync();
+            if (string.IsNullOrWhiteSpace(json)) return;
+            var session = JsonSerializer.Deserialize<LastSession>(json);
+            if (session == null) return;
+
+            RatingFilterIndex = session.RatingFilterIndex;
+            SearchQuery = session.SearchQuery ?? string.Empty;
+            IncludeTags.Clear(); foreach (var t in (session.Include ?? new())) IncludeTags.Add(t);
+            ExcludeTags.Clear(); foreach (var t in (session.Exclude ?? new())) ExcludeTags.Add(t);
+
+            if (session.IsPoolMode && session.PoolId.HasValue)
+            {
+                CurrentPoolId = session.PoolId;
+                IsPoolMode = true;
+                SelectedPool = Pools.FirstOrDefault(p => p.Id == session.PoolId.Value);
+                await EnsureE621AuthAsync();
+                var items = await _apiService.GetAllPoolPostsAsync("e621", session.PoolId.Value);
+                if (items != null && items.Count > 0)
+                {
+                    SearchResults.Clear();
+                    var poolName = SelectedPool?.Name ?? (items.FirstOrDefault()?.TagCategories?.GetValueOrDefault("pool_name")?.FirstOrDefault() ?? "");
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        var pageNum = (i + 1).ToString("D5");
+                        items[i].TagCategories ??= new Dictionary<string, List<string>>();
+                        items[i].TagCategories["pool_name"] = new List<string> { poolName };
+                        items[i].TagCategories["page_number"] = new List<string> { pageNum };
+                        if (string.IsNullOrWhiteSpace(items[i].PreviewUrl) && !string.IsNullOrWhiteSpace(items[i].FullImageUrl)) items[i].PreviewUrl = items[i].FullImageUrl;
+                        SearchResults.Add(items[i]);
+                    }
+                    CurrentPage = 1; HasNextPage = false; TotalCount = items.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
+                    StatusMessage = $"Restored last pool: {session.PoolId}";
+                    return;
+                }
+            }
+            await PerformSearchAsync(Math.Max(1, session.Page), reset: true);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to restore last session"); }
+    }
     private sealed class LastSession { public bool IsPoolMode { get; set; } public int? PoolId { get; set; } public string? SearchQuery { get; set; } public List<string> Include { get; set; } = new(); public List<string> Exclude { get; set; } = new(); public int RatingFilterIndex { get; set; } public int Page { get; set; } = 1; }
     public static (IEnumerable<string> include, IEnumerable<string> exclude) ParseQuery(string? query) { if (string.IsNullOrWhiteSpace(query)) return (Enumerable.Empty<string>(), Enumerable.Empty<string>()); var parts = query.Split(new[] { ' ', '\t', '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries); var include = new List<string>(); var exclude = new List<string>(); foreach (var raw in parts) { var t = raw.Trim(); if (t.StartsWith("-")) { t = t.Substring(1); if (!string.IsNullOrWhiteSpace(t)) exclude.Add(t); } else include.Add(t); } return (include, exclude); }
     public async Task<MediaItem?> FetchNextFromApiAsync(bool forward) { var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var (inc, exc) = ParseQuery(SearchQuery); var include = IncludeTags.Union(inc, StringComparer.OrdinalIgnoreCase).ToList(); var exclude = ExcludeTags.Union(exc, StringComparer.OrdinalIgnoreCase).ToList(); var page = Math.Max(1, CurrentPage + (forward ? 1 : -1)); var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) }); return result.Items.FirstOrDefault(); }

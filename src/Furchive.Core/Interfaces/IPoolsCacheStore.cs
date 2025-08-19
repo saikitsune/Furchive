@@ -14,4 +14,10 @@ public interface IPoolsCacheStore
     // Posts per pool
     Task<List<MediaItem>> GetPoolPostsAsync(int poolId, CancellationToken ct = default);
     Task UpsertPoolPostsAsync(int poolId, IEnumerable<MediaItem> posts, CancellationToken ct = default);
+
+    // App state (moved from settings.json)
+    Task SaveLastSessionAsync(string json, CancellationToken ct = default);
+    Task<string?> LoadLastSessionAsync(CancellationToken ct = default);
+    Task<List<PoolInfo>> GetPinnedPoolsAsync(CancellationToken ct = default);
+    Task SavePinnedPoolsAsync(IEnumerable<PoolInfo> pools, CancellationToken ct = default);
 }

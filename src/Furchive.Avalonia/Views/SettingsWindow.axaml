@@ -7,10 +7,18 @@
     <Window.Resources>
         <sys:String x:Key="FilenameTokens">Available tokens: {source}, {artist}, {id}, {safeTitle}, {ext}, {pool_name}, {page_number}</sys:String>
     </Window.Resources>
-    <Grid RowDefinitions="Auto,*" Margin="12">
+    <Grid RowDefinitions="Auto,Auto,* ,Auto" Margin="12">
         <TextBlock Text="Settings" FontSize="20"/>
-        <ScrollViewer Grid.Row="1">
-            <StackPanel Spacing="10">
+        <!-- Top action bar -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Save" Click="OnSave"/>
+            <Button Content="Close" Click="OnClose"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="2">
+            <TabControl>
+                <TabItem Header="General">
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="0,8,0,0">
                 <StackPanel>
                     <TextBlock Text="Default Download Directory"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -18,7 +26,6 @@
                         <Button Content="Browse…" Click="OnBrowseDownloadDir"/>
                     </StackPanel>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="e621 Credentials" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -50,7 +57,13 @@
                     <TextBlock Text="Pool Template"/>
                     <TextBox x:Name="PoolFilenameTemplate"/>
                 </StackPanel>
+                </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
 
+                <TabItem Header="Performance">
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="0,8,0,0">
                 <Separator/>
                 <TextBlock Text="Prefetch" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -63,7 +76,6 @@
                         <controls:NumericUpDown x:Name="PrefetchParallelism" Minimum="1" Maximum="4"/>
                     </StackPanel>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="Downloads" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -81,7 +93,6 @@
                     <CheckBox x:Name="UseOriginalFilename" Content="Use original filename when available"/>
                     <Button Content="Open downloads folder" Click="OnOpenDownloadsFolder"/>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="Network and Limits" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -94,9 +105,8 @@
                         <controls:NumericUpDown x:Name="MaxResultsPerSource" Minimum="10" Maximum="320" Increment="10"/>
                     </StackPanel>
                 </StackPanel>
-
                 <Separator/>
-                <TextBlock Text="Performance" FontWeight="SemiBold"/>
+                <TextBlock Text="CPU / Thumbnails" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <StackPanel Width="220">
                         <TextBlock Text="CPU Worker Degree"/>
@@ -106,7 +116,13 @@
                         <CheckBox x:Name="ThumbnailPrewarmEnabled" Content="Prewarm thumbnails in background"/>
                     </StackPanel>
                 </StackPanel>
+                </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
 
+                <TabItem Header="Appearance">
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="0,8,0,0">
                 <Separator/>
                 <TextBlock Text="Appearance" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -123,7 +139,6 @@
                     <TextBlock Text="x"/>
                     <TextBlock Text="{Binding #GalleryScale.Value}"/>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="Viewer" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="12">
@@ -131,7 +146,13 @@
                     <CheckBox x:Name="VideoStartMuted" Content="Start muted"/>
                     <CheckBox x:Name="ViewerGpuAccelerationEnabled" Content="Enable GPU acceleration"/>
                 </StackPanel>
+                </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
 
+                <TabItem Header="Cache">
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="0,8,0,0">
                 <Separator/>
                 <TextBlock Text="Cache" FontWeight="SemiBold"/>
                 <StackPanel>
@@ -145,7 +166,6 @@
                         <Button Content="Open" Click="OnOpenCacheFolder"/>
                     </StackPanel>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="Temp" FontWeight="SemiBold"/>
                 <StackPanel>
@@ -159,7 +179,13 @@
                         <Button Content="Open" Click="OnOpenTempFolder"/>
                     </StackPanel>
                 </StackPanel>
+                </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
 
+                <TabItem Header="e621 Cache">
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="0,8,0,0">
                 <Separator/>
                 <TextBlock Text="Advanced: e621 Cache TTLs" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -190,7 +216,6 @@
                         <controls:NumericUpDown x:Name="E621PostDetailsTtlMinutes" Minimum="1" Maximum="1440"/>
                     </StackPanel>
                 </StackPanel>
-
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Content="Clear Search Cache" Click="OnClearE621SearchCache"/>
                     <Button Content="Clear TagSuggest Cache" Click="OnClearE621TagSuggestCache"/>
@@ -199,7 +224,6 @@
                     <Button Content="Clear Post Details Cache" Click="OnClearE621PostDetailsCache"/>
                     <Button Content="Clear Pool Details Cache" Click="OnClearE621PoolDetailsCache"/>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="Persistent Cache" FontWeight="SemiBold"/>
                 <StackPanel>
@@ -233,7 +257,6 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-
                 <Separator/>
                 <TextBlock Text="Pools" FontWeight="SemiBold"/>
                 <StackPanel Width="220">
@@ -241,7 +264,7 @@
                     <controls:NumericUpDown x:Name="PoolsUpdateIntervalMinutes" Minimum="5" Maximum="1440"/>
                 </StackPanel>
                 <StackPanel>
-                    <TextBlock Text="Pools cache file"/>
+                    <TextBlock Text="Pools cache database"/>
                     <TextBox x:Name="PoolsCacheFilePath" IsReadOnly="True" Width="600"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="Cached pools:"/>
@@ -255,12 +278,15 @@
                     <Button Content="Soft Refresh Pools" Click="OnSoftRefreshPools"/>
                     <Button Content="Rebuild Pools Cache" Click="OnRebuildPoolsCache"/>
                 </StackPanel>
-
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="Save" Click="OnSave"/>
-                    <Button Content="Close" Click="OnClose"/>
                 </StackPanel>
-            </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
         </ScrollViewer>
+        <!-- Bottom action bar -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Save" Click="OnSave"/>
+            <Button Content="Close" Click="OnClose"/>
+        </StackPanel>
     </Grid>
 </Window>
