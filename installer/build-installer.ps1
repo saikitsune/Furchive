@@ -2,11 +2,7 @@ param(
   [string]$Configuration = "Release",
   [string]$Runtime = "win-x64",
   # Version is optional; when omitted we derive it from the csproj FileVersion/AssemblyVersion
-  [string]$Version,
-  # Optional: override the download URL for the WebView2 runtime (e.g., to a GitHub Release asset)
-  [string]$WebView2Url,
-  # Deprecated: .NET Desktop Runtime bootstrapper not required for self-contained publish
-  [string]$DotNetDesktopUrl
+  [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,19 +77,13 @@ try {
 Write-Host "Using version $effectiveVersion (project: $projectVersion)"
 
 Write-Host "Compiling installer with Inno Setup..."
-# Download WebView2 Evergreen offline installer if not present.
-# Default URL is the official Microsoft evergreen offline x64 link. Can be overridden by param or env var WEBVIEW2_URL.
-if (-not $WebView2Url -or [string]::IsNullOrWhiteSpace($WebView2Url)) {
-  $WebView2Url = $env:WEBVIEW2_URL
-}
-if (-not $WebView2Url -or [string]::IsNullOrWhiteSpace($WebView2Url)) {
-  $WebView2Url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124701' # Evergreen Standalone x64 (offline)
-}
 
-$wv2File = Join-Path (Join-Path $root 'inno') 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
-if (-not (Test-Path $wv2File)) {
-  Write-Host "Downloading WebView2 runtime from $WebView2Url ..."
-  Invoke-WebRequest -Uri $WebView2Url -OutFile $wv2File
+# Validate LibVLC native payload exists in publish directory (required for video playback)
+$libvlcDlls = @(Get-ChildItem -Path $publishDir -Recurse -Filter 'libvlc*.dll' -ErrorAction SilentlyContinue)
+if ($libvlcDlls.Count -eq 0) {
+  Write-Warning "No LibVLC native DLLs found in publish output. Ensure VideoLAN.LibVLC.Windows is referenced and included."
+} else {
+  Write-Host ("Found LibVLC DLLs: " + ($libvlcDlls | ForEach-Object { $_.FullName } | Out-String))
 }
 
 # Try common Inno paths

@@ -38,8 +38,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 ; Files are copied from the Avalonia publish directory built by dotnet publish
 Source: "..\..\src\Furchive.Avalonia\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Include the WebView2 Evergreen bootstrapper downloaded by the build script
-Source: "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -84,32 +82,9 @@ begin
 		end;
 	end;
 end;
-function NeedsWebView2(): Boolean;
-var
-	F: TFindRec;
-	base: string;
-begin
-	// Known install roots (folders exist when installed)
-	if DirExists(ExpandConstant('{pf32}\\Microsoft\\EdgeWebView\\Application')) then begin Result := False; exit; end;
-	if DirExists(ExpandConstant('{pf64}\\Microsoft\\EdgeWebView\\Application')) then begin Result := False; exit; end;
-	if DirExists(ExpandConstant('{localappdata}\\Microsoft\\EdgeWebView\\Application')) then begin Result := False; exit; end;
-
-	// Robust check: look for msedgewebview2.exe in versioned subfolders
-	base := ExpandConstant('{pf32}') + '\\Microsoft\\EdgeWebView\\Application\\*\\msedgewebview2.exe';
-	if FindFirst(base, F) then begin FindClose(F); Result := False; exit; end;
-	base := ExpandConstant('{pf64}') + '\\Microsoft\\EdgeWebView\\Application\\*\\msedgewebview2.exe';
-	if FindFirst(base, F) then begin FindClose(F); Result := False; exit; end;
-	base := ExpandConstant('{localappdata}') + '\\Microsoft\\EdgeWebView\\Application\\*\\msedgewebview2.exe';
-	if FindFirst(base, F) then begin FindClose(F); Result := False; exit; end;
-
-	// Not found -> need to install
-	Result := True;
-end;
 
 
 [Run]
-; Install WebView2 runtime silently (idempotent)
-Filename: "{tmp}\\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/install /quiet /norestart /log ""{localappdata}\\Furchive\\webview2-install.log"""; Flags: waituntilterminated runhidden; Check: NeedsWebView2
 ; .NET runtime is bundled via self-contained publish, no need to bootstrap runtime separately
 ; Use ShellExecute so Windows honors the app's UAC manifest prompt
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent shellexec
