@@ -2,57 +2,12 @@ param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
     # App installer version (not .NET)
-    [string]$Version = "1.0.0",
-    # .NET Desktop Runtime version to bundle; use "auto" for latest in channel
-    [string]$DotNetDesktopVersion = "auto",
-    # .NET channel (major.minor)
-    [string]$DotNetChannel = "8.0"
+    [string]$Version = "1.0.0"
 )
 
 $ErrorActionPreference = "Stop"
 
-function Get-DotNetDesktopDownloadInfo {
-    param(
-        [Parameter(Mandatory=$true)][string]$Channel,
-        [Parameter(Mandatory=$true)][string]$RequestedVersion
-    )
-
-    $releasesUrl = "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/$Channel/releases.json"
-    Write-Host "Resolving .NET Desktop Runtime from: $releasesUrl"
-    try {
-        $json = Invoke-RestMethod -UseBasicParsing -Uri $releasesUrl -Method Get -TimeoutSec 60
-    }
-    catch {
-        throw "Failed to fetch releases metadata from $releasesUrl. $_"
-    }
-
-    if ($RequestedVersion -eq 'auto') {
-        $targetVersion = $json.'latest-release'
-    } else {
-        $targetVersion = $RequestedVersion
-    }
-
-    $release = $json.releases | Where-Object { $_.version -eq $targetVersion } | Select-Object -First 1
-    if (-not $release) {
-        # Try fallback: pick latest release containing requested major.minor
-        $release = $json.releases | Where-Object { $_.version -like "$Channel.*" } | Sort-Object { [version]$_.version } -Descending | Select-Object -First 1
-    }
-    if (-not $release) {
-        throw "Could not locate release entry for version '$RequestedVersion' in channel '$Channel'"
-    }
-
-    $files = $release.windowsdesktop.files
-    if (-not $files) { throw ".NET windowsdesktop files not found in releases metadata." }
-
-    $file = $files | Where-Object { $_.rid -eq 'win-x64' -and $_.name -like 'windowsdesktop-runtime-*-win-x64.exe' } | Select-Object -First 1
-    if (-not $file) { throw "Could not find win-x64 windowsdesktop runtime installer in metadata." }
-
-    return [pscustomobject]@{
-        Version = $release.version
-        Url = $file.url
-        FileName = $file.name
-    }
-}
+function noop { }
 
 # Paths
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -67,40 +22,15 @@ if (-not $InnoCompiler) {
     $InnoCompiler = 'C:\\Program Files (x86)\\Inno Setup 6\\Compil32.exe'
 }
 
-# Resolve .NET Desktop Runtime download
-try {
-    $dotnetInfo = Get-DotNetDesktopDownloadInfo -Channel $DotNetChannel -RequestedVersion $DotNetDesktopVersion
-}
-catch {
-    Write-Warning $_
-    Write-Warning "Falling back to hardcoded .NET Desktop Runtime version 8.0.7 lookup via aka.ms thank-you link."
-    $dotnetInfo = [pscustomobject]@{
-        Version = '8.0.7'
-        Url = 'https://dotnet.microsoft.com/download/dotnet/thank-you/runtime-desktop-8.0.7-windows-x64-installer'
-        FileName = 'windowsdesktop-runtime-8.0.7-win-x64.exe'
-    }
-}
-
 # Evergreen bootstrapper for WebView2 (installs latest)
 $WebView2Url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
 
 Write-Host "Publishing Furchive ($Configuration, $Runtime) to $PublishDir"
-dotnet publish $Project -c $Configuration -r $Runtime --self-contained false -p:PublishSingleFile=false -p:PublishTrimmed=false -o $PublishDir | Out-Host
+dotnet publish $Project -c $Configuration -r $Runtime --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o $PublishDir | Out-Host
 
 New-Item -ItemType Directory -Force -Path $RedistDir | Out-Null
 
-# Download prerequisites if missing
-$DotNetInstaller = Join-Path $RedistDir $dotnetInfo.FileName
-if (-not (Test-Path $DotNetInstaller)) {
-    Write-Host "Downloading .NET Desktop Runtime $($dotnetInfo.Version)..."
-    try {
-        Invoke-WebRequest -UseBasicParsing -MaximumRedirection 5 -Uri $($dotnetInfo.Url) -OutFile $DotNetInstaller -TimeoutSec 600
-    }
-    catch {
-        Write-Error "Failed to download .NET Desktop Runtime from $($dotnetInfo.Url). $_"
-        throw
-    }
-}
+# Only WebView2 prerequisite is needed when self-contained
 
 $WebView2Installer = Join-Path $RedistDir 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
 if (-not (Test-Path $WebView2Installer)) {
@@ -119,7 +49,6 @@ New-Item -ItemType Directory -Force -Path (Join-Path $InstallerDir 'output') | O
 # Build with defines (as separate args)
 $DefineArgs = @(
     "/DMyAppVersion=$Version",
-    "/DDotNetDesktopVersion=$($dotnetInfo.Version)",
     "/DAppPublishDir=$PublishDir"
 )
 
