@@ -63,3 +63,5 @@ else {
 }
 
 Write-Host "Installer build completed. Output in: $(Join-Path $InstallerDir 'output')"
+
+& .\output\Furchive-Setup.exe

@@ -10,44 +10,22 @@
     <FileVersion>1.1.0.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-  <EnableAvaloniaWebView>true</EnableAvaloniaWebView>
+    <DefineConstants>$(DefineConstants);HAS_WEBVIEW_AVALONIA</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.0.10" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
-  <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="Avalonia" Version="11.0.11" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.11" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.11" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.11" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
+    <PackageReference Include="AnimatedImage.Avalonia" Version="2.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
-
-  <!-- Media playback and animated GIF support -->
-  <PropertyGroup>
-    <EnableAnimatedImage>true</EnableAnimatedImage>
-  </PropertyGroup>
-
-  
-
-  <ItemGroup Condition="'$(EnableAnimatedImage)'=='true'">
-    <PackageReference Include="AnimatedImage.Avalonia" Version="2.0.0" />
-  </ItemGroup>
-
-  <!-- Conditionally include WebView packages to avoid restore failures when NuGet access is blocked -->
-  <ItemGroup Condition="'$(EnableAvaloniaWebView)'=='true'">
-    <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
-    <PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
-  <PackageReference Include="WebView.Avalonia.Windows" Version="11.0.0.1" Condition="'$(OS)'=='Windows_NT'" />
-  </ItemGroup>
-
-  <PropertyGroup Condition="'$(EnableAvaloniaWebView)'=='true'">
-    <DefineConstants>$(DefineConstants);HAS_WEBVIEW_AVALONIA</DefineConstants>
-  </PropertyGroup>
-
-  <!-- Remove official Avalonia.WebView toggles; we use community WebView.Avalonia -->
 
   <ItemGroup>
     <ProjectReference Include="..\Furchive.Core\Furchive.Core.csproj" />

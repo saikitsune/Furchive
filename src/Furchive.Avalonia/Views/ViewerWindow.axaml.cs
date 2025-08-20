@@ -39,9 +39,9 @@ public partial class ViewerWindow : Window
 
     public ViewerWindow()
     {
-        // Create log before any XAML is loaded, so crashes in XAML still produce a log
         try
         {
+            // Create log before any XAML is loaded, so crashes in XAML still produce a log
             var dir = Path.GetDirectoryName(_logPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             // Truncate logs at each viewer open for clean test runs
@@ -52,16 +52,40 @@ public partial class ViewerWindow : Window
         try
         {
             InitializeComponent();
+            this.KeyDown += (s, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
+            // Record that the viewer was constructed successfully
+            SafeLog("ViewerWindow constructed");
+            this.Opened += async (_, __) =>
+            {
+                SafeLog("ViewerWindow opened");
+                try { await LoadAsync(); }
+                catch (Exception ex)
+                {
+                    SafeLog("LoadAsync crash: " + ex.ToString());
+                    ShowStartupError(ex);
+                }
+            };
         }
         catch (Exception ex)
         {
             SafeLog("InitializeComponent failed: " + ex.ToString());
-            throw;
+            ShowStartupError(ex);
         }
-        this.KeyDown += (s, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
-        // Record that the viewer was constructed successfully
-        SafeLog("ViewerWindow constructed");
-            this.Opened += async (_, __) => { SafeLog("ViewerWindow opened"); try { await LoadAsync(); } catch (Exception ex) { SafeLog("LoadAsync crash: " + ex.ToString()); } };
+    }
+
+    private void ShowStartupError(Exception ex)
+    {
+        try
+        {
+            this.Content = new TextBlock
+            {
+                Text = $"Viewer failed to start:\n{ex.Message}\n{ex}",
+                Foreground = Brushes.Red,
+                Margin = new Thickness(16),
+                TextWrapping = TextWrapping.Wrap
+            };
+        }
+        catch { }
     }
 
     private void InitializeComponent()
@@ -113,96 +137,152 @@ public partial class ViewerWindow : Window
 		var bestUrl = !string.IsNullOrWhiteSpace(m.FullImageUrl) ? m.FullImageUrl : m.PreviewUrl;
 		SafeLog($"Media detect: ext={ext}, isVideo={isVideo}, looksGif={looksGif}, hasUrl={!string.IsNullOrWhiteSpace(bestUrl)}");
 
-        if (isVideo)
-        {
-            videoBorder.IsVisible = true;
+		// Hide all containers initially
+		imageBorder.IsVisible = false;
+		videoBorder.IsVisible = false;
+		img.IsVisible = false;
+		gif.IsVisible = false;
+
+		if (isVideo)
+		{
+			videoBorder.IsVisible = true;
+			var settings = App.Services?.GetService<Furchive.Core.Interfaces.ISettingsService>();
+			bool webViewEnabled = settings?.GetSetting<bool>("WebViewEnabled", true) ?? true;
+
+			if (!webViewEnabled)
+			{
+				videoHost.Content = new TextBlock { Text = "Video playback requires WebView; please enable it in settings.", Foreground = Brushes.White, Margin = new Thickness(12) };
+				SafeLog("WebView is disabled in settings.");
+				return;
+			}
+
 #if HAS_WEBVIEW_AVALONIA
-            try
-            {
-                var proxy = App.Services?.GetService<ILocalMediaProxy>();
-                var pageUrl = proxy?.BaseAddress != null && !string.IsNullOrWhiteSpace(bestUrl) ? proxy.GetPlayerUrl(bestUrl!) : bestUrl;
-                if (!string.IsNullOrWhiteSpace(pageUrl))
-                {
-                    SafeLog($"Using WebView backend: {pageUrl}");
-                    var webView = CreateWebViewControl();
-                    if (webView != null)
-                    {
-                        videoHost.Content = webView;
-                        TrySetWebViewAddress(webView, pageUrl!);
-                        return;
-                    }
-                    else
-                    {
-                        SafeLog("WebView control type not found at runtime.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                SafeLog("WebView backend failed: " + ex.ToString());
-            }
+			try
+			{
+				var proxy = App.Services?.GetService<ILocalMediaProxy>();
+				var pageUrl = proxy?.BaseAddress != null && !string.IsNullOrWhiteSpace(bestUrl) ? proxy.GetPlayerUrl(bestUrl!) : bestUrl;
+				SafeLog($"Attempting video playback: pageUrl={pageUrl}");
+
+				if (string.IsNullOrWhiteSpace(pageUrl))
+				{
+					videoHost.Content = new TextBlock { Text = "Video source URL is missing.", Foreground = Brushes.White, Margin = new Thickness(12) };
+					SafeLog("Video playback failed: No URL.");
+					return;
+				}
+
+				var webView = CreateWebViewControl();
+				if (webView != null)
+				{
+					videoHost.Content = webView;
+					TrySetWebViewAddress(webView, pageUrl!);
+					SafeLog("WebView control created and address set.");
+				}
+				else
+				{
+					videoHost.Content = new TextBlock { Text = "WebView control failed to load. Please ensure WebView2 runtime is installed.", Foreground = Brushes.White, Margin = new Thickness(12) };
+					SafeLog("WebView control type not found at runtime.");
+				}
+			}
+			catch (Exception ex)
+			{
+				videoHost.Content = new TextBlock { Text = $"An error occurred while loading the video: {ex.Message}", Foreground = Brushes.White, Margin = new Thickness(12) };
+				SafeLog("WebView backend failed: " + ex.ToString());
+			}
+#else
+            videoHost.Content = new TextBlock { Text = "This version of Furchive was built without video support.", Foreground = Brushes.White, Margin = new Thickness(12) };
+            SafeLog("Application not compiled with HAS_WEBVIEW_AVALONIA flag.");
 #endif
-            // If WebView is not available, show a simple message in place of the video
-            videoHost.Content = new TextBlock { Text = "Video playback requires WebView; please enable it in settings.", Foreground = Brushes.White, Margin = new Thickness(12) };
-            return;
-        }
+			return; // End of video handling path
+		}
 		
+		imageBorder.IsVisible = true;
 		if (looksGif)
 		{
 			// GIF playback via AnimatedImage
-			videoBorder.IsVisible = false;
-			imageBorder.IsVisible = true;
 			img.IsVisible = false;
 			gif.IsVisible = true;
 			if (!string.IsNullOrWhiteSpace(bestUrl))
 			{
-				try { SetGifSource(gif, bestUrl); } catch { }
+				SafeLog($"Attempting GIF playback: url={bestUrl}");
+				try 
+				{ 
+					SetGifSource(gif, bestUrl); 
+					SafeLog("SetGifSource succeeded."); 
+				} 
+				catch (Exception ex) 
+				{ 
+					SafeLog("SetGifSource failed: " + ex.ToString()); 
+				}
 			}
-			return;
+			return; // End of GIF handling path
 		}
 
-        // Try local final file first (static images)
-        try
-        {
-            var settings = App.Services?.GetService<ISettingsService>();
-            var baseDir = settings?.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
-            var finalPath = GenerateFinalPath(m, baseDir, settings);
-            if (!string.IsNullOrWhiteSpace(finalPath) && File.Exists(finalPath) && IsImageFile(finalPath))
-            {
-                img.Source = new Bitmap(finalPath);
-                imageBorder.IsVisible = true;
-                videoBorder.IsVisible = false;
-                return;
-            }
-        }
-        catch { }
+		// It's a static image, show the correct control
+		img.IsVisible = true;
+		gif.IsVisible = false;
 
-        // Try temp file next
-        try
-        {
-            var temp = GetTempPathFor(m);
-            if (!string.IsNullOrWhiteSpace(temp) && File.Exists(temp) && IsImageFile(temp))
-            {
-                img.Source = new Bitmap(temp);
-                imageBorder.IsVisible = true;
-                videoBorder.IsVisible = false;
-                return;
-            }
-        }
-        catch { }
+		// Try local final file first (static images)
+		try
+		{
+			var settings = App.Services?.GetService<ISettingsService>();
+			var baseDir = settings?.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
+			var finalPath = GenerateFinalPath(m, baseDir, settings);
+			SafeLog($"Checking for downloaded image at: {finalPath}");
+			if (!string.IsNullOrWhiteSpace(finalPath) && File.Exists(finalPath) && IsImageFile(finalPath))
+			{
+				using (var stream = File.OpenRead(finalPath))
+				{
+					img.Source = new Bitmap(stream);
+				}
+				SafeLog("Loaded image from downloaded file.");
+				return; // Explicitly return to prevent fallback
+			}
+			else
+			{
+				SafeLog("Downloaded image not found or not a valid image file. Checking temp.");
+			}
+		}
+		catch (Exception ex) { SafeLog("Error loading downloaded image: " + ex.ToString()); }
 
-        // Remote best-quality image
-        try
-        {
-            imageBorder.IsVisible = true;
-            videoBorder.IsVisible = false;
-            if (!string.IsNullOrWhiteSpace(bestUrl))
-                RemoteImage.SetSourceUri(img, bestUrl);
-        }
-        catch { }
+		// Try temp file next
+		try
+		{
+			var temp = GetTempPathFor(m);
+			SafeLog($"Checking for temp image at: {temp}");
+			if (!string.IsNullOrWhiteSpace(temp) && File.Exists(temp) && IsImageFile(temp))
+			{
+				using (var stream = File.OpenRead(temp))
+				{
+					img.Source = new Bitmap(stream);
+				}
+				SafeLog("Loaded image from temp file.");
+				return; // Explicitly return to prevent fallback
+			}
+			else
+			{
+				SafeLog("Temp image not found or not a valid image file. Falling back to remote.");
+			}
+		}
+		catch (Exception ex) { SafeLog("Error loading temp image: " + ex.ToString()); }
 
-        await Task.CompletedTask;
-    }
+		// Remote best-quality image
+		try
+		{
+			if (!string.IsNullOrWhiteSpace(bestUrl))
+			{
+				SafeLog($"Attempting remote image load: url={bestUrl}");
+				RemoteImage.SetSourceUri(img, bestUrl);
+				SafeLog("RemoteImage.SetSourceUri called.");
+			}
+			else
+			{
+				SafeLog("No valid remote image URL found.");
+			}
+		}
+		catch (Exception ex) { SafeLog("Error loading remote image: " + ex.ToString()); }
+
+		await Task.CompletedTask;
+	}
 
     // LibVLC playback removed; video control handlers below are no-ops with WebView backend
 

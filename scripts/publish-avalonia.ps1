@@ -29,3 +29,4 @@ foreach ($t in $targets) {
 }
 
 Write-Host "Publish complete. Outputs under src/Furchive.Avalonia/publish/*"
+Start-Process -FilePath "C:\projects\github\Furchive\installer\output\Furchive-Setup.exe"

@@ -158,6 +158,7 @@
                     <CheckBox x:Name="VideoAutoplay" Content="Autoplay videos"/>
                     <CheckBox x:Name="VideoStartMuted" Content="Start muted"/>
                     <CheckBox x:Name="ViewerGpuAccelerationEnabled" Content="Enable GPU acceleration"/>
+                    <CheckBox x:Name="WebViewEnabled" Content="Enable WebView for video playback"/>
                 </StackPanel>
                 </StackPanel>
                     </ScrollViewer>
