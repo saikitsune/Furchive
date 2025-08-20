@@ -41,6 +41,41 @@
                 <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
                 <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
             </WrapPanel>
+
+            <!-- Top status/progress panel docked at bottom of header -->
+            <Border DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                <StackPanel Spacing="4">
+                    <!-- Global search indicator -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsSearching}">
+                        <TextBlock Text="Searching…"/>
+                        <ProgressBar Width="160" Height="10" IsIndeterminate="True"/>
+                    </StackPanel>
+                    <!-- Background prefetch indicator -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBackgroundCaching}">
+                        <TextBlock>
+                            <Run Text="Prefetching:"/>
+                            <Run Text=" "/>
+                            <Run Text="{Binding BackgroundCachingCurrent}"/>
+                            <Run Text="/"/>
+                            <Run Text="{Binding BackgroundCachingTotal}"/>
+                            <Run Text=" pages • "/>
+                            <Run Text="{Binding BackgroundCachingItemsFetched}"/>
+                            <Run Text=" items"/>
+                        </TextBlock>
+                        <ProgressBar Width="200" Height="10" Minimum="0" Maximum="{Binding BackgroundCachingTotal}" Value="{Binding BackgroundCachingCurrent}"/>
+                    </StackPanel>
+                    <!-- Pools cache refresh indicator -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsPoolsLoading}">
+                        <TextBlock Text="Pools:"/>
+                        <TextBlock Text="{Binding PoolsStatusText}"/>
+                        <ProgressBar Width="200" Height="10"
+                                     Minimum="0" Maximum="{Binding PoolsProgressTotal}"
+                                     IsIndeterminate="{Binding PoolsProgressHasTotal, Converter={StaticResource InverseBoolean}}"
+                                     Value="{Binding PoolsProgressCurrent}"/>
+                        <Button Content="Cancel" Command="{Binding CancelPoolsUpdateCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </DockPanel>
 
     <Grid x:Name="MainColumnsGrid" Grid.Row="1" Margin="8,0,8,0">
@@ -149,7 +184,7 @@
                     <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
                     <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
                 </StackPanel>
-                <ScrollViewer Grid.Row="1" ScrollChanged="OnGalleryScrollChanged">
+                <ScrollViewer Grid.Row="1">
                     <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" DoubleTapped="OnGalleryDoubleTapped" KeyDown="OnGalleryKeyDown">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>

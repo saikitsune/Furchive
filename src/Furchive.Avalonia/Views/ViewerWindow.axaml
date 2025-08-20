@@ -32,9 +32,9 @@
                 <!-- Image mode -->
                 <Border Background="#202020" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}, ConverterParameter=False}">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                        <Image x:Name="PreviewImage" Stretch="Uniform"
-                               beh:RemoteImage.SourceUri="{Binding PreviewUrl}"
-                               PointerWheelChanged="OnImageWheel">
+               <Image x:Name="PreviewImage" Stretch="Uniform"
+                   beh:RemoteImage.SourceUri="{Binding PreviewUrl}"
+                   PointerWheelChanged="OnImageWheel">
                             <Image.RenderTransform>
                                 <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}" ScaleY="{Binding #ZoomSlider.Value}"/>
                             </Image.RenderTransform>

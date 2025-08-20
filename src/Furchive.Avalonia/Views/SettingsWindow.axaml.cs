@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Input;
 using Furchive.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Furchive.Avalonia.Messages;
 using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using System.Linq;
 using Furchive.Avalonia.Infrastructure;
 
@@ -28,6 +30,8 @@ public partial class SettingsWindow : Window
         _thumbCache = App.Services?.GetService<IThumbnailCacheService>();
         _shell = App.Services?.GetService<IPlatformShellService>();
         LoadValues();
+        // Wire simple syncs
+        try { GalleryScale.PropertyChanged += (s, e) => { if (e.Property.Name == nameof(Slider.Value)) { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } }; } catch { }
     }
 
     private void LoadValues()
@@ -43,12 +47,27 @@ public partial class SettingsWindow : Window
         try { ConcurrentDownloads.Value = _settings?.GetSetting<int>("ConcurrentDownloads", 3) ?? 3; } catch { ConcurrentDownloads.Value = 3; }
         DownloadDuplicatesPolicy.Text = _settings?.GetSetting<string>("DownloadDuplicatesPolicy", "skip") ?? "skip";
         try { NetworkTimeoutSeconds.Value = _settings?.GetSetting<int>("NetworkTimeoutSeconds", 30) ?? 30; } catch { NetworkTimeoutSeconds.Value = 30; }
-        try { MaxResultsPerSource.Value = _settings?.GetSetting<int>("MaxResultsPerSource", 50) ?? 50; } catch { MaxResultsPerSource.Value = 50; }
+    try { MaxResultsPerSource.Value = _settings?.GetSetting<int>("MaxResultsPerSource", 50) ?? 50; } catch { MaxResultsPerSource.Value = 50; }
+    try { PostsPerPage.Value = MaxResultsPerSource.Value; } catch { }
         try { CpuWorkerDegree.Value = _settings?.GetSetting<int>("CpuWorkerDegree", Math.Max(1, Environment.ProcessorCount / 2)) ?? Math.Max(1, Environment.ProcessorCount / 2); } catch { CpuWorkerDegree.Value = Math.Max(1, Environment.ProcessorCount / 2); }
         try { PoolsUpdateIntervalMinutes.Value = _settings?.GetSetting<int>("PoolsUpdateIntervalMinutes", 360) ?? 360; } catch { PoolsUpdateIntervalMinutes.Value = 360; }
         try { ThumbnailPrewarmEnabled.IsChecked = _settings?.GetSetting<bool>("ThumbnailPrewarmEnabled", true) ?? true; } catch { ThumbnailPrewarmEnabled.IsChecked = true; }
         try { SaveMetadataJson.IsChecked = _settings?.GetSetting<bool>("SaveMetadataJson", false) ?? false; } catch { SaveMetadataJson.IsChecked = false; }
         try { UseOriginalFilename.IsChecked = _settings?.GetSetting<bool>("UseOriginalFilename", false) ?? false; } catch { UseOriginalFilename.IsChecked = false; }
+    // e621 Advanced (defaults chosen conservatively)
+    try { E621MaxPoolDetailConcurrency.Value = _settings?.GetSetting<int>("E621MaxPoolDetailConcurrency", 8) ?? 8; } catch { E621MaxPoolDetailConcurrency.Value = 8; }
+    try { E621SearchTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.Search", 10) ?? 10; } catch { E621SearchTtlMinutes.Value = 10; }
+    try { E621TagSuggestTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.TagSuggest", 180) ?? 180; } catch { E621TagSuggestTtlMinutes.Value = 180; }
+    try { E621PoolPostsTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.PoolPosts", 60) ?? 60; } catch { E621PoolPostsTtlMinutes.Value = 60; }
+    try { E621PoolAllTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.PoolAll", 360) ?? 360; } catch { E621PoolAllTtlMinutes.Value = 360; }
+    try { E621PostDetailsTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.PostDetails", 1440) ?? 1440; } catch { E621PostDetailsTtlMinutes.Value = 1440; }
+    try { E621PersistentCacheEnabled.IsChecked = _settings?.GetSetting<bool>("E621PersistentCacheEnabled", true) ?? true; } catch { E621PersistentCacheEnabled.IsChecked = true; }
+    try { E621PersistentCacheMaxEntries_Search.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.Search", 200) ?? 200; } catch { E621PersistentCacheMaxEntries_Search.Value = 200; }
+    try { E621PersistentCacheMaxEntries_TagSuggest.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.TagSuggest", 400) ?? 400; } catch { E621PersistentCacheMaxEntries_TagSuggest.Value = 400; }
+    try { E621PersistentCacheMaxEntries_PoolPosts.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PoolPosts", 200) ?? 200; } catch { E621PersistentCacheMaxEntries_PoolPosts.Value = 200; }
+    try { E621PersistentCacheMaxEntries_FullPool.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.FullPool", 150) ?? 150; } catch { E621PersistentCacheMaxEntries_FullPool.Value = 150; }
+    try { E621PersistentCacheMaxEntries_PostDetails.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PostDetails", 800) ?? 800; } catch { E621PersistentCacheMaxEntries_PostDetails.Value = 800; }
+    try { E621PersistentCacheMaxEntries_PoolDetails.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PoolDetails", 400) ?? 400; } catch { E621PersistentCacheMaxEntries_PoolDetails.Value = 400; }
 
         // Theme
         try
@@ -60,6 +79,7 @@ public partial class SettingsWindow : Window
 
         // Gallery scale
     try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
+        try { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } catch { }
     try { LoadLastSessionEnabled.IsChecked = _settings?.GetSetting<bool>("LoadLastSessionEnabled", true) ?? true; } catch { LoadLastSessionEnabled.IsChecked = true; }
         // Computed UA
         try
@@ -104,6 +124,8 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("UseOriginalFilename", UseOriginalFilename.IsChecked == true);
             await _settings.SetSettingAsync("NetworkTimeoutSeconds", Math.Clamp((int)(NetworkTimeoutSeconds.Value ?? 30), 5, 120));
             await _settings.SetSettingAsync("MaxResultsPerSource", Math.Clamp((int)(MaxResultsPerSource.Value ?? 50), 10, 320));
+            // Keep PostsPerPage (Appearance) synced
+            try { PostsPerPage.Value = MaxResultsPerSource.Value; } catch { }
             await _settings.SetSettingAsync("CpuWorkerDegree", Math.Max(1, (int)(CpuWorkerDegree.Value ?? Math.Max(1, Environment.ProcessorCount / 2))));
             await _settings.SetSettingAsync("ThumbnailPrewarmEnabled", ThumbnailPrewarmEnabled.IsChecked == true);
             await _settings.SetSettingAsync("PoolsUpdateIntervalMinutes", Math.Clamp((int)(PoolsUpdateIntervalMinutes.Value ?? 360), 5, 1440));
@@ -111,6 +133,10 @@ public partial class SettingsWindow : Window
             var mode = ThemeMode.SelectedIndex == 1 ? "light" : ThemeMode.SelectedIndex == 2 ? "dark" : "system";
             await _settings.SetSettingAsync("ThemeMode", mode);
             await _settings.SetSettingAsync("GalleryScale", GalleryScale.Value);
+            try { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } catch { }
+            // Posts per page maps to MaxResultsPerSource
+            await _settings.SetSettingAsync("MaxResultsPerSource", Math.Clamp((int)(PostsPerPage.Value ?? (MaxResultsPerSource.Value ?? 50)), 10, 320));
+            try { MaxResultsPerSource.Value = PostsPerPage.Value; } catch { }
             // Viewer
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay.IsChecked == true);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted.IsChecked == true);
@@ -200,6 +226,24 @@ public partial class SettingsWindow : Window
         {
             var mode = ThemeMode.SelectedIndex == 1 ? "light" : ThemeMode.SelectedIndex == 2 ? "dark" : "system";
             _ = _settings?.SetSettingAsync("ThemeMode", mode);
+            // Apply immediately
+            try
+            {
+                if (Application.Current is App app)
+                {
+                    // App listens to SettingChanged, but apply directly for snappier UX
+                    var variant = mode == "light" ? global::Avalonia.Styling.ThemeVariant.Light : mode == "dark" ? global::Avalonia.Styling.ThemeVariant.Dark : global::Avalonia.Styling.ThemeVariant.Default;
+                    app.RequestedThemeVariant = variant;
+                    if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                    {
+                        foreach (var w in desktop.Windows)
+                        {
+                            try { w.RequestedThemeVariant = variant; } catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
         catch { }
     }
@@ -376,4 +420,50 @@ public partial class SettingsWindow : Window
     private void OnClearE621FullPoolCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621FullPoolCache(); } catch { } }
     private void OnClearE621PostDetailsCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621PostDetailsCache(); } catch { } }
     private void OnClearE621PoolDetailsCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621PoolDetailsCache(); } catch { } }
+
+    private void OnMaxResultsPerSourceChanged(object? sender, NumericUpDownValueChangedEventArgs e)
+    {
+        try { PostsPerPage.Value = MaxResultsPerSource.Value; } catch { }
+    }
+
+    private void OnPostsPerPageChanged(object? sender, NumericUpDownValueChangedEventArgs e)
+    {
+        try { MaxResultsPerSource.Value = PostsPerPage.Value; } catch { }
+    }
+
+    private void OnGalleryScaleTextLostFocus(object? sender, RoutedEventArgs e)
+    {
+        ApplyGalleryScaleText();
+    }
+
+    private void OnGalleryScaleTextKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ApplyGalleryScaleText();
+            e.Handled = true;
+        }
+    }
+
+    private void ApplyGalleryScaleText()
+    {
+        try
+        {
+            var text = GalleryScaleText.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(text)) return;
+            if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var val))
+            {
+                val = Math.Clamp(val, 0.5, 2.0);
+                GalleryScale.Value = val;
+                GalleryScaleText.Text = val.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (double.TryParse(text, out var valLocal))
+            {
+                valLocal = Math.Clamp(valLocal, 0.5, 2.0);
+                GalleryScale.Value = valLocal;
+                GalleryScaleText.Text = valLocal.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+        catch { }
+    }
 }

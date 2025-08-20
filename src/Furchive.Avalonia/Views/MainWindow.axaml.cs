@@ -71,15 +71,8 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        _scrollDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        _scrollDebounceTimer.Tick += async (_, __) =>
-        {
-            _scrollDebounceTimer.Stop();
-            if (DataContext is MainViewModel vm && vm.HasNextPage && !vm.IsSearching)
-            {
-                try { await vm.AppendNextPageAsync(); } catch { }
-            }
-        };
+    _scrollDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+    _scrollDebounceTimer.Tick += (_, __) => { _scrollDebounceTimer.Stop(); };
 
         // Keyboard shortcuts: Enter to search, Esc to clear selection (but not while typing in text inputs)
     this.KeyDown += (s, e) =>
@@ -124,10 +117,7 @@ public partial class MainWindow : Window
             {
         vm.PropertyChanged += async (_, args) =>
                 {
-                    if (args.PropertyName == nameof(MainViewModel.SelectedPool))
-                    {
-                        try { await vm.TriggerLoadSelectedPoolAsync(); } catch { }
-                    }
+                    // No-op on SelectedPool change; avoid auto-opening a pool when user selects a post.
                 };
 
                 // Watch pinned pools collection changes to scroll to bottom
@@ -300,26 +290,7 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    private void OnGalleryScrollChanged(object? sender, ScrollChangedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm) return;
-            if (sender is not ScrollViewer sv) return;
-            var extent = sv.Extent.Height;
-            var viewport = sv.Viewport.Height;
-            var offset = sv.Offset.Y;
-            if (extent <= 0 || viewport <= 0) return;
-            var remaining = extent - (offset + viewport);
-            if (remaining <= viewport * 0.5 && vm.HasNextPage)
-            {
-                // Debounce to reduce rapid-fire calls; VM also guards concurrency
-                _scrollDebounceTimer.Stop();
-                _scrollDebounceTimer.Start();
-            }
-        }
-        catch { }
-    }
+    private void OnGalleryScrollChanged(object? sender, ScrollChangedEventArgs e) { /* infinite scroll disabled */ }
 
     private void OnGalleryKeyDown(object? sender, KeyEventArgs e)
     {

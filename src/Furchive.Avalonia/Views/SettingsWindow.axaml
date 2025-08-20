@@ -108,7 +108,7 @@
                     </StackPanel>
                     <StackPanel Width="220">
                         <TextBlock Text="Max Results Per Source"/>
-                        <controls:NumericUpDown x:Name="MaxResultsPerSource" Minimum="10" Maximum="320" Increment="10"/>
+                        <controls:NumericUpDown x:Name="MaxResultsPerSource" Minimum="10" Maximum="320" Increment="10" ValueChanged="OnMaxResultsPerSourceChanged"/>
                     </StackPanel>
                 </StackPanel>
                 <Separator/>
@@ -143,7 +143,11 @@
                     <TextBlock Text="Gallery item scale" Width="160" VerticalAlignment="Center"/>
                     <Slider x:Name="GalleryScale" Minimum="0.5" Maximum="2.0" TickFrequency="0.05" Width="220"/>
                     <TextBlock Text="x"/>
-                    <TextBlock Text="{Binding #GalleryScale.Value}"/>
+                    <TextBox x:Name="GalleryScaleText" Width="60" HorizontalContentAlignment="Right" ToolTip.Tip="0.50 – 2.00" LostFocus="OnGalleryScaleTextLostFocus" KeyDown="OnGalleryScaleTextKeyDown"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="Posts per page" Width="160" VerticalAlignment="Center"/>
+                    <controls:NumericUpDown x:Name="PostsPerPage" Minimum="10" Maximum="320" Increment="10" Width="120" ValueChanged="OnPostsPerPageChanged"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <CheckBox x:Name="LoadLastSessionEnabled" Content="Load last session on startup"/>

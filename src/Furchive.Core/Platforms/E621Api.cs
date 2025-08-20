@@ -17,6 +17,7 @@ public class E621Api : IPlatformApi
     
     private readonly HttpClient _httpClient;
     private readonly ILogger<E621Api> _logger;
+    private readonly IE621CacheStore? _dbCache; // optional SQLite cache
     private readonly ISettingsService? _settings;
     private string? _userAgent;
     private string? _username;
@@ -62,11 +63,12 @@ public class E621Api : IPlatformApi
     private readonly CacheMetrics _metricsPostDetails = new();
     private readonly CacheMetrics _metricsPoolDetails = new();
 
-    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null)
+    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null, IE621CacheStore? dbCache = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settings = settings;
+        _dbCache = dbCache;
 
         // Configure concurrency and TTLs from settings with sane defaults
         int GetInt(string key, int fallback)
@@ -108,12 +110,12 @@ public class E621Api : IPlatformApi
     }
 
     // Cache maintenance helpers (invoked from Settings)
-    public void ClearSearchCache() => _searchCache.Clear();
-    public void ClearTagSuggestCache() => _tagSuggestCache.Clear();
-    public void ClearPoolPostsCache() => _poolPostsCache.Clear();
-    public void ClearFullPoolCache() => _poolAllCache.Clear();
-    public void ClearPostDetailsCache() => _postDetailsCache.Clear();
-    public void ClearPoolDetailsCache() => _poolCache.Clear();
+    public void ClearSearchCache() { _searchCache.Clear(); try { _dbCache?.ClearAsync("search"); } catch { } }
+    public void ClearTagSuggestCache() { _tagSuggestCache.Clear(); try { _dbCache?.ClearAsync("tag_suggest"); } catch { } }
+    public void ClearPoolPostsCache() { _poolPostsCache.Clear(); try { _dbCache?.ClearAsync("pool_posts"); } catch { } }
+    public void ClearFullPoolCache() { _poolAllCache.Clear(); try { _dbCache?.ClearAsync("full_pool"); } catch { } }
+    public void ClearPostDetailsCache() { _postDetailsCache.Clear(); try { _dbCache?.ClearAsync("post_details"); } catch { } }
+    public void ClearPoolDetailsCache() { _poolCache.Clear(); try { _dbCache?.ClearAsync("pool_details"); } catch { } }
 
     public async Task<PlatformHealth> GetHealthAsync()
     {
@@ -256,8 +258,23 @@ public class E621Api : IPlatformApi
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={parameters.Page}";
             url = AppendAuthAndFilter(url, isPostsList: true);
 
-            // Try cache before hitting network
+            // Try cache before hitting network (DB first, then in-memory)
             var cacheKey = $"{tagQuery}||p={parameters.Page}||l={limit}||authed={!string.IsNullOrWhiteSpace(_apiKey)}";
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var fromDb = await _dbCache.GetAsync<SearchResult>("search", cacheKey);
+                    if (fromDb != null && (fromDb.Items?.Count ?? 0) > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsSearch.Hits);
+                        // backfill in-memory with a short TTL to avoid duplicate DB reads during session
+                        _searchCache[cacheKey] = (fromDb, DateTime.UtcNow.AddMinutes(2));
+                        return fromDb;
+                    }
+                }
+                catch { }
+            }
             if (_searchCache.TryGetValue(cacheKey, out var cached))
             {
                 if (DateTime.UtcNow < cached.expires)
@@ -390,6 +407,7 @@ public class E621Api : IPlatformApi
                 TotalCount = 0
             };
             _searchCache[cacheKey] = (resultObj, DateTime.UtcNow.Add(_searchTtl));
+            try { if (_dbCache != null) await _dbCache.SetAsync("search", cacheKey, resultObj, DateTime.UtcNow.Add(_searchTtl)); } catch { }
             return resultObj;
         }
         catch (Exception ex)
@@ -498,6 +516,20 @@ public class E621Api : IPlatformApi
         try
         {
             System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Lookups);
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var db = await _dbCache.GetAsync<E621PoolDetail>("pool_details", poolId.ToString());
+                    if (db != null)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
+                        _poolCache[poolId] = (db, DateTime.UtcNow.AddMinutes(2));
+                        return db;
+                    }
+                }
+                catch { }
+            }
             if (_poolCache.TryGetValue(poolId, out var entry))
             {
                 if (DateTime.UtcNow < entry.expires)
@@ -525,6 +557,7 @@ public class E621Api : IPlatformApi
                             {
                                 System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Evictions);
                                 _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
+                                try { if (_dbCache != null) await _dbCache.SetAsync("pool_details", poolId.ToString(), det, DateTime.UtcNow.Add(_poolTtl)); } catch { }
                             }
                         }
                         catch (Exception ex) { _logger.LogDebug(ex, "SWR refresh for pool detail failed"); }
@@ -556,6 +589,7 @@ public class E621Api : IPlatformApi
                 if (det != null)
                 {
                     _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
+                    try { if (_dbCache != null) await _dbCache.SetAsync("pool_details", poolId.ToString(), det, DateTime.UtcNow.Add(_poolTtl)); } catch { }
                 }
                 return det;
             }
@@ -575,7 +609,20 @@ public class E621Api : IPlatformApi
     {
         try
         {
-            // Cache check for post details
+            // Cache check for post details (DB first)
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var dbItem = await _dbCache.GetAsync<MediaItem>("post_details", id);
+                    if (dbItem != null)
+                    {
+                        return dbItem;
+                    }
+                }
+                catch { }
+            }
+            // In-memory cache check for post details
             var hasPostId = int.TryParse(id, out var postIdInt);
             if (hasPostId)
             {
@@ -672,6 +719,7 @@ public class E621Api : IPlatformApi
             if (hasPostId && item != null)
             {
                 _postDetailsCache[postIdInt] = (item, DateTime.UtcNow.Add(_postDetailsTtl));
+                try { if (_dbCache != null) await _dbCache.SetAsync("post_details", id, item, DateTime.UtcNow.Add(_postDetailsTtl)); } catch { }
             }
             return item;
         }
@@ -729,6 +777,20 @@ public class E621Api : IPlatformApi
         {
             System.Threading.Interlocked.Increment(ref _metricsTagSuggest.Lookups);
             var key = $"{query}|{limit}";
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var fromDb = await _dbCache.GetAsync<List<TagSuggestion>>("tag_suggest", key);
+                    if (fromDb != null && fromDb.Count > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsTagSuggest.Hits);
+                        _tagSuggestCache[key] = (fromDb, DateTime.UtcNow.AddMinutes(2));
+                        return fromDb;
+                    }
+                }
+                catch { }
+            }
             if (_tagSuggestCache.TryGetValue(key, out var cached))
             {
                 if (DateTime.UtcNow < cached.expires)
@@ -789,6 +851,7 @@ public class E621Api : IPlatformApi
                 Category = MapE621TagCategory(t.Category)
             }).ToList();
             _tagSuggestCache[key] = (list, DateTime.UtcNow.Add(_tagSuggestTtl));
+            try { if (_dbCache != null) await _dbCache.SetAsync("tag_suggest", key, list, DateTime.UtcNow.Add(_tagSuggestTtl)); } catch { }
             return list;
         }
         catch (Exception ex)
@@ -976,6 +1039,20 @@ public class E621Api : IPlatformApi
             EnsureUserAgent();
             var authed = !string.IsNullOrWhiteSpace(_apiKey);
             var key = (poolId, page, Math.Clamp(limit, 1, 100), authed);
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var db = await _dbCache.GetAsync<SearchResult>("pool_posts", $"{poolId}|{page}|{limit}|{authed}");
+                    if (db != null && (db.Items?.Count ?? 0) > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsPoolPosts.Hits);
+                        _poolPostsCache[key] = (db, DateTime.UtcNow.AddMinutes(2));
+                        return db;
+                    }
+                }
+                catch { }
+            }
             System.Threading.Interlocked.Increment(ref _metricsPoolPosts.Lookups);
             if (_poolPostsCache.TryGetValue(key, out var cached))
             {
@@ -1033,6 +1110,7 @@ public class E621Api : IPlatformApi
                 TotalCount = 0
             };
             _poolPostsCache[key] = (sr, DateTime.UtcNow.Add(_poolPostsTtl));
+            try { if (_dbCache != null) await _dbCache.SetAsync("pool_posts", $"{poolId}|{page}|{limit}|{authed}", sr, DateTime.UtcNow.Add(_poolPostsTtl)); } catch { }
             return sr;
         }
         catch (Exception ex)
@@ -1079,6 +1157,20 @@ public class E621Api : IPlatformApi
             EnsureUserAgent();
             var authed = !string.IsNullOrWhiteSpace(_apiKey);
             var key = (poolId, authed);
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var db = await _dbCache.GetAsync<List<MediaItem>>("full_pool", $"{poolId}|{authed}");
+                    if (db != null && db.Count > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsFullPool.Hits);
+                        _poolAllCache[key] = (db, DateTime.UtcNow.AddMinutes(2));
+                        return db;
+                    }
+                }
+                catch { }
+            }
             System.Threading.Interlocked.Increment(ref _metricsFullPool.Lookups);
             if (_poolAllCache.TryGetValue(key, out var cached))
             {
@@ -1171,6 +1263,7 @@ public class E621Api : IPlatformApi
                     if (byId.TryGetValue(id, out var item)) ordered.Add(item);
                 }
                 _poolAllCache[key] = (ordered, DateTime.UtcNow.Add(_poolAllTtl));
+                try { if (_dbCache != null) await _dbCache.SetAsync("full_pool", $"{poolId}|{authed}", ordered, DateTime.UtcNow.Add(_poolAllTtl)); } catch { }
                 return ordered;
             }
         }
@@ -1626,6 +1719,8 @@ public class E621Api : IPlatformApi
 
     public void LoadPersistentCacheIfEnabled()
     {
+        // No-op when SQLite cache is present; legacy JSON persistence retained for backward compatibility if needed
+        if (_dbCache != null) return;
         if (!_persistEnabled) return;
         try
         {
@@ -1718,6 +1813,7 @@ public class E621Api : IPlatformApi
 
     public void SavePersistentCacheIfEnabled()
     {
+        if (_dbCache != null) return;
         if (!_persistEnabled) return;
         try
         {

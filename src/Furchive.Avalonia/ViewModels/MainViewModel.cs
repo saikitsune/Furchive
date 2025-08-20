@@ -530,28 +530,13 @@ public partial class MainViewModel : ObservableObject
 
             if (session.IsPoolMode && session.PoolId.HasValue)
             {
+                // Use the existing cached-first loader for pools so we avoid network on startup
                 CurrentPoolId = session.PoolId;
                 IsPoolMode = true;
-                SelectedPool = Pools.FirstOrDefault(p => p.Id == session.PoolId.Value);
-                await EnsureE621AuthAsync();
-                var items = await _apiService.GetAllPoolPostsAsync("e621", session.PoolId.Value);
-                if (items != null && items.Count > 0)
-                {
-                    SearchResults.Clear();
-                    var poolName = SelectedPool?.Name ?? (items.FirstOrDefault()?.TagCategories?.GetValueOrDefault("pool_name")?.FirstOrDefault() ?? "");
-                    for (int i = 0; i < items.Count; i++)
-                    {
-                        var pageNum = (i + 1).ToString("D5");
-                        items[i].TagCategories ??= new Dictionary<string, List<string>>();
-                        items[i].TagCategories["pool_name"] = new List<string> { poolName };
-                        items[i].TagCategories["page_number"] = new List<string> { pageNum };
-                        if (string.IsNullOrWhiteSpace(items[i].PreviewUrl) && !string.IsNullOrWhiteSpace(items[i].FullImageUrl)) items[i].PreviewUrl = items[i].FullImageUrl;
-                        SearchResults.Add(items[i]);
-                    }
-                    CurrentPage = 1; HasNextPage = false; TotalCount = items.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
-                    StatusMessage = $"Restored last pool: {session.PoolId}";
-                    return;
-                }
+                var pool = Pools.FirstOrDefault(p => p.Id == session.PoolId.Value) ?? new PoolInfo { Id = session.PoolId.Value, Name = SelectedPool?.Name ?? $"Pool {session.PoolId.Value}" };
+                await LoadSelectedPoolAsync(pool);
+                StatusMessage = $"Restored last pool: {session.PoolId}";
+                return;
             }
             await PerformSearchAsync(Math.Max(1, session.Page), reset: true);
         }

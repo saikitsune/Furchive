@@ -15,6 +15,7 @@ using Furchive.Avalonia.Views;
 using Furchive.Avalonia.ViewModels;
 using Furchive.Avalonia.Infrastructure;
 using System.Net.Http;
+using Avalonia.Styling;
 
 namespace Furchive.Avalonia;
 
@@ -22,6 +23,7 @@ public partial class App : Application
 {
     private IHost? _host;
     internal static IServiceProvider? Services { get; private set; }
+    private ISettingsService? _settings;
 
     public override void Initialize()
     {
@@ -41,7 +43,7 @@ public partial class App : Application
         }
         catch { }
 
-        var builder = Host.CreateDefaultBuilder();
+    var builder = Host.CreateDefaultBuilder();
         builder.ConfigureServices((context, services) =>
         {
             services.AddSingleton<IConfiguration>(context.Configuration);
@@ -73,13 +75,15 @@ public partial class App : Application
             services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
             services.AddSingleton<IPlatformShellService, PlatformShellService>();
             services.AddSingleton<IPoolsCacheStore, SqlitePoolsCacheStore>();
+            services.AddSingleton<IE621CacheStore, E621SqliteCacheStore>();
             services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
             services.AddTransient<IPlatformApi>(sp =>
             {
                 var http = sp.GetRequiredService<HttpClient>();
                 var logger = sp.GetRequiredService<ILogger<E621Api>>();
                 var settings = sp.GetService<ISettingsService>();
-                return new E621Api(http, logger, settings);
+                var cache = sp.GetService<IE621CacheStore>();
+                return new E621Api(http, logger, settings, cache);
             });
             services.AddTransient<Furchive.Avalonia.ViewModels.MainViewModel>();
             services.AddTransient<MainWindow>();
@@ -120,18 +124,18 @@ public partial class App : Application
             }
         }
 
-        // Ensure settings are loaded from disk before creating any windows/view models
+    // Ensure settings are loaded from disk before creating any windows/view models
         try
         {
             var sp = Services;
             if (sp != null)
             {
-                var settings = sp.GetService<ISettingsService>();
-                if (settings != null)
+        _settings = sp.GetService<ISettingsService>();
+        if (_settings != null)
                 {
                     try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Settings load starting\n"); } catch { }
                     // Load settings synchronously to guarantee availability
-                    settings.LoadAsync().GetAwaiter().GetResult();
+            _settings.LoadAsync().GetAwaiter().GetResult();
                     try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Settings loaded\n"); } catch { }
                 }
             }
@@ -155,6 +159,17 @@ public partial class App : Application
             {
                 var lt2 = ApplicationLifetime != null ? ApplicationLifetime.GetType().FullName : "null";
                 File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Lifetime: {lt2}\n");
+            }
+        }
+        catch { }
+
+        // Apply theme before creating main window, and subscribe for live updates
+        try
+        {
+            ApplyThemeFromSettings();
+            if (_settings != null)
+            {
+                _settings.SettingChanged += OnSettingChanged;
             }
         }
         catch { }
@@ -221,5 +236,40 @@ public partial class App : Application
         }
         base.OnFrameworkInitializationCompleted();
         try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Exiting OnFrameworkInitializationCompleted\n"); } catch { }
+    }
+
+    private void OnSettingChanged(object? sender, string key)
+    {
+        if (!string.Equals(key, "ThemeMode", StringComparison.OrdinalIgnoreCase)) return;
+        try { ApplyThemeFromSettings(); } catch { }
+    }
+
+    private void ApplyThemeFromSettings()
+    {
+        var mode = _settings?.GetSetting<string>("ThemeMode", "system")?.Trim().ToLowerInvariant() ?? "system";
+        // System means follow OS; in Avalonia set RequestedThemeVariant to Default
+        var variant = mode switch
+        {
+            "light" => ThemeVariant.Light,
+            "dark" => ThemeVariant.Dark,
+            _ => ThemeVariant.Default
+        };
+        try
+        {
+            RequestedThemeVariant = variant;
+        }
+        catch { }
+        // Also update all open windows immediately
+        try
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.Windows != null)
+            {
+                foreach (var w in desktop.Windows)
+                {
+                    try { w.RequestedThemeVariant = variant; } catch { }
+                }
+            }
+        }
+        catch { }
     }
 }

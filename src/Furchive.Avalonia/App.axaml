@@ -1,4 +1,4 @@
-<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Furchive.Avalonia.App" RequestedThemeVariant="Dark"
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Furchive.Avalonia.App" RequestedThemeVariant="Default"
              xmlns:cvt="using:Furchive.Avalonia.Converters">
   <Application.Styles>
     <FluentTheme />
