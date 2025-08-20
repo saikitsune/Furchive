@@ -1,7 +1,8 @@
 using System;
 using Avalonia;
-// Note: Avalonia.WebView doesn't provide UseWindowsWebView2 extension for AppBuilder in this version.
-// using Avalonia.ReactiveUI;
+#if HAS_WEBVIEW_AVALONIA
+using Avalonia.WebView.Desktop; // enables UseDesktopWebView()
+#endif
 
 namespace Furchive.Avalonia;
 
@@ -16,6 +17,8 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            // Avalonia.WebView initializes via platform detect in this setup; no extra call here.
+#if HAS_WEBVIEW_AVALONIA
+            .UseDesktopWebView()
+#endif
             .LogToTrace();
 }

@@ -22,10 +22,10 @@ using Microsoft.Extensions.DependencyInjection;
 using LibVLCSharp.Shared;
 using AnimatedImage.Avalonia;
 using Furchive.Avalonia.Services;
-// WebView backend (HTML5) guarded by HAS_OFFICIAL_AVALONIA_WEBVIEW define
-#if HAS_OFFICIAL_AVALONIA_WEBVIEW
-using Avalonia.WebView;
-using Avalonia.WebView.Windows;
+// WebView backend (HTML5) guarded by HAS_WEBVIEW_AVALONIA define (community WebView.Avalonia)
+#if HAS_WEBVIEW_AVALONIA
+using Avalonia.WebView; // control lives under Avalonia.Controls.WebView
+using Avalonia.WebView.Desktop; // builder extension is in this namespace
 #endif
 
 namespace Furchive.Avalonia.Views;
@@ -126,7 +126,7 @@ public partial class ViewerWindow : Window
 		{
             videoBorder.IsVisible = true;
             // Prefer WebView backend if available for stability; fall back to LibVLC
-#if HAS_OFFICIAL_AVALONIA_WEBVIEW
+#if HAS_WEBVIEW_AVALONIA
             try
             {
                 var proxy = App.Services?.GetService<ILocalMediaProxy>();

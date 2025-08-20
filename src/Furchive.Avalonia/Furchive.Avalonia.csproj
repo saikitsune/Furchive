@@ -10,10 +10,8 @@
     <FileVersion>1.1.0.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Toggle to include Avalonia.WebView packages when NuGet access is available -->
+    <!-- Toggle to include community WebView.Avalonia packages when NuGet access is available -->
   <EnableAvaloniaWebView>false</EnableAvaloniaWebView>
-    <!-- Make official Avalonia.WebView optional; default off to avoid restore issues in restricted environments -->
-  <EnableOfficialAvaloniaWebView>false</EnableOfficialAvaloniaWebView>
   </PropertyGroup>
 
   <ItemGroup>
@@ -67,22 +65,14 @@
   <ItemGroup Condition="'$(EnableAvaloniaWebView)'=='true'">
     <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
     <PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
+  <PackageReference Include="WebView.Avalonia.Windows" Version="11.0.0.1" Condition="'$(OS)'=='Windows_NT'" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(EnableAvaloniaWebView)'=='true'">
     <DefineConstants>$(DefineConstants);HAS_WEBVIEW_AVALONIA</DefineConstants>
   </PropertyGroup>
 
-  <!-- Optionally include official Avalonia.WebView packages as well -->
-  <ItemGroup Condition="'$(EnableOfficialAvaloniaWebView)'=='true'">
-    <PackageReference Include="Avalonia.WebView" Version="11.0.5" />
-    <PackageReference Include="Avalonia.WebView.Desktop" Version="11.0.5" />
-  <PackageReference Include="Avalonia.WebView.Windows" Version="11.0.5" Condition="'$(OS)'=='Windows_NT'" />
-  </ItemGroup>
-
-  <PropertyGroup Condition="'$(EnableOfficialAvaloniaWebView)'=='true'">
-    <DefineConstants>$(DefineConstants);HAS_OFFICIAL_AVALONIA_WEBVIEW</DefineConstants>
-  </PropertyGroup>
+  <!-- Remove official Avalonia.WebView toggles; we use community WebView.Avalonia -->
 
   <ItemGroup>
     <ProjectReference Include="..\Furchive.Core\Furchive.Core.csproj" />
