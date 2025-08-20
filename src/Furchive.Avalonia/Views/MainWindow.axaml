@@ -39,7 +39,7 @@
                 </ComboBox>
                 <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
                 <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
-                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}"/>
+                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}" IsVisible="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
             </WrapPanel>
 
             <!-- Top status/progress panel docked at bottom of header -->

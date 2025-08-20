@@ -1,59 +1,64 @@
 <Window xmlns="https://github.com/avaloniaui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:cvt="using:Furchive.Avalonia.Converters"
-    xmlns:beh="using:Furchive.Avalonia.Behaviors"
-    x:Class="Furchive.Avalonia.Views.ViewerWindow"
-    x:Name="Root"
-    Width="1000" Height="800" Title="Viewer"
-    Icon="avares://Furchive/Assets/icon.ico">
-    <Window.Resources>
-        <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable"/>
-        <cvt:ImageCacheConverter x:Key="ImageCache"/>
-        <cvt:FirstNonEmptyConverter x:Key="FirstNonEmpty"/>
-    </Window.Resources>
-    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
-        <StackPanel Orientation="Horizontal" Margin="8" Spacing="8">
-            <TextBlock Text="Viewer" FontSize="18"/>
-            <TextBlock Text="·"/>
-            <TextBlock Text="{Binding Title}"/>
-            <TextBlock Text="·"/>
-            <TextBlock Text="{Binding Artist}"/>
-            <TextBlock Text="·"/>
-            <TextBlock Text="Zoom" Margin="12,0,4,0"/>
-            <Slider x:Name="ZoomSlider" Width="160" Minimum="0.25" Maximum="4" Value="1" TickFrequency="0.25" SmallChange="0.1" LargeChange="0.5"/>
-        </StackPanel>
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:beh="using:Furchive.Avalonia.Behaviors"
+        x:Class="Furchive.Avalonia.Views.ViewerWindow"
+        Width="1000" Height="800" Title="Viewer"
+        Icon="avares://Furchive/Assets/icon.ico">
+    <Grid RowDefinitions="Auto,*">
+        <!-- Toolbar -->
+        <DockPanel Margin="8">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Spacing="8">
+                <Button Content="Open Source" Click="OnOpenSource"/>
+                <Button Content="Open Original" Click="OnOpenOriginal"/>
+                <Button Content="Close" Click="OnClose"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Viewer" FontSize="18"/>
+                <TextBlock Text="·"/>
+                <TextBlock Text="{Binding Title}"/>
+                <TextBlock Text="·"/>
+                <TextBlock Text="{Binding Artist}"/>
+                <TextBlock Text="·"/>
+                <TextBlock Text="Zoom"/>
+                <Slider x:Name="ZoomSlider" Width="160" Minimum="0.25" Maximum="4" Value="1"
+                        TickFrequency="0.25" SmallChange="0.1" LargeChange="0.5"/>
+            </StackPanel>
+        </DockPanel>
 
-        <!-- Image rendering; if video type, show a placeholder with actions -->
-        <Grid Grid.Row="1" Margin="8">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <Grid>
-                <!-- Image mode -->
-                <Border Background="#202020" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}, ConverterParameter=False}">
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-               <Image x:Name="PreviewImage" Stretch="Uniform"
-                   beh:RemoteImage.SourceUri="{Binding PreviewUrl}"
-                   PointerWheelChanged="OnImageWheel">
-                            <Image.RenderTransform>
-                                <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}" ScaleY="{Binding #ZoomSlider.Value}"/>
-                            </Image.RenderTransform>
-                        </Image>
-                    </ScrollViewer>
-                </Border>
-                <!-- Video mode: we attach WebView at runtime when available; otherwise show fallback -->
-                <Grid IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">
+        <!-- Content area: either Image view or WebView2 host -->
+        <Grid Grid.Row="1" Background="#202020">
+            <!-- Image mode -->
+            <Border x:Name="ImageContainer" Background="#202020" IsVisible="True">
+                <ScrollViewer x:Name="ImageScroll"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              PointerPressed="OnImagePointerPressed"
+                              PointerReleased="OnImagePointerReleased"
+                              PointerMoved="OnImagePointerMoved">
+                    <LayoutTransformControl>
+                        <LayoutTransformControl.LayoutTransform>
+                            <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}"
+                                            ScaleY="{Binding #ZoomSlider.Value}"/>
+                        </LayoutTransformControl.LayoutTransform>
+                        <Grid x:Name="ImageContent" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Image x:Name="ImageView" Stretch="None"
+                                   PointerWheelChanged="OnImageWheel"
+                                   beh:RemoteImage.SourceUri=""/>
+                        </Grid>
+                    </LayoutTransformControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- WebView2 mode -->
+            <Border x:Name="WebViewContainer" Background="#202020" IsVisible="False">
+                <Grid>
                     <Panel x:Name="WebHost"/>
-                    <StackPanel x:Name="WebFallback" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                        <TextBlock Foreground="White" Text="Video content"/>
+                    <StackPanel x:Name="WebFallback" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsVisible="True">
+                        <TextBlock x:Name="WebFallbackText" Foreground="White" Text="Opening content…"/>
                         <Button Content="Open in browser" Click="OnOpenOriginal"/>
                     </StackPanel>
                 </Grid>
-            </Grid>
+            </Border>
         </Grid>
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="8" Spacing="8">
-            <Button Content="Close" Click="OnClose"/>
-        </StackPanel>
     </Grid>
 </Window>

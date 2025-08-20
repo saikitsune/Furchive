@@ -15,6 +15,7 @@ using Furchive.Avalonia.Infrastructure;
 using Avalonia;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
+using System.Threading.Tasks;
 
 
 namespace Furchive.Avalonia.Views;
@@ -115,9 +116,10 @@ public partial class MainWindow : Window
         {
             if (DataContext is MainViewModel vm)
             {
-        vm.PropertyChanged += async (_, args) =>
+    vm.PropertyChanged += async (_, args) =>
                 {
                     // No-op on SelectedPool change; avoid auto-opening a pool when user selects a post.
+            await Task.Yield();
                 };
 
                 // Watch pinned pools collection changes to scroll to bottom
