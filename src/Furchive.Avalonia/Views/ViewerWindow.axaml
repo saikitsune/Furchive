@@ -55,7 +55,7 @@
             <!-- Video mode (LibVLC) -->
             <Border x:Name="VideoContainer" Background="#000000" IsVisible="False">
                 <Grid RowDefinitions="*,Auto">
-                    <!-- Lazy host; actual VideoView is created in code-behind to avoid XAML-time native loading -->
+                    <!-- Lazy host; replaced at runtime by VideoView (VLC) or WebView (HTML5) depending on backend -->
                     <ContentControl x:Name="VideoHost"/>
                     <!-- Controls -->
                     <Grid Grid.Row="1" Margin="8" ColumnDefinitions="Auto,Auto,*,Auto,Auto,120">

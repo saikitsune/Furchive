@@ -27,10 +27,10 @@ DisableProgramGroupPage=yes
 ; Enforce per-user install only (no all-users option)
 PrivilegesRequired=lowest
 SetupLogging=yes
-SetupIconFile=..\..\assets\icon.ico
+; SetupIconFile=..\..\assets\icon.ico
 Uninstallable=yes
 ; Add a checkbox on the final uninstall page to remove user settings
-UninstallDisplayIcon={app}\{#AppExeName}
+; UninstallDisplayIcon={app}\{#AppExeName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

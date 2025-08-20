@@ -21,6 +21,12 @@ using Furchive.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
 using LibVLCSharp.Shared;
 using AnimatedImage.Avalonia;
+using Furchive.Avalonia.Services;
+// WebView backend (HTML5) guarded by HAS_OFFICIAL_AVALONIA_WEBVIEW define
+#if HAS_OFFICIAL_AVALONIA_WEBVIEW
+using Avalonia.WebView;
+using Avalonia.WebView.Windows;
+#endif
 
 namespace Furchive.Avalonia.Views;
 
@@ -116,31 +122,37 @@ public partial class ViewerWindow : Window
 		var bestUrl = !string.IsNullOrWhiteSpace(m.FullImageUrl) ? m.FullImageUrl : m.PreviewUrl;
 		SafeLog($"Media detect: ext={ext}, isVideo={isVideo}, looksGif={looksGif}, hasUrl={!string.IsNullOrWhiteSpace(bestUrl)}");
 
-		if (isVideo)
+        if (isVideo)
 		{
-			if (!await EnsureLibVlcInitializedAsync())
-			{
-				SafeLog("LibVLC init failed; cannot play video.");
-				return;
-			}
-
-            var videoView = new LibVLCSharp.Avalonia.VideoView
-            {
-                HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch,
-                VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch
-            };
             videoBorder.IsVisible = true;
-
+            // Prefer WebView backend if available for stability; fall back to LibVLC
+#if HAS_OFFICIAL_AVALONIA_WEBVIEW
             try
             {
-                SafeLog("Attaching VideoView to VideoHost content immediately.");
-                videoHost.Content = videoView;
-                await AttachVideoAsync(bestUrl, videoView);
+                var proxy = App.Services?.GetService<ILocalMediaProxy>();
+                if (proxy != null && proxy.BaseAddress != null)
+                {
+                    var pageUrl = proxy.GetPlayerUrl(bestUrl!);
+                    SafeLog($"Using WebView backend via local proxy: {pageUrl}");
+                    var web = new global::Avalonia.Controls.WebView();
+                    videoHost.Content = web;
+                    web.Address = pageUrl;
+                    return;
+                }
+                else
+                {
+                    SafeLog("Local media proxy unavailable; falling back to LibVLC");
+                }
             }
             catch (Exception ex)
             {
-                SafeLog($"Error attaching VideoView: {ex}");
+                SafeLog("WebView backend failed: " + ex.ToString());
             }
+#endif
+            if (!await EnsureLibVlcInitializedAsync()) { SafeLog("LibVLC init failed; cannot play video."); return; }
+            var videoView = new LibVLCSharp.Avalonia.VideoView { HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch, VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch };
+            try { SafeLog("Attaching VideoView to VideoHost content immediately."); videoHost.Content = videoView; await AttachVideoAsync(bestUrl, videoView); }
+            catch (Exception ex) { SafeLog($"Error attaching VideoView: {ex}"); }
 			
 			return;
 		}

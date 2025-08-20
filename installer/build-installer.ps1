@@ -95,14 +95,28 @@ if (-not (Test-Path $innoc)) { throw "Inno Setup compiler not found. Install Inn
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $targetOut = Join-Path $outDir ("FurchiveSetup-" + $effectiveVersion + ".exe")
 $fallbackOut = Join-Path $outDir 'FurchiveSetup.exe'
-if (Test-Path $targetOut) {
-  Write-Host "Removing existing $targetOut ..."
-  Remove-Item -LiteralPath $targetOut -Force -ErrorAction SilentlyContinue
+
+function Force-RemoveItem([string]$path) {
+  if (Test-Path $path) {
+    Write-Host "Attempting to remove existing file: $path"
+    $attempts = 0
+    while ($attempts -lt 5) {
+      try {
+        Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+        Write-Host "Successfully removed: $path"
+        return
+      } catch {
+        $attempts++
+        Write-Warning "Could not remove '$path' on attempt $attempts. It may be locked. Retrying in 2 seconds..."
+        Start-Sleep -Seconds 2
+      }
+    }
+    throw "Failed to remove '$path' after multiple attempts. The file is locked by another process."
+  }
 }
-if (Test-Path $fallbackOut) {
-  Write-Host "Removing existing $fallbackOut ..."
-  Remove-Item -LiteralPath $fallbackOut -Force -ErrorAction SilentlyContinue
-}
+
+Force-RemoveItem $targetOut
+Force-RemoveItem $fallbackOut
 
 & "$innoc" $iss /Qp "/DAppVersion=$effectiveVersion"
 

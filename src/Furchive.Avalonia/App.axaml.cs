@@ -14,6 +14,7 @@ using Furchive.Core.Platforms;
 using Furchive.Avalonia.Views;
 using Furchive.Avalonia.ViewModels;
 using Furchive.Avalonia.Infrastructure;
+using Furchive.Avalonia.Services;
 using System.Net.Http;
 using Avalonia.Styling;
 
@@ -60,6 +61,9 @@ public partial class App : Application
                     var debugLog = Path.Combine(logsRoot, "debug.log");
                     // Truncate on each run to keep the file small
                     try { File.WriteAllText(debugLog, string.Empty); } catch { }
+                    // Also truncate viewer and vlc logs at app startup for fresh diagnostics each run
+                    try { File.WriteAllText(Path.Combine(logsRoot, "viewer.log"), string.Empty); } catch { }
+                    try { File.WriteAllText(Path.Combine(logsRoot, "vlc.log"), string.Empty); } catch { }
                     logging.AddProvider(new FileLoggerProvider(debugLog));
                 }
                 catch
@@ -71,6 +75,9 @@ public partial class App : Application
             services.AddSingleton<ISettingsService, SettingsService>();
             services.AddSingleton<IUnifiedApiService, UnifiedApiService>();
             services.AddSingleton<IDownloadService, DownloadService>();
+            // Local media proxy to serve HTML5 player and proxy video with headers
+            services.AddSingleton<ILocalMediaProxy, LocalMediaProxyService>();
+            services.AddHostedService(sp => (LocalMediaProxyService)sp.GetRequiredService<ILocalMediaProxy>());
             services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
             services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
             services.AddSingleton<IPlatformShellService, PlatformShellService>();
