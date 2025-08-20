@@ -40,6 +40,17 @@ public partial class ViewerWindow : Window
     public ViewerWindow()
     {
         // Create log before any XAML is loaded, so crashes in XAML still produce a log
+        try
+        {
+            var dir = Path.GetDirectoryName(_logPath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            // Truncate logs at each viewer open for clean test runs
+            File.WriteAllText(_logPath, string.Empty);
+            var vdir = Path.GetDirectoryName(_vlcLogPath);
+            if (!string.IsNullOrEmpty(vdir)) Directory.CreateDirectory(vdir);
+            File.WriteAllText(_vlcLogPath, string.Empty);
+        }
+        catch { }
         SafeLog("ViewerWindow ctor begin");
         try
         {
@@ -386,7 +397,7 @@ public partial class ViewerWindow : Window
                     {
                         $"--plugin-path={pluginsDir}",
                         "--no-video-title-show",
-                        "--vout=direct3d11",
+                        "--vout=win32",
                         "--avcodec-hw=none",
                         "--file-logging",
                         $"--logfile={_vlcLogPath}",
@@ -399,7 +410,7 @@ public partial class ViewerWindow : Window
                     _libVLC = new LibVLC(new string[]
                     {
                         "--no-video-title-show",
-                        "--vout=direct3d11",
+                        "--vout=win32",
                         "--avcodec-hw=none",
                         "--file-logging",
                         $"--logfile={_vlcLogPath}",
@@ -415,7 +426,7 @@ public partial class ViewerWindow : Window
             {
                 // Try default initialization; may succeed if system-wide VLC is installed
                 try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize(default) OK"); } catch (Exception exInit2) { SafeLog("Core.Initialize(default) failed: " + exInit2.Message); }
-                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--vout=direct3d11", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
+                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--vout=win32", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 _mp = new MediaPlayer(_libVLC); // Create player here
                 SafeLog("LibVLC and MediaPlayer created (default)");
                 try { HookLibVlcManagedLogs(); } catch { }
