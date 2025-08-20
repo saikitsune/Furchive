@@ -1,6 +1,6 @@
 #define AppName "Furchive"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.1.0.0"
 #endif
 #ifndef AppPublishDir
   #define AppPublishDir "..\\src\\Furchive.Avalonia\\publish\\win-x64"
@@ -23,6 +23,7 @@ WizardStyle=modern
 SetupLogging=yes
 DisableDirPage=no
 UninstallDisplayIcon={app}\\Furchive.exe
+SetupIconFile=..\assets\icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -32,7 +33,8 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 ; Application files (published output)
-Source: "{#AppPublishDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\\src\\Furchive.Avalonia\\publish\\*.*"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\\src\\Furchive.Avalonia\\publish\\win-x64\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; WebView2 prerequisite copied to temporary folder and removed after install
 Source: "redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsWebView2Installed

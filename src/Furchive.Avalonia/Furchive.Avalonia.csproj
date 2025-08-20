@@ -10,8 +10,7 @@
     <FileVersion>1.1.0.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Toggle to include community WebView.Avalonia packages when NuGet access is available -->
-  <EnableAvaloniaWebView>false</EnableAvaloniaWebView>
+  <EnableAvaloniaWebView>true</EnableAvaloniaWebView>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,11 +18,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+  <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,30 +27,10 @@
 
   <!-- Media playback and animated GIF support -->
   <PropertyGroup>
-    <EnableLibVLC>true</EnableLibVLC>
     <EnableAnimatedImage>true</EnableAnimatedImage>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(EnableLibVLC)'=='true'">
-    <PackageReference Include="LibVLCSharp" Version="3.8.2" />
-    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
-    <!-- Windows native VLC runtime; add Linux/macOS packages as needed for those RIDs -->
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.20" />
-    <PackageReference Include="VideoLAN.LibVLC.Mac" Version="3.1.3.1" />
-  </ItemGroup>
-
-  <!-- Copy LibVLC native binaries and plugins into output/publish on Windows -->
-  <PropertyGroup>
-    <VideoLANLibVlcWindowsVersion>3.0.20</VideoLANLibVlcWindowsVersion>
-  </PropertyGroup>
-
-  <ItemGroup Condition="'$(EnableLibVLC)'=='true' and '$(OS)'=='Windows_NT'">
-    <Content Include="$(NuGetPackageRoot)videolan.libvlc.windows\$(VideoLANLibVlcWindowsVersion)\content\libvlc\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <Link>libvlc\%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </Content>
-  </ItemGroup>
+  
 
   <ItemGroup Condition="'$(EnableAnimatedImage)'=='true'">
     <PackageReference Include="AnimatedImage.Avalonia" Version="2.0.0" />

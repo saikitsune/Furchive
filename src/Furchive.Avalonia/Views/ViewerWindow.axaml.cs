@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Runtime.Loader;
 using System.Reflection;
 using System.Net.Http;
 using Avalonia;
@@ -19,29 +18,24 @@ using Furchive.Avalonia.Behaviors;
 using Furchive.Core.Interfaces;
 using Furchive.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
-using LibVLCSharp.Shared;
 using AnimatedImage.Avalonia;
 using Furchive.Avalonia.Services;
 // WebView backend (HTML5) guarded by HAS_WEBVIEW_AVALONIA define (community WebView.Avalonia)
 #if HAS_WEBVIEW_AVALONIA
-using Avalonia.WebView; // control lives under Avalonia.Controls.WebView
-using Avalonia.WebView.Desktop; // builder extension is in this namespace
+// We avoid a hard reference to any specific WebView control type to support both
+// community and official packages; control is created via reflection at runtime.
 #endif
 
 namespace Furchive.Avalonia.Views;
 
 public partial class ViewerWindow : Window
 {
-    // Deprecated WebView fields removed; using LibVLC and AnimatedImage instead
+    // Deprecated WebView fields removed; LibVLC removed; using WebView (if available) and AnimatedImage instead
     private bool _isPanning;
     private Point _panStartPointer;
     private Vector _panStartOffset;
-    private LibVLC? _libVLC;
-    private MediaPlayer? _mp;
-    private Media? _currentMedia;
     private bool _isSeeking;
     private string _logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "viewer.log");
-    private string _vlcLogPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "vlc.log");
 
     public ViewerWindow()
     {
@@ -52,9 +46,6 @@ public partial class ViewerWindow : Window
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             // Truncate logs at each viewer open for clean test runs
             File.WriteAllText(_logPath, string.Empty);
-            var vdir = Path.GetDirectoryName(_vlcLogPath);
-            if (!string.IsNullOrEmpty(vdir)) Directory.CreateDirectory(vdir);
-            File.WriteAllText(_vlcLogPath, string.Empty);
         }
         catch { }
         SafeLog("ViewerWindow ctor begin");
@@ -123,25 +114,27 @@ public partial class ViewerWindow : Window
 		SafeLog($"Media detect: ext={ext}, isVideo={isVideo}, looksGif={looksGif}, hasUrl={!string.IsNullOrWhiteSpace(bestUrl)}");
 
         if (isVideo)
-		{
+        {
             videoBorder.IsVisible = true;
-            // Prefer WebView backend if available for stability; fall back to LibVLC
 #if HAS_WEBVIEW_AVALONIA
             try
             {
                 var proxy = App.Services?.GetService<ILocalMediaProxy>();
-                if (proxy != null && proxy.BaseAddress != null)
+                var pageUrl = proxy?.BaseAddress != null && !string.IsNullOrWhiteSpace(bestUrl) ? proxy.GetPlayerUrl(bestUrl!) : bestUrl;
+                if (!string.IsNullOrWhiteSpace(pageUrl))
                 {
-                    var pageUrl = proxy.GetPlayerUrl(bestUrl!);
-                    SafeLog($"Using WebView backend via local proxy: {pageUrl}");
-                    var web = new global::Avalonia.Controls.WebView();
-                    videoHost.Content = web;
-                    web.Address = pageUrl;
-                    return;
-                }
-                else
-                {
-                    SafeLog("Local media proxy unavailable; falling back to LibVLC");
+                    SafeLog($"Using WebView backend: {pageUrl}");
+                    var webView = CreateWebViewControl();
+                    if (webView != null)
+                    {
+                        videoHost.Content = webView;
+                        TrySetWebViewAddress(webView, pageUrl!);
+                        return;
+                    }
+                    else
+                    {
+                        SafeLog("WebView control type not found at runtime.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -149,13 +142,10 @@ public partial class ViewerWindow : Window
                 SafeLog("WebView backend failed: " + ex.ToString());
             }
 #endif
-            if (!await EnsureLibVlcInitializedAsync()) { SafeLog("LibVLC init failed; cannot play video."); return; }
-            var videoView = new LibVLCSharp.Avalonia.VideoView { HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch, VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch };
-            try { SafeLog("Attaching VideoView to VideoHost content immediately."); videoHost.Content = videoView; await AttachVideoAsync(bestUrl, videoView); }
-            catch (Exception ex) { SafeLog($"Error attaching VideoView: {ex}"); }
-			
-			return;
-		}
+            // If WebView is not available, show a simple message in place of the video
+            videoHost.Content = new TextBlock { Text = "Video playback requires WebView; please enable it in settings.", Foreground = Brushes.White, Margin = new Thickness(12) };
+            return;
+        }
 		
 		if (looksGif)
 		{
@@ -214,314 +204,7 @@ public partial class ViewerWindow : Window
         await Task.CompletedTask;
     }
 
-    private async Task AttachVideoAsync(string? url, LibVLCSharp.Avalonia.VideoView videoView)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return;
-        try
-        {
-            SafeLog($"AttachVideoAsync start: {url}");
-            // LibVLC and MediaPlayer are now initialized before this is called.
-            // Defer playback until the VideoView is truly ready: attached and sized
-            void TryStartIfReady()
-            {
-                try
-                {
-                    if (videoView.GetVisualRoot() is not null && videoView.IsEffectivelyVisible && videoView.Bounds.Width > 0 && videoView.Bounds.Height > 0)
-                    {
-                        SafeLog("VideoView ready (attached + sized); starting playback");
-                        videoView.AttachedToVisualTree -= OnAttached;
-                        videoView.LayoutUpdated -= OnLayoutUpdated;
-                        StartPlayback(url, videoView);
-                    }
-                }
-                catch (Exception ex) { SafeLog("TryStartIfReady error: " + ex.ToString()); }
-            }
-
-            void OnAttached(object? s, VisualTreeAttachmentEventArgs e) { SafeLog("VideoView AttachedToVisualTree event fired"); TryStartIfReady(); }
-            void OnLayoutUpdated(object? s, EventArgs e) { /* noisy but useful once */ SafeLog($"VideoView LayoutUpdated: {videoView.Bounds.Width}x{videoView.Bounds.Height}"); TryStartIfReady(); }
-
-            if (videoView.GetVisualRoot() is not null && videoView.IsEffectivelyVisible && videoView.Bounds.Width > 0 && videoView.Bounds.Height > 0)
-            {
-                SafeLog("VideoView already ready; starting playback");
-                StartPlayback(url, videoView);
-            }
-            else
-            {
-                SafeLog("VideoView not ready; waiting for attach/size before starting playback");
-                SafeLog("Attaching AttachedToVisualTree event handler...");
-                videoView.AttachedToVisualTree += OnAttached;
-                SafeLog("Attaching LayoutUpdated event handler...");
-                videoView.LayoutUpdated += OnLayoutUpdated;
-				SafeLog("Posting timed fallback to UI thread...");
-				// Timed safety fallback in case size notifications don't arrive
-                Dispatcher.UIThread.Post(async () =>
-                {
-                    try
-                    {
-                        SafeLog("Timed fallback task started.");
-                        await Task.Delay(1200);
-                        SafeLog("Timed fallback: re-checking readiness before starting");
-                        TryStartIfReady();
-                    }
-                    catch (Exception ex4) { SafeLog("Timed fallback error: " + ex4.ToString()); }
-                }, DispatcherPriority.Background);
-                SafeLog("Timed fallback posted.");
-            }
-        }
-        catch (Exception ex) { SafeLog("AttachVideoAsync exception: " + ex.Message); }
-        await Task.CompletedTask;
-    }
-
-    private void StartPlayback(string url, LibVLCSharp.Avalonia.VideoView videoView)
-    {
-        SafeLog("StartPlayback method entered.");
-        try
-        {
-            if (_libVLC == null || _mp == null) { SafeLog("StartPlayback guard: libVLC or mp null"); return; }
-            
-            if (videoView.MediaPlayer != _mp)
-            {
-                videoView.MediaPlayer = _mp;
-                SafeLog("MediaPlayer assigned to VideoView");
-            }
-            // Replace any existing media safely
-            try { if (_mp.IsPlaying) { SafeLog("Stopping previous playback."); _mp.Stop(); } } catch (Exception exStop) { SafeLog($"Error stopping media: {exStop.Message}"); }
-            try { if (_currentMedia != null) { SafeLog("Disposing previous media."); _currentMedia.Dispose(); _currentMedia = null; } } catch (Exception exDispose) { SafeLog($"Error disposing media: {exDispose.Message}"); }
-            
-            SafeLog($"Creating new Media object for URL: {url}");
-            // Explicitly treat as location (URL or file path)
-            _currentMedia = new Media(_libVLC, url, FromType.FromLocation);
-            // Some stability options for streaming
-            try
-            {
-                _currentMedia.AddOption(":network-caching=300");
-                _currentMedia.AddOption(":input-repeat=0");
-                // Provide HTTP headers for remote sources like e621
-                _currentMedia.AddOption(":http-user-agent=Furchive/1.1");
-                _currentMedia.AddOption(":http-referrer=https://e621.net/");
-                _currentMedia.AddOption(":http-reconnect=true");
-                SafeLog("Media options added.");
-            }
-            catch (Exception exOpt) { SafeLog($"Error adding media options: {exOpt.Message}"); }
-            SafeLog("Media created; calling Play...");
-            try { _mp.Play(_currentMedia); SafeLog("Play invoked"); } catch (Exception exPlay) { SafeLog("Play threw: " + exPlay.ToString()); }
-            HookVideoEvents();
-            SafeLog("Video events hooked");
-        }
-        catch (Exception ex) { SafeLog("StartPlayback exception: " + ex.ToString()); }
-        SafeLog("StartPlayback method exited.");
-    }
-
-    private async Task<bool> EnsureLibVlcInitializedAsync()
-    {
-        if (_libVLC != null) return true;
-        try
-        {
-            SafeLog("EnsureLibVlcInitializedAsync start");
-            // Ensure VLC log directory exists before enabling file-logging so VLC can write to it
-            try
-            {
-                var vlcLogDir = Path.GetDirectoryName(_vlcLogPath);
-                if (!string.IsNullOrEmpty(vlcLogDir)) Directory.CreateDirectory(vlcLogDir);
-            }
-            catch { }
-            // Probe common libvlc locations shipped by VideoLAN.LibVLC.* packages
-            var baseDir = AppContext.BaseDirectory;
-            var candidates = new[]
-            {
-                Path.Combine(baseDir, "libvlc", Environment.Is64BitProcess ? "win-x64" : "win-x86"),
-                Path.Combine(baseDir, "libvlc"),
-                Path.Combine(baseDir, "runtimes", Environment.Is64BitProcess ? "win-x64" : "win-x86", "native"),
-                baseDir
-            };
-
-            string? libDir = null;
-            foreach (var c in candidates)
-            {
-                try
-                {
-                    if (Directory.Exists(c))
-                    {
-                        // Check for libvlc library presence
-                        var hasDll = Directory.EnumerateFiles(c, "libvlc*.dll", SearchOption.TopDirectoryOnly).Any();
-                        if (hasDll)
-                        {
-                            libDir = c;
-                            SafeLog($"LibVLC dir selected: {libDir}");
-                            break;
-                        }
-                        // Some packages place dlls one level deeper
-                        var nested = Directory.Exists(Path.Combine(c, Environment.Is64BitProcess ? "win-x64" : "win-x86"))
-                            ? Path.Combine(c, Environment.Is64BitProcess ? "win-x64" : "win-x86")
-                            : null;
-                        if (!string.IsNullOrEmpty(nested) && Directory.Exists(nested) && Directory.EnumerateFiles(nested, "libvlc*.dll", SearchOption.TopDirectoryOnly).Any())
-                        {
-                            libDir = nested;
-                            SafeLog($"LibVLC nested dir selected: {libDir}");
-                            break;
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            // As a last resort, scan immediate subdirs of libvlc
-            if (libDir == null)
-            {
-                var root = Path.Combine(baseDir, "libvlc");
-                if (Directory.Exists(root))
-                {
-                    try
-                    {
-                        foreach (var sub in Directory.EnumerateDirectories(root))
-                        {
-                            if (Directory.EnumerateFiles(sub, "libvlc*.dll", SearchOption.TopDirectoryOnly).Any())
-                            { libDir = sub; break; }
-                        }
-                    }
-                    catch { }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(libDir))
-            {
-                // Ensure native loader can find the dlls
-                try
-                {
-                    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                    if (!currentPath.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(libDir, StringComparer.OrdinalIgnoreCase))
-                    {
-                        Environment.SetEnvironmentVariable("PATH", libDir + ";" + currentPath);
-                    }
-                }
-                catch { }
-
-                try { LibVLCSharp.Shared.Core.Initialize(libDir); SafeLog("Core.Initialize(libDir) OK"); } catch { try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize() fallback OK"); } catch (Exception exInit) { SafeLog("Core.Initialize failed: " + exInit.Message); } }
-
-                // Prefer setting plugin path if present
-                var pluginsDir = Path.Combine(libDir, "plugins");
-                if (Directory.Exists(pluginsDir))
-                {
-                    SafeLog($"Creating LibVLC with plugins: {pluginsDir}");
-                    try { Environment.SetEnvironmentVariable("VLC_PLUGIN_PATH", pluginsDir); } catch { }
-                    // Force a stable Windows vout and disable HW decoding to isolate crashes
-                    _libVLC = new LibVLC(new string[]
-                    {
-                        $"--plugin-path={pluginsDir}",
-                        "--no-video-title-show",
-                        "--vout=win32",
-                        "--avcodec-hw=none",
-                        "--file-logging",
-                        $"--logfile={_vlcLogPath}",
-                        "--verbose=2"
-                    });
-                }
-                else
-                {
-                    SafeLog("Creating LibVLC without explicit plugins path");
-                    _libVLC = new LibVLC(new string[]
-                    {
-                        "--no-video-title-show",
-                        "--vout=win32",
-                        "--avcodec-hw=none",
-                        "--file-logging",
-                        $"--logfile={_vlcLogPath}",
-                        "--verbose=2"
-                    });
-                }
-                _mp = new MediaPlayer(_libVLC); // Create player here
-                SafeLog("LibVLC and MediaPlayer created");
-                try { HookLibVlcManagedLogs(); } catch { }
-                return true;
-            }
-            else
-            {
-                // Try default initialization; may succeed if system-wide VLC is installed
-                try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize(default) OK"); } catch (Exception exInit2) { SafeLog("Core.Initialize(default) failed: " + exInit2.Message); }
-                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--vout=win32", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
-                _mp = new MediaPlayer(_libVLC); // Create player here
-                SafeLog("LibVLC and MediaPlayer created (default)");
-                try { HookLibVlcManagedLogs(); } catch { }
-                return true;
-            }
-        }
-        catch (Exception ex)
-        {
-            SafeLog("EnsureLibVlcInitializedAsync failed: " + ex.ToString());
-            _libVLC = null;
-            return false;
-        }
-        finally
-        {
-            await Task.CompletedTask;
-        }
-    }
-
-    private void HookLibVlcManagedLogs()
-    {
-        if (_libVLC == null) return;
-        try
-        {
-            _libVLC.Log += (_, e) =>
-            {
-                try
-                {
-                    var line = $"[{DateTime.Now:O}] VLC[{e.Level}] {e.Module}:{e.Message}\n";
-                    var dir = Path.GetDirectoryName(_vlcLogPath);
-                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                    File.AppendAllText(_vlcLogPath, line);
-                }
-                catch { }
-            };
-            SafeLog("LibVLC managed log hook attached");
-        }
-        catch { }
-    }
-
-    private void HookVideoEvents()
-    {
-        try
-        {
-            var seek = this.FindControl<Slider>("SeekSlider");
-            var vol = this.FindControl<Slider>("VolumeSlider");
-            var cur = this.FindControl<TextBlock>("CurrentTimeText");
-            var tot = this.FindControl<TextBlock>("TotalTimeText");
-            var btn = this.FindControl<Button>("PlayPauseButton");
-            var mp = _mp;
-            if (mp == null || seek == null || vol == null || cur == null || tot == null || btn == null) return;
-
-            vol.Value = mp.Volume;
-
-            mp.TimeChanged += (_, e) =>
-            {
-                if (_isSeeking) return;
-                Dispatcher.UIThread.Post(() =>
-                {
-                    try
-                    {
-                        long time = (long)e.Time;
-                        cur.Text = FormatTime(time);
-                        var length = 0L;
-                        try { length = mp.Media != null ? mp.Media.Duration : mp.Length; } catch { length = 0; }
-                        tot.Text = FormatTime(length);
-                        if (length > 0)
-                        {
-                            seek.Maximum = length;
-                            seek.Value = Math.Clamp(time, 0, length);
-                        }
-                    }
-                    catch { }
-                });
-            };
-
-            mp.EncounteredError += (_, __) => SafeLog("MediaPlayer encountered error");
-            mp.EndReached += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
-            mp.Playing += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Pause"; } catch { } });
-            mp.Paused += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
-            mp.Stopped += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
-        }
-        catch { }
-    }
+    // LibVLC playback removed; video control handlers below are no-ops with WebView backend
 
     private static string FormatTime(long ms)
     {
@@ -530,31 +213,14 @@ public partial class ViewerWindow : Window
 		return ts.Hours > 0 ? ts.ToString(@"h\:mm\:ss") : ts.ToString(@"m\:ss");
     }
 
-    private void OnPlayPause(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (_mp == null) return;
-            if (_mp.IsPlaying) _mp.Pause(); else _mp.Play();
-        }
-        catch { }
-    }
+    private void OnPlayPause(object? sender, RoutedEventArgs e) { /* no-op without LibVLC */ }
 
     private void OnSeekPointerPressed(object? sender, PointerPressedEventArgs e)
     { _isSeeking = true; }
 
     private void OnSeekPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        try
-        {
-            var seek = sender as Slider ?? this.FindControl<Slider>("SeekSlider");
-            if (_mp != null && seek != null)
-            {
-                var target = (long)seek.Value;
-                _mp.Time = target;
-            }
-        }
-        catch { }
+    try { /* no-op without LibVLC */ }
         finally { _isSeeking = false; }
     }
 
@@ -572,10 +238,59 @@ public partial class ViewerWindow : Window
         }
     }
 
-    private void OnVolumeChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    private void OnVolumeChanged(object? sender, RangeBaseValueChangedEventArgs e) { /* no-op without LibVLC */ }
+
+#if HAS_WEBVIEW_AVALONIA
+    private static Control? CreateWebViewControl()
     {
-        try { if (_mp != null) _mp.Volume = (int)e.NewValue; } catch { }
+        try
+        {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            // Prefer types named exactly "WebView" that derive from Avalonia.Controls.Control
+            var candidate = assemblies
+                .SelectMany(a =>
+                {
+                    try { return a.GetTypes(); } catch { return Array.Empty<Type>(); }
+                })
+                .FirstOrDefault(t => t.Name == "WebView" && typeof(Control).IsAssignableFrom(t));
+            if (candidate != null)
+            {
+                return Activator.CreateInstance(candidate) as Control;
+            }
+        }
+        catch { }
+        return null;
     }
+
+    private void TrySetWebViewAddress(Control webView, string url)
+    {
+        try
+        {
+            var t = webView.GetType();
+            // Try common property names used by different WebView packages
+            var prop = t.GetProperty("Address") ?? t.GetProperty("Source") ?? t.GetProperty("Url");
+            if (prop != null && prop.CanWrite)
+            {
+                if (prop.PropertyType == typeof(Uri))
+                {
+                    prop.SetValue(webView, new Uri(url));
+                }
+                else
+                {
+                    prop.SetValue(webView, url);
+                }
+            }
+            else
+            {
+                SafeLog("No suitable property (Address/Source/Url) found on WebView instance");
+            }
+        }
+        catch (Exception ex)
+        {
+            SafeLog("TrySetWebViewAddress failed: " + ex.ToString());
+        }
+    }
+#endif
 
     private static readonly HttpClient s_http = new HttpClient();
     private static void SetGifSource(Image gifControl, string url)
@@ -641,23 +356,7 @@ public partial class ViewerWindow : Window
         catch { }
     }
 
-    protected override void OnClosed(EventArgs e)
-    {
-        base.OnClosed(e);
-        try
-        {
-            if (_mp != null)
-            {
-                if (_mp.IsPlaying) _mp.Stop();
-                _mp.Dispose();
-                _mp = null;
-            }
-            try { _currentMedia?.Dispose(); _currentMedia = null; } catch { }
-            _libVLC?.Dispose();
-            _libVLC = null;
-        }
-        catch { }
-    }
+    protected override void OnClosed(EventArgs e) { base.OnClosed(e); }
 
     private void SafeLog(string message)
     {
