@@ -130,27 +130,58 @@ public partial class ViewerWindow : Window
             var fallbackText = this.FindControl<TextBlock>("WebFallbackText");
             if (host == null) return;
 
-            // Try types from both official Avalonia.WebView and community WebView.Avalonia
-            Type? webViewType =
-                Type.GetType("WebView.Avalonia.WebView, WebView.Avalonia") ??
-                Type.GetType("WebViewCore.Avalonia.WebView, WebViewCore.Avalonia") ??
-                Type.GetType("Avalonia.WebView.AvaloniaWebView, Avalonia.WebView") ??
-                Type.GetType("Avalonia.WebView.WebView2, Avalonia.WebView");
-
+            // Try to resolve a WebView control type from known providers and by scanning assemblies.
+            Type? webViewType = null;
+            string? probeNotes = null;
+            // Attempt to load likely assemblies to ensure their types are available for reflection
+            string[] assemblyHints = new[]
+            {
+                "Avalonia.WebView",
+                "Avalonia.WebView.Desktop",
+                "Avalonia.WebView.Windows",
+                "AvaloniaWebView.Shared",
+                "WebView.Avalonia",
+                "WebView.Avalonia.Desktop",
+                "WebViewCore.Avalonia"
+            };
+            foreach (var asmName in assemblyHints)
+            {
+                try { _ = System.Reflection.Assembly.Load(new System.Reflection.AssemblyName(asmName)); }
+                catch { /* ignore */ }
+            }
+            // 1) Known fully-qualified candidates (community and official)
+            string[] candidates = new[]
+            {
+                // Official (varies by OS/build)
+                "Avalonia.WebView.WebView2, Avalonia.WebView.Windows",
+                "Avalonia.WebView.WebView2, Avalonia.WebView",
+                "Avalonia.WebView.AvaloniaWebView, Avalonia.WebView",
+                "Avalonia.WebView.Controls.WebView, Avalonia.WebView",
+                // Community providers
+                "WebView.Avalonia.WebView, WebView.Avalonia",
+                "WebViewCore.Avalonia.WebView, WebViewCore.Avalonia"
+            };
+            foreach (var c in candidates)
+            {
+                var t = Type.GetType(c, throwOnError: false);
+                if (t != null && typeof(Control).IsAssignableFrom(t)) { webViewType = t; probeNotes = $"Resolved type: {c}"; break; }
+            }
+            // 2) Assembly scan heuristic: prefer types in Avalonia.WebView.* or with 'WebView' in the name
             if (webViewType == null)
             {
-                // As a last resort, scan loaded assemblies for a Control named 'WebView'
-                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                var loaded = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var asm in loaded)
                 {
                     Type[] types;
                     try { types = asm.GetTypes(); } catch { continue; }
                     foreach (var t in types)
                     {
-                        if (typeof(Control).IsAssignableFrom(t) && string.Equals(t.Name, "WebView", StringComparison.Ordinal))
-                        {
-                            webViewType = t;
-                            break;
-                        }
+                        var fn = t.FullName ?? string.Empty;
+                        if (!typeof(Control).IsAssignableFrom(t)) continue;
+                        if (fn.Contains("Avalonia.WebView", StringComparison.OrdinalIgnoreCase) && fn.Contains("WebView", StringComparison.OrdinalIgnoreCase))
+                        { webViewType = t; probeNotes = $"Scanned type: {fn}"; break; }
+                        if (t.Name.Contains("WebView", StringComparison.Ordinal))
+                        { webViewType = t; probeNotes = $"Fallback scanned type: {fn}"; break; }
                     }
                     if (webViewType != null) break;
                 }
@@ -159,7 +190,9 @@ public partial class ViewerWindow : Window
             {
                 if (fallbackText != null)
                 {
-                    fallbackText.Text = "WebView2 control not available. Enable Avalonia.WebView packages or ensure runtime is present.";
+                    // Include some diagnostics to help users understand what's missing
+                    var loadedNames = string.Join(", ", AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).Where(n => n != null));
+                    fallbackText.Text = "Embedded WebView unavailable. Ensure WebView packages are referenced. Loaded assemblies: " + loadedNames;
                 }
                 if (fallback != null) fallback.IsVisible = true;
                 return;
@@ -169,13 +202,21 @@ public partial class ViewerWindow : Window
             {
                 if (fallbackText != null)
                 {
-                    fallbackText.Text = "Failed to create WebView2 control instance.";
+                    fallbackText.Text = "Failed to create embedded WebView control instance for type: " + webViewType.FullName;
                 }
                 if (fallback != null) fallback.IsVisible = true;
                 return;
             }
 
             host.Children.Clear();
+            // Ensure the embedded WebView fills the available space
+            _webView.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
+            _webView.VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch;
+            if (_webView is ContentControl cc)
+            {
+                cc.HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
+                cc.VerticalContentAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch;
+            }
             host.Children.Add(_webView);
             if (fallback != null) fallback.IsVisible = false;
 
@@ -188,6 +229,21 @@ public partial class ViewerWindow : Window
             var navigateMethod = webViewType.GetMethod("Navigate") ?? webViewType.GetMethod("GoTo");
             var htmlProp = webViewType.GetProperty("HtmlContent") ?? webViewType.GetProperty("Html") ?? webViewType.GetProperty("ContentHtml");
             var addressProp = webViewType.GetProperty("Address") ?? webViewType.GetProperty("Source") ?? webViewType.GetProperty("Url") ?? webViewType.GetProperty("Uri");
+
+            // Some controls expect Uri instead of string; detect target property type
+            object ToTarget(object s)
+            {
+                if (s is string ss)
+                {
+                    try
+                    {
+                        if (addressProp?.PropertyType == typeof(Uri)) return new Uri(ss);
+                        return ss;
+                    }
+                    catch { return ss; }
+                }
+                return s;
+            }
 
             if (isVideo && (navigateToString != null || htmlProp != null))
             {
@@ -203,11 +259,11 @@ public partial class ViewerWindow : Window
             }
             else if (addressProp != null)
             {
-                addressProp.SetValue(_webView, url);
+                addressProp.SetValue(_webView, ToTarget(url!));
             }
             else if (navigateMethod != null)
             {
-                navigateMethod.Invoke(_webView, new object?[] { url });
+                navigateMethod.Invoke(_webView, new object?[] { ToTarget(url!) });
             }
         }
         catch { }

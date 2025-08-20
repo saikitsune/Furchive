@@ -52,7 +52,7 @@
             <!-- WebView2 mode -->
             <Border x:Name="WebViewContainer" Background="#202020" IsVisible="False">
                 <Grid>
-                    <Panel x:Name="WebHost"/>
+                    <Grid x:Name="WebHost"/>
                     <StackPanel x:Name="WebFallback" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsVisible="True">
                         <TextBlock x:Name="WebFallbackText" Foreground="White" Text="Opening content…"/>
                         <Button Content="Open in browser" Click="OnOpenOriginal"/>
