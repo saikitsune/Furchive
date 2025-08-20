@@ -273,6 +273,10 @@ public partial class ViewerWindow : Window
             {
                 _currentMedia.AddOption(":network-caching=300");
                 _currentMedia.AddOption(":input-repeat=0");
+                // Provide HTTP headers for remote sources like e621
+                _currentMedia.AddOption(":http-user-agent=Furchive/1.1");
+                _currentMedia.AddOption(":http-referrer=https://e621.net/");
+                _currentMedia.AddOption(":http-reconnect=true");
                 SafeLog("Media options added.");
             }
             catch (Exception exOpt) { SafeLog($"Error adding media options: {exOpt.Message}"); }
