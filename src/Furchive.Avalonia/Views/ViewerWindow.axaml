@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:beh="using:Furchive.Avalonia.Behaviors"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:beh="using:Furchive.Avalonia.Behaviors"
+    xmlns:anim="https://github.com/whistyun/AnimatedImage.Avalonia"
         x:Class="Furchive.Avalonia.Views.ViewerWindow"
         Width="1000" Height="800" Title="Viewer"
         Icon="avares://Furchive/Assets/icon.ico">
@@ -25,7 +26,7 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- Content area: either Image view or WebView2 host -->
+        <!-- Content area: Image/GIF mode or Video mode (LibVLC) -->
         <Grid Grid.Row="1" Background="#202020">
             <!-- Image mode -->
             <Border x:Name="ImageContainer" Background="#202020" IsVisible="True">
@@ -44,19 +45,31 @@
                             <Image x:Name="ImageView" Stretch="None"
                                    PointerWheelChanged="OnImageWheel"
                                    beh:RemoteImage.SourceUri=""/>
+                            <!-- Animated GIF via AnimatedImage.Avalonia attached property -->
+                            <Image x:Name="GifView" Stretch="None" IsVisible="False"/>
                         </Grid>
                     </LayoutTransformControl>
                 </ScrollViewer>
             </Border>
 
-            <!-- WebView2 mode -->
-            <Border x:Name="WebViewContainer" Background="#202020" IsVisible="False">
-                <Grid>
-                    <Grid x:Name="WebHost"/>
-                    <StackPanel x:Name="WebFallback" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsVisible="True">
-                        <TextBlock x:Name="WebFallbackText" Foreground="White" Text="Opening content…"/>
-                        <Button Content="Open in browser" Click="OnOpenOriginal"/>
-                    </StackPanel>
+            <!-- Video mode (LibVLC) -->
+            <Border x:Name="VideoContainer" Background="#000000" IsVisible="False">
+                <Grid RowDefinitions="*,Auto">
+                    <!-- Lazy host; actual VideoView is created in code-behind to avoid XAML-time native loading -->
+                    <ContentControl x:Name="VideoHost"/>
+                    <!-- Controls -->
+                    <Grid Grid.Row="1" Margin="8" ColumnDefinitions="Auto,Auto,*,Auto,Auto,120">
+                        <Button x:Name="PlayPauseButton" Grid.Column="0" Width="80" Content="Play" Click="OnPlayPause"/>
+                        <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" x:Name="CurrentTimeText" Text="00:00"/>
+            <Slider x:Name="SeekSlider" Grid.Column="2" Minimum="0" Maximum="1000" Value="0"
+                IsSnapToTickEnabled="False"
+                PointerPressed="OnSeekPointerPressed"
+                PointerReleased="OnSeekPointerReleased"
+                ValueChanged="OnSeekValueChanged"/>
+                        <TextBlock Grid.Column="3" Margin="8,0" VerticalAlignment="Center" x:Name="TotalTimeText" Text="00:00"/>
+                        <TextBlock Grid.Column="4" Margin="12,0,6,0" VerticalAlignment="Center" Text="Vol"/>
+                        <Slider x:Name="VolumeSlider" Grid.Column="5" Minimum="0" Maximum="100" Value="100" ValueChanged="OnVolumeChanged"/>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

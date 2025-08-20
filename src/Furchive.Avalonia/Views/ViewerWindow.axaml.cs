@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Runtime.Loader;
 using System.Reflection;
+using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -13,6 +14,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Furchive.Avalonia.Behaviors;
 using Furchive.Core.Interfaces;
 using Furchive.Core.Models;
@@ -29,8 +31,10 @@ public partial class ViewerWindow : Window
     private Vector _panStartOffset;
     private LibVLC? _libVLC;
     private MediaPlayer? _mp;
+    private Media? _currentMedia;
     private bool _isSeeking;
     private string _logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "viewer.log");
+    private string _vlcLogPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "vlc.log");
 
     public ViewerWindow()
     {
@@ -196,15 +200,70 @@ public partial class ViewerWindow : Window
             SafeLog("MediaPlayer created");
             videoView.MediaPlayer = _mp;
 
-            using var media = new Media(_libVLC, new Uri(url));
-            SafeLog("Media created; calling Play...");
-            try { _mp.Play(media); SafeLog("Play invoked"); } catch (Exception exPlay) { SafeLog("Play threw: " + exPlay.ToString()); }
+            // Defer playback until the VideoView is attached to the visual tree to avoid native crashes
+            if (videoView.GetVisualRoot() is not null && videoView.IsEffectivelyVisible)
+            {
+                SafeLog("VideoView already attached; starting playback");
+                StartPlayback(url);
+            }
+            else
+            {
+                SafeLog("VideoView not attached yet; delaying playback until AttachedToVisualTree");
+                void OnAttached(object? s, VisualTreeAttachmentEventArgs e)
+                {
+                    try
+                    {
+                        SafeLog("VideoView AttachedToVisualTree; starting playback");
+                        StartPlayback(url);
+                    }
+                    catch (Exception ex2) { SafeLog("StartPlayback error: " + ex2.ToString()); }
+                    finally { if (s is Control c) c.AttachedToVisualTree -= OnAttached; }
+                }
+                videoView.AttachedToVisualTree += OnAttached;
 
-            HookVideoEvents();
-            SafeLog("Video events hooked");
+                // Fallback: if attach doesn't fire promptly, try starting after a short delay
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(600);
+                        if (_mp != null && !_mp.IsPlaying)
+                        {
+                            SafeLog("AttachedToVisualTree not observed in time; fallback start");
+                            StartPlayback(url);
+                        }
+                    }
+                    catch (Exception ex3) { SafeLog("Delayed StartPlayback error: " + ex3.ToString()); }
+                }, DispatcherPriority.Background);
+            }
         }
         catch (Exception ex) { SafeLog("AttachVideoAsync exception: " + ex.Message); }
         await Task.CompletedTask;
+    }
+
+    private void StartPlayback(string url)
+    {
+        try
+        {
+            if (_libVLC == null || _mp == null) { SafeLog("StartPlayback guard: libVLC or MediaPlayer null"); return; }
+            // Replace any existing media safely
+            try { if (_mp.IsPlaying) _mp.Stop(); } catch { }
+            try { _currentMedia?.Dispose(); _currentMedia = null; } catch { }
+            // Explicitly treat as location (URL or file path)
+            _currentMedia = new Media(_libVLC, url, FromType.FromLocation);
+            // Some stability options for streaming
+            try
+            {
+                _currentMedia.AddOption(":network-caching=300");
+                _currentMedia.AddOption(":input-repeat=0");
+            }
+            catch { }
+            SafeLog("Media created; calling Play...");
+            try { _mp.Play(_currentMedia); SafeLog("Play invoked"); } catch (Exception exPlay) { SafeLog("Play threw: " + exPlay.ToString()); }
+            HookVideoEvents();
+            SafeLog("Video events hooked");
+        }
+        catch (Exception ex) { SafeLog("StartPlayback exception: " + ex.ToString()); }
     }
 
     private async Task<bool> EnsureLibVlcInitializedAsync()
@@ -213,6 +272,13 @@ public partial class ViewerWindow : Window
         try
         {
             SafeLog("EnsureLibVlcInitializedAsync start");
+            // Ensure VLC log directory exists before enabling file-logging so VLC can write to it
+            try
+            {
+                var vlcLogDir = Path.GetDirectoryName(_vlcLogPath);
+                if (!string.IsNullOrEmpty(vlcLogDir)) Directory.CreateDirectory(vlcLogDir);
+            }
+            catch { }
             // Probe common libvlc locations shipped by VideoLAN.LibVLC.* packages
             var baseDir = AppContext.BaseDirectory;
             var candidates = new[]
@@ -291,12 +357,13 @@ public partial class ViewerWindow : Window
                 if (Directory.Exists(pluginsDir))
                 {
                     SafeLog($"Creating LibVLC with plugins: {pluginsDir}");
-                    _libVLC = new LibVLC(new string[] { $"--plugin-path={pluginsDir}", "--no-video-title-show", "--avcodec-hw=none" });
+                    try { Environment.SetEnvironmentVariable("VLC_PLUGIN_PATH", pluginsDir); } catch { }
+                    _libVLC = new LibVLC(new string[] { $"--plugin-path={pluginsDir}", "--no-video-title-show", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 }
                 else
                 {
                     SafeLog("Creating LibVLC without explicit plugins path");
-                    _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none" });
+                    _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 }
                 SafeLog("LibVLC created");
                 return true;
@@ -305,7 +372,7 @@ public partial class ViewerWindow : Window
             {
                 // Try default initialization; may succeed if system-wide VLC is installed
                 try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize(default) OK"); } catch (Exception exInit2) { SafeLog("Core.Initialize(default) failed: " + exInit2.Message); }
-                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none" });
+                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 SafeLog("LibVLC created (default)");
                 return true;
             }
@@ -331,11 +398,12 @@ public partial class ViewerWindow : Window
             var cur = this.FindControl<TextBlock>("CurrentTimeText");
             var tot = this.FindControl<TextBlock>("TotalTimeText");
             var btn = this.FindControl<Button>("PlayPauseButton");
-            if (_mp == null || seek == null || vol == null || cur == null || tot == null || btn == null) return;
+            var mp = _mp;
+            if (mp == null || seek == null || vol == null || cur == null || tot == null || btn == null) return;
 
-            vol.Value = _mp.Volume;
+            vol.Value = mp.Volume;
 
-            _mp.TimeChanged += (_, e) =>
+            mp.TimeChanged += (_, e) =>
             {
                 if (_isSeeking) return;
                 Dispatcher.UIThread.Post(() =>
@@ -345,7 +413,7 @@ public partial class ViewerWindow : Window
                         long time = (long)e.Time;
                         cur.Text = FormatTime(time);
                         var length = 0L;
-                        try { length = _mp?.Media?.Duration ?? _mp?.Length ?? 0; } catch { length = 0; }
+                        try { length = mp.Media != null ? mp.Media.Duration : mp.Length; } catch { length = 0; }
                         tot.Text = FormatTime(length);
                         if (length > 0)
                         {
@@ -357,10 +425,11 @@ public partial class ViewerWindow : Window
                 });
             };
 
-            _mp.EndReached += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
-            _mp.Playing += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Pause"; } catch { } });
-            _mp.Paused += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
-            _mp.Stopped += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
+            mp.EncounteredError += (_, __) => SafeLog("MediaPlayer encountered error");
+            mp.EndReached += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
+            mp.Playing += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Pause"; } catch { } });
+            mp.Paused += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
+            mp.Stopped += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
         }
         catch { }
     }
@@ -419,6 +488,7 @@ public partial class ViewerWindow : Window
         try { if (_mp != null) _mp.Volume = (int)e.NewValue; } catch { }
     }
 
+    private static readonly HttpClient s_http = new HttpClient();
     private static void SetGifSource(Image gifControl, string url)
     {
         // AnimatedImage.Avalonia v2 uses an attached property on Image: anim:ImageBehavior.AnimatedSource
@@ -426,22 +496,67 @@ public partial class ViewerWindow : Window
         try
         {
             var uri = new Uri(url);
-            // Attached property owner type name: ImageBehavior in AnimatedImage.Avalonia
-            var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "AnimatedImage.Avalonia");
-            var owner = asm?.GetTypes().FirstOrDefault(t => t.Name == "ImageBehavior");
-            var propField = owner?.GetField("AnimatedSourceProperty", BindingFlags.Public | BindingFlags.Static);
-            if (owner != null && propField?.GetValue(null) is AvaloniaProperty ap)
+            // If remote, download to local cache then animate from file to ensure decoder can access it
+            if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
             {
-                gifControl.SetValue(ap, uri);
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "gifs");
+                        Directory.CreateDirectory(cacheDir);
+                        var fileName = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(url)).TrimEnd('=') + ".gif";
+                        var localPath = Path.Combine(cacheDir, fileName);
+                        if (!File.Exists(localPath) || new FileInfo(localPath).Length == 0)
+                        {
+                            using var resp = await s_http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                            resp.EnsureSuccessStatusCode();
+                            await using var fs = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                            await resp.Content.CopyToAsync(fs).ConfigureAwait(false);
+                        }
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            try
+                            {
+                                ApplyAnimatedImageAttachedProperties(gifControl, new Uri(localPath));
+                            }
+                            catch { try { RemoteImage.SetSourceUri(gifControl, url); } catch { } }
+                        });
+                    }
+                    catch { Dispatcher.UIThread.Post(() => { try { RemoteImage.SetSourceUri(gifControl, url); } catch { } }); }
+                });
                 return;
             }
-            // Fallback: show still image via RemoteImage behavior (works with remote URLs)
-            try { RemoteImage.SetSourceUri(gifControl, url); } catch { }
+            // Attached property owner type name: ImageBehavior in AnimatedImage.Avalonia
+            ApplyAnimatedImageAttachedProperties(gifControl, uri);
         }
         catch
         {
             try { RemoteImage.SetSourceUri(gifControl, url); } catch { }
         }
+    }
+
+    private static void ApplyAnimatedImageAttachedProperties(Image gifControl, Uri source)
+    {
+        try
+        {
+            var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "AnimatedImage.Avalonia");
+            var owner = asm?.GetTypes().FirstOrDefault(t => t.Name == "ImageBehavior");
+            var propField = owner?.GetField("AnimatedSourceProperty", BindingFlags.Public | BindingFlags.Static);
+            var autoStartField = owner?.GetField("AutoStartProperty", BindingFlags.Public | BindingFlags.Static);
+            if (owner != null && propField?.GetValue(null) is AvaloniaProperty ap)
+            {
+                gifControl.SetValue(ap, source);
+                if (autoStartField?.GetValue(null) is AvaloniaProperty apAuto)
+                {
+                    gifControl.SetValue(apAuto, true);
+                }
+                return;
+            }
+        }
+        catch { }
+        // If attached property not available, fall back to still display (caller handles)
+        throw new InvalidOperationException("AnimatedImage attached properties not found");
     }
 
     protected override void OnClosed(EventArgs e)
@@ -455,6 +570,7 @@ public partial class ViewerWindow : Window
                 _mp.Dispose();
                 _mp = null;
             }
+            try { _currentMedia?.Dispose(); _currentMedia = null; } catch { }
             _libVLC?.Dispose();
             _libVLC = null;
         }
@@ -495,7 +611,7 @@ public partial class ViewerWindow : Window
             var newOffsetY = (anchorY - p.Y) * newZoom;
             sv.Offset = new Vector(Math.Max(0, newOffsetX), Math.Max(0, newOffsetY));
             e.Handled = true;
-        }
+    }
         catch { }
     }
 

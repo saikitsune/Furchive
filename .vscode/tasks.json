@@ -136,6 +136,69 @@
 			"type": "shell",
 			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
 			"group": "build"
+		},
+		{
+			"label": "build-after-edits",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "rebuild-installer-after-iss-change",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-installer-after-iss-change",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-installer-after-iss-change",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\projects\\github\\Furchive\\installer\\build-installer.ps1\" -Configuration Release -Runtime win-x64",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-after-fix",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-after-fix",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-final",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-after-fix",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-after-edits",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-after-edits",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
 		}
 	]
 }
