@@ -199,6 +199,18 @@
 			"type": "shell",
 			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
 			"group": "build"
+		},
+		{
+			"label": "build-final",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
+		},
+		{
+			"label": "build-after-fix",
+			"type": "shell",
+			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
+			"group": "build"
 		}
 	]
 }

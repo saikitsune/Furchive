@@ -200,41 +200,35 @@ public partial class ViewerWindow : Window
             SafeLog("MediaPlayer created");
             videoView.MediaPlayer = _mp;
 
-            // Defer playback until the VideoView is attached to the visual tree to avoid native crashes
-            if (videoView.GetVisualRoot() is not null && videoView.IsEffectivelyVisible)
+            // Defer playback until the VideoView is truly ready: attached and sized
+            void TryStartIfReady()
             {
-                SafeLog("VideoView already attached; starting playback");
+                try
+                {
+                    if (videoView.GetVisualRoot() is not null && videoView.IsEffectivelyVisible && videoView.Bounds.Width > 0 && videoView.Bounds.Height > 0)
+                    {
+                        SafeLog("VideoView ready (attached + sized); starting playback");
+                        videoView.AttachedToVisualTree -= OnAttached;
+                        videoView.LayoutUpdated -= OnLayoutUpdated;
+                        StartPlayback(url);
+                    }
+                }
+                catch (Exception ex) { SafeLog("TryStartIfReady error: " + ex.ToString()); }
+            }
+
+            void OnAttached(object? s, VisualTreeAttachmentEventArgs e) => TryStartIfReady();
+            void OnLayoutUpdated(object? s, EventArgs e) => TryStartIfReady();
+
+            if (videoView.GetVisualRoot() is not null && videoView.IsEffectivelyVisible && videoView.Bounds.Width > 0 && videoView.Bounds.Height > 0)
+            {
+                SafeLog("VideoView already ready; starting playback");
                 StartPlayback(url);
             }
             else
             {
-                SafeLog("VideoView not attached yet; delaying playback until AttachedToVisualTree");
-                void OnAttached(object? s, VisualTreeAttachmentEventArgs e)
-                {
-                    try
-                    {
-                        SafeLog("VideoView AttachedToVisualTree; starting playback");
-                        StartPlayback(url);
-                    }
-                    catch (Exception ex2) { SafeLog("StartPlayback error: " + ex2.ToString()); }
-                    finally { if (s is Control c) c.AttachedToVisualTree -= OnAttached; }
-                }
+                SafeLog("VideoView not ready; waiting for attach/size before starting playback");
                 videoView.AttachedToVisualTree += OnAttached;
-
-                // Fallback: if attach doesn't fire promptly, try starting after a short delay
-                Dispatcher.UIThread.Post(async () =>
-                {
-                    try
-                    {
-                        await Task.Delay(600);
-                        if (_mp != null && !_mp.IsPlaying)
-                        {
-                            SafeLog("AttachedToVisualTree not observed in time; fallback start");
-                            StartPlayback(url);
-                        }
-                    }
-                    catch (Exception ex3) { SafeLog("Delayed StartPlayback error: " + ex3.ToString()); }
-                }, DispatcherPriority.Background);
+                videoView.LayoutUpdated += OnLayoutUpdated;
             }
         }
         catch (Exception ex) { SafeLog("AttachVideoAsync exception: " + ex.Message); }
@@ -358,22 +352,25 @@ public partial class ViewerWindow : Window
                 {
                     SafeLog($"Creating LibVLC with plugins: {pluginsDir}");
                     try { Environment.SetEnvironmentVariable("VLC_PLUGIN_PATH", pluginsDir); } catch { }
-                    _libVLC = new LibVLC(new string[] { $"--plugin-path={pluginsDir}", "--no-video-title-show", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
+                    // Prefer OpenGL video output and WASAPI audio for stability
+                    _libVLC = new LibVLC(new string[] { $"--plugin-path={pluginsDir}", "--no-video-title-show", "--avcodec-hw=none", "--vout=opengl", "--aout=wasapi", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 }
                 else
                 {
                     SafeLog("Creating LibVLC without explicit plugins path");
-                    _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
+                    _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none", "--vout=opengl", "--aout=wasapi", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 }
                 SafeLog("LibVLC created");
+                try { HookLibVlcManagedLogs(); } catch { }
                 return true;
             }
             else
             {
                 // Try default initialization; may succeed if system-wide VLC is installed
                 try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize(default) OK"); } catch (Exception exInit2) { SafeLog("Core.Initialize(default) failed: " + exInit2.Message); }
-                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
+                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none", "--vout=opengl", "--aout=wasapi", "--file-logging", $"--logfile={_vlcLogPath}", "--verbose=2" });
                 SafeLog("LibVLC created (default)");
+                try { HookLibVlcManagedLogs(); } catch { }
                 return true;
             }
         }
@@ -387,6 +384,27 @@ public partial class ViewerWindow : Window
         {
             await Task.CompletedTask;
         }
+    }
+
+    private void HookLibVlcManagedLogs()
+    {
+        if (_libVLC == null) return;
+        try
+        {
+            _libVLC.Log += (_, e) =>
+            {
+                try
+                {
+                    var line = $"[{DateTime.Now:O}] VLC[{e.Level}] {e.Module}:{e.Message}\n";
+                    var dir = Path.GetDirectoryName(_vlcLogPath);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    File.AppendAllText(_vlcLogPath, line);
+                }
+                catch { }
+            };
+            SafeLog("LibVLC managed log hook attached");
+        }
+        catch { }
     }
 
     private void HookVideoEvents()
@@ -540,13 +558,22 @@ public partial class ViewerWindow : Window
     {
         try
         {
+            // Ensure the AnimatedImage.Avalonia assembly is loaded
             var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "AnimatedImage.Avalonia");
+            if (asm == null)
+            {
+                try { asm = Assembly.Load("AnimatedImage.Avalonia"); } catch { }
+            }
             var owner = asm?.GetTypes().FirstOrDefault(t => t.Name == "ImageBehavior");
             var propField = owner?.GetField("AnimatedSourceProperty", BindingFlags.Public | BindingFlags.Static);
-            var autoStartField = owner?.GetField("AutoStartProperty", BindingFlags.Public | BindingFlags.Static);
+            // v2 may expose AutoStartProperty or IsAnimationActiveProperty — try both
+            var autoStartField = owner?.GetField("AutoStartProperty", BindingFlags.Public | BindingFlags.Static)
+                                 ?? owner?.GetField("IsAnimationActiveProperty", BindingFlags.Public | BindingFlags.Static);
             if (owner != null && propField?.GetValue(null) is AvaloniaProperty ap)
             {
-                gifControl.SetValue(ap, source);
+                // Some versions accept Uri, others accept string path; prefer string for file URIs
+                object value = source.IsFile ? source.LocalPath : (object)source;
+                gifControl.SetValue(ap, value);
                 if (autoStartField?.GetValue(null) is AvaloniaProperty apAuto)
                 {
                     gifControl.SetValue(apAuto, true);
