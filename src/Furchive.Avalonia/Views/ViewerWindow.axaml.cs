@@ -79,8 +79,8 @@ public partial class ViewerWindow : Window
         }
 
         // Try local final file first (static images)
-        try
-        {
+    try
+    {
             var settings = App.Services?.GetService<ISettingsService>();
             var baseDir = settings?.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
             var finalPath = GenerateFinalPath(m, baseDir, settings);
@@ -154,31 +154,31 @@ public partial class ViewerWindow : Window
                 // Ignore detection errors; we'll proceed and surface any creation errors below
             }
 
-            // Try to resolve a WebView control type; prefer WebView.Avalonia which is referenced in csproj.
+            // Create WebView instance via reflection only (avoid compile-time dependency), with strict filtering
+            Control? created = null;
             Type? webViewType = null;
-            // Explicit preference order (most reliable first)
             string[] candidates = new[]
             {
-                // Community provider first (works cross-platform with WebView2 on Windows)
                 "WebView.Avalonia.WebView, WebView.Avalonia",
-                // Official provider variants (may require additional setup)
                 "Avalonia.WebView.Controls.WebView, Avalonia.WebView",
                 "Avalonia.WebView.AvaloniaWebView, Avalonia.WebView",
-                "Avalonia.WebView.WebView2, Avalonia.WebView",
-                "Avalonia.WebView.WebView2, Avalonia.WebView.Windows",
             };
             foreach (var c in candidates)
             {
                 try
                 {
                     var t = Type.GetType(c, throwOnError: false);
-                    if (t != null && typeof(Control).IsAssignableFrom(t)) { webViewType = t; break; }
+                    if (t == null) continue;
+                    if (!typeof(Control).IsAssignableFrom(t)) continue;
+                    if (t.IsAbstract || t.Name.Contains("Handler", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (t.GetConstructor(Type.EmptyTypes) == null) continue;
+                    webViewType = t; break;
                 }
                 catch { }
             }
-            // Fallback scan across loaded assemblies
             if (webViewType == null)
             {
+                // Scan as a last resort but filter aggressively
                 foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
                 {
                     Type[] types; try { types = asm.GetTypes(); } catch { continue; }
@@ -186,21 +186,21 @@ public partial class ViewerWindow : Window
                     {
                         if (!typeof(Control).IsAssignableFrom(t)) continue;
                         var fn = t.FullName ?? string.Empty;
-                        if (fn.Contains("WebView.Avalonia.WebView", StringComparison.Ordinal)) { webViewType = t; break; }
-                        if (fn.Contains("Avalonia.WebView", StringComparison.OrdinalIgnoreCase) && fn.Contains("WebView", StringComparison.OrdinalIgnoreCase)) { webViewType = t; break; }
+                        if (!fn.Contains("WebView", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!(fn.StartsWith("WebView.Avalonia.", StringComparison.Ordinal) || fn.StartsWith("Avalonia.WebView.", StringComparison.Ordinal))) continue;
+                        if (t.IsAbstract || t.Name.Contains("Handler", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (t.GetConstructor(Type.EmptyTypes) == null) continue;
+                        webViewType = t; break;
                     }
                     if (webViewType != null) break;
                 }
             }
-
             if (webViewType == null)
             {
                 var loadedNames = string.Join(", ", AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).Where(n => !string.IsNullOrWhiteSpace(n)));
                 ShowFallback("Embedded WebView control not found. Ensure WebView.Avalonia is restored. Loaded: " + loadedNames);
                 return;
             }
-
-            Control? created = null;
             try { created = Activator.CreateInstance(webViewType) as Control; }
             catch (Exception ex)
             {
@@ -228,12 +228,13 @@ public partial class ViewerWindow : Window
             if (string.IsNullOrWhiteSpace(url)) return;
 
             // Dispatch navigation depending on available API surface
-            var navigateToString = webViewType.GetMethod("NavigateToString")
-                                   ?? webViewType.GetMethod("NavigateToStringAsync")
-                                   ?? webViewType.GetMethod("LoadHtmlString");
-            var navigateMethod = webViewType.GetMethod("Navigate") ?? webViewType.GetMethod("GoTo");
-            var htmlProp = webViewType.GetProperty("HtmlContent") ?? webViewType.GetProperty("Html") ?? webViewType.GetProperty("ContentHtml");
-            var addressProp = webViewType.GetProperty("Address") ?? webViewType.GetProperty("Source") ?? webViewType.GetProperty("Url") ?? webViewType.GetProperty("Uri");
+            var wt = created.GetType();
+            var navigateToString = wt.GetMethod("NavigateToString")
+                                   ?? wt.GetMethod("NavigateToStringAsync")
+                                   ?? wt.GetMethod("LoadHtmlString");
+            var navigateMethod = wt.GetMethod("Navigate") ?? wt.GetMethod("GoTo");
+            var htmlProp = wt.GetProperty("HtmlContent") ?? wt.GetProperty("Html") ?? wt.GetProperty("ContentHtml");
+            var addressProp = wt.GetProperty("Address") ?? wt.GetProperty("Source") ?? wt.GetProperty("Url") ?? wt.GetProperty("Uri");
 
             object ToTarget(object s)
             {
