@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Runtime.Loader;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -9,25 +11,44 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Controls.Primitives;
+using Avalonia.Threading;
 using Furchive.Avalonia.Behaviors;
 using Furchive.Core.Interfaces;
 using Furchive.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
+using LibVLCSharp.Shared;
 
 namespace Furchive.Avalonia.Views;
 
 public partial class ViewerWindow : Window
 {
+    // Deprecated WebView fields removed; using LibVLC and AnimatedImage instead
     private bool _isPanning;
     private Point _panStartPointer;
     private Vector _panStartOffset;
-    private Control? _webView;
+    private LibVLC? _libVLC;
+    private MediaPlayer? _mp;
+    private bool _isSeeking;
+    private string _logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "viewer.log");
 
     public ViewerWindow()
     {
-        InitializeComponent();
+        // Create log before any XAML is loaded, so crashes in XAML still produce a log
+        SafeLog("ViewerWindow ctor begin");
+        try
+        {
+            InitializeComponent();
+        }
+        catch (Exception ex)
+        {
+            SafeLog("InitializeComponent failed: " + ex.ToString());
+            throw;
+        }
         this.KeyDown += (s, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
-        this.Opened += async (_, __) => { try { await LoadAsync(); } catch { } };
+        // Record that the viewer was constructed successfully
+        SafeLog("ViewerWindow constructed");
+            this.Opened += async (_, __) => { SafeLog("ViewerWindow opened"); try { await LoadAsync(); } catch (Exception ex) { SafeLog("LoadAsync crash: " + ex.ToString()); } };
     }
 
     private void InitializeComponent()
@@ -59,28 +80,65 @@ public partial class ViewerWindow : Window
 
     private async Task LoadAsync()
     {
-        if (DataContext is not MediaItem m) return;
-        var imageBorder = this.FindControl<Border>("ImageContainer");
-        var webBorder = this.FindControl<Border>("WebViewContainer");
-        var img = this.FindControl<Image>("ImageView");
-        if (imageBorder == null || webBorder == null || img == null) return;
+    SafeLog("LoadAsync start");
+    if (DataContext is not MediaItem m) { SafeLog("No MediaItem DataContext"); return; }
+    var imageBorder = this.FindControl<Border>("ImageContainer");
+    var videoBorder = this.FindControl<Border>("VideoContainer");
+    var img = this.FindControl<Image>("ImageView");
+    var gif = this.FindControl<Image>("GifView");
+        // Create VideoView lazily when needed
+    var videoHost = this.FindControl<ContentControl>("VideoHost");
+    var videoView = videoHost?.Content as LibVLCSharp.Avalonia.VideoView;
+        if (videoHost != null && videoView == null)
+        {
+            try
+            {
+        SafeLog("Creating VideoView...");
+        videoView = new LibVLCSharp.Avalonia.VideoView();
+                videoHost.Content = videoView;
+        SafeLog("VideoView created");
+            }
+            catch (Exception ex)
+            {
+                SafeLog("Failed to create VideoView: " + ex.Message);
+            }
+        }
+    if (imageBorder == null || videoBorder == null || img == null) { SafeLog("Required image/video containers missing"); return; }
+    if (videoBorder == null || videoView == null || gif == null) { SafeLog("Video/GIF controls missing"); return; }
 
         var ext = (!string.IsNullOrWhiteSpace(m.FileExtension) ? m.FileExtension : TryGetExtensionFromUrl(m.FullImageUrl) ?? TryGetExtensionFromUrl(m.PreviewUrl) ?? string.Empty).Trim('.').ToLowerInvariant();
-        var isVideo = ext is "mp4" or "webm" or "mkv";
-        var looksGif = ext == "gif" || LooksLikeGifFromUrl(m.FullImageUrl) || LooksLikeGifFromUrl(m.PreviewUrl);
+    var isVideo = ext is "mp4" or "webm" or "mkv";
+    var looksGif = ext == "gif" || LooksLikeGifFromUrl(m.FullImageUrl) || LooksLikeGifFromUrl(m.PreviewUrl);
         var bestUrl = !string.IsNullOrWhiteSpace(m.FullImageUrl) ? m.FullImageUrl : m.PreviewUrl;
+    SafeLog($"Media detect: ext={ext}, isVideo={isVideo}, looksGif={looksGif}, hasUrl={!string.IsNullOrWhiteSpace(bestUrl)}");
 
         if (isVideo || looksGif)
         {
-            imageBorder.IsVisible = false;
-            webBorder.IsVisible = true;
-            AttachWebView(bestUrl, isVideo: isVideo, isGif: looksGif);
+            if (isVideo)
+            {
+                imageBorder.IsVisible = false;
+                gif.IsVisible = false;
+                videoBorder.IsVisible = true;
+                await AttachVideoAsync(bestUrl, videoView);
+            }
+            else
+            {
+                // GIF playback via AnimatedImage
+                videoBorder.IsVisible = false;
+                imageBorder.IsVisible = true;
+                img.IsVisible = false;
+                gif.IsVisible = true;
+                if (!string.IsNullOrWhiteSpace(bestUrl))
+                {
+                    try { SetGifSource(gif, bestUrl); } catch { }
+                }
+            }
             return;
         }
 
         // Try local final file first (static images)
-    try
-    {
+        try
+        {
             var settings = App.Services?.GetService<ISettingsService>();
             var baseDir = settings?.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
             var finalPath = GenerateFinalPath(m, baseDir, settings);
@@ -88,7 +146,7 @@ public partial class ViewerWindow : Window
             {
                 img.Source = new Bitmap(finalPath);
                 imageBorder.IsVisible = true;
-                webBorder.IsVisible = false;
+                videoBorder.IsVisible = false;
                 return;
             }
         }
@@ -102,7 +160,7 @@ public partial class ViewerWindow : Window
             {
                 img.Source = new Bitmap(temp);
                 imageBorder.IsVisible = true;
-                webBorder.IsVisible = false;
+                videoBorder.IsVisible = false;
                 return;
             }
         }
@@ -112,7 +170,7 @@ public partial class ViewerWindow : Window
         try
         {
             imageBorder.IsVisible = true;
-            webBorder.IsVisible = false;
+            videoBorder.IsVisible = false;
             if (!string.IsNullOrWhiteSpace(bestUrl))
                 RemoteImage.SetSourceUri(img, bestUrl);
         }
@@ -121,162 +179,297 @@ public partial class ViewerWindow : Window
         await Task.CompletedTask;
     }
 
-    private void AttachWebView(string? url, bool isVideo, bool isGif)
+    private async Task AttachVideoAsync(string? url, LibVLCSharp.Avalonia.VideoView videoView)
     {
-        var host = this.FindControl<Panel>("WebHost");
-        var fallback = this.FindControl<Control>("WebFallback");
-        var fallbackText = this.FindControl<TextBlock>("WebFallbackText");
-        if (host == null) return;
-
-        // Helper: set fallback message safely
-        void ShowFallback(string message)
-        {
-            try { if (fallbackText != null) fallbackText.Text = message; } catch { }
-            try { if (fallback != null) fallback.IsVisible = true; } catch { }
-        }
-
+        if (string.IsNullOrWhiteSpace(url)) return;
         try
         {
-            // Check WebView2 runtime presence (best-effort, via reflection)
-            try
+            SafeLog($"AttachVideoAsync start: {url}");
+            // Initialize LibVLC with robust probing for native binaries and plugin path
+            if (!await EnsureLibVlcInitializedAsync())
             {
-                var envType = Type.GetType("Microsoft.Web.WebView2.Core.CoreWebView2Environment, Microsoft.Web.WebView2.Core", throwOnError: false)
-                             ?? Type.GetType("Microsoft.Web.WebView2.Core.CoreWebView2Environment", throwOnError: false);
-                var version = envType?.GetMethod("GetAvailableBrowserVersionString", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.Invoke(null, null) as string;
-                if (string.IsNullOrWhiteSpace(version))
-                {
-                    ShowFallback("Microsoft Edge WebView2 Runtime not detected. Install the WebView2 runtime to enable embedded playback, or use Open in browser.");
-                    // Continue anyway; some implementations may bootstrap the runtime.
-                }
+                SafeLog("LibVLC init failed; cannot play video.");
+                return;
             }
-            catch
-            {
-                // Ignore detection errors; we'll proceed and surface any creation errors below
-            }
+            if (_libVLC == null) { SafeLog("LibVLC is null after init"); return; }
+            _mp ??= new MediaPlayer(_libVLC);
+            SafeLog("MediaPlayer created");
+            videoView.MediaPlayer = _mp;
 
-            // Create WebView instance via reflection only (avoid compile-time dependency), with strict filtering
-            Control? created = null;
-            Type? webViewType = null;
-            string[] candidates = new[]
+            using var media = new Media(_libVLC, new Uri(url));
+            SafeLog("Media created; calling Play...");
+            try { _mp.Play(media); SafeLog("Play invoked"); } catch (Exception exPlay) { SafeLog("Play threw: " + exPlay.ToString()); }
+
+            HookVideoEvents();
+            SafeLog("Video events hooked");
+        }
+        catch (Exception ex) { SafeLog("AttachVideoAsync exception: " + ex.Message); }
+        await Task.CompletedTask;
+    }
+
+    private async Task<bool> EnsureLibVlcInitializedAsync()
+    {
+        if (_libVLC != null) return true;
+        try
+        {
+            SafeLog("EnsureLibVlcInitializedAsync start");
+            // Probe common libvlc locations shipped by VideoLAN.LibVLC.* packages
+            var baseDir = AppContext.BaseDirectory;
+            var candidates = new[]
             {
-                "WebView.Avalonia.WebView, WebView.Avalonia",
-                "Avalonia.WebView.Controls.WebView, Avalonia.WebView",
-                "Avalonia.WebView.AvaloniaWebView, Avalonia.WebView",
+                Path.Combine(baseDir, "libvlc", Environment.Is64BitProcess ? "win-x64" : "win-x86"),
+                Path.Combine(baseDir, "libvlc"),
+                Path.Combine(baseDir, "runtimes", Environment.Is64BitProcess ? "win-x64" : "win-x86", "native"),
+                baseDir
             };
+
+            string? libDir = null;
             foreach (var c in candidates)
             {
                 try
                 {
-                    var t = Type.GetType(c, throwOnError: false);
-                    if (t == null) continue;
-                    if (!typeof(Control).IsAssignableFrom(t)) continue;
-                    if (t.IsAbstract || t.Name.Contains("Handler", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (t.GetConstructor(Type.EmptyTypes) == null) continue;
-                    webViewType = t; break;
+                    if (Directory.Exists(c))
+                    {
+                        // Check for libvlc library presence
+                        var hasDll = Directory.EnumerateFiles(c, "libvlc*.dll", SearchOption.TopDirectoryOnly).Any();
+                        if (hasDll)
+                        {
+                            libDir = c;
+                            SafeLog($"LibVLC dir selected: {libDir}");
+                            break;
+                        }
+                        // Some packages place dlls one level deeper
+                        var nested = Directory.Exists(Path.Combine(c, Environment.Is64BitProcess ? "win-x64" : "win-x86"))
+                            ? Path.Combine(c, Environment.Is64BitProcess ? "win-x64" : "win-x86")
+                            : null;
+                        if (!string.IsNullOrEmpty(nested) && Directory.Exists(nested) && Directory.EnumerateFiles(nested, "libvlc*.dll", SearchOption.TopDirectoryOnly).Any())
+                        {
+                            libDir = nested;
+                            SafeLog($"LibVLC nested dir selected: {libDir}");
+                            break;
+                        }
+                    }
                 }
                 catch { }
             }
-            if (webViewType == null)
+
+            // As a last resort, scan immediate subdirs of libvlc
+            if (libDir == null)
             {
-                // Scan as a last resort but filter aggressively
-                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                var root = Path.Combine(baseDir, "libvlc");
+                if (Directory.Exists(root))
                 {
-                    Type[] types; try { types = asm.GetTypes(); } catch { continue; }
-                    foreach (var t in types)
+                    try
                     {
-                        if (!typeof(Control).IsAssignableFrom(t)) continue;
-                        var fn = t.FullName ?? string.Empty;
-                        if (!fn.Contains("WebView", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!(fn.StartsWith("WebView.Avalonia.", StringComparison.Ordinal) || fn.StartsWith("Avalonia.WebView.", StringComparison.Ordinal))) continue;
-                        if (t.IsAbstract || t.Name.Contains("Handler", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (t.GetConstructor(Type.EmptyTypes) == null) continue;
-                        webViewType = t; break;
+                        foreach (var sub in Directory.EnumerateDirectories(root))
+                        {
+                            if (Directory.EnumerateFiles(sub, "libvlc*.dll", SearchOption.TopDirectoryOnly).Any())
+                            { libDir = sub; break; }
+                        }
                     }
-                    if (webViewType != null) break;
+                    catch { }
                 }
             }
-            if (webViewType == null)
-            {
-                var loadedNames = string.Join(", ", AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).Where(n => !string.IsNullOrWhiteSpace(n)));
-                ShowFallback("Embedded WebView control not found. Ensure WebView.Avalonia is restored. Loaded: " + loadedNames);
-                return;
-            }
-            try { created = Activator.CreateInstance(webViewType) as Control; }
-            catch (Exception ex)
-            {
-                ShowFallback("Failed to create WebView instance: " + ex.Message);
-                return;
-            }
-            if (created == null)
-            {
-                ShowFallback("Failed to create WebView instance (null).");
-                return;
-            }
 
-            _webView = created;
-            host.Children.Clear();
-            _webView.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
-            _webView.VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch;
-            if (_webView is ContentControl cc)
+            if (!string.IsNullOrEmpty(libDir))
             {
-                cc.HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
-                cc.VerticalContentAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch;
-            }
-            host.Children.Add(_webView);
-            if (fallback != null) fallback.IsVisible = false;
-
-            if (string.IsNullOrWhiteSpace(url)) return;
-
-            // Dispatch navigation depending on available API surface
-            var wt = created.GetType();
-            var navigateToString = wt.GetMethod("NavigateToString")
-                                   ?? wt.GetMethod("NavigateToStringAsync")
-                                   ?? wt.GetMethod("LoadHtmlString");
-            var navigateMethod = wt.GetMethod("Navigate") ?? wt.GetMethod("GoTo");
-            var htmlProp = wt.GetProperty("HtmlContent") ?? wt.GetProperty("Html") ?? wt.GetProperty("ContentHtml");
-            var addressProp = wt.GetProperty("Address") ?? wt.GetProperty("Source") ?? wt.GetProperty("Url") ?? wt.GetProperty("Uri");
-
-            object ToTarget(object s)
-            {
-                if (s is string ss)
+                // Ensure native loader can find the dlls
+                try
                 {
-                    try { if (addressProp?.PropertyType == typeof(Uri)) return new Uri(ss); } catch { }
-                    return ss;
+                    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                    if (!currentPath.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(libDir, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Environment.SetEnvironmentVariable("PATH", libDir + ";" + currentPath);
+                    }
                 }
-                return s;
-            }
+                catch { }
 
-            if (isVideo && (navigateToString != null || htmlProp != null))
-            {
-                var html = $"<html><head><meta http-equiv='X-UA-Compatible' content='IE=Edge'/></head><body style='margin:0;background:#202020;display:flex;align-items:center;justify-content:center;'><video src='{url}' controls autoplay style='max-width:100%;max-height:100%'></video></body></html>";
-                try { if (navigateToString != null) navigateToString.Invoke(_webView, new object?[] { html }); else htmlProp!.SetValue(_webView, html); }
-                catch (Exception ex) { ShowFallback("WebView navigation failed: " + ex.Message); }
-            }
-            else if (isGif && (navigateToString != null || htmlProp != null))
-            {
-                var html = $"<html><head><meta http-equiv='X-UA-Compatible' content='IE=Edge'/></head><body style='margin:0;background:#202020;display:flex;align-items:center;justify-content:center;'><img src='{url}' style='max-width:100%;max-height:100%'/></body></html>";
-                try { if (navigateToString != null) navigateToString.Invoke(_webView, new object?[] { html }); else htmlProp!.SetValue(_webView, html); }
-                catch (Exception ex) { ShowFallback("WebView navigation failed: " + ex.Message); }
-            }
-            else if (addressProp != null)
-            {
-                try { addressProp.SetValue(_webView, ToTarget(url!)); }
-                catch (Exception ex) { ShowFallback("WebView address set failed: " + ex.Message); }
-            }
-            else if (navigateMethod != null)
-            {
-                try { navigateMethod.Invoke(_webView, new object?[] { ToTarget(url!) }); }
-                catch (Exception ex) { ShowFallback("WebView navigate() failed: " + ex.Message); }
+                try { LibVLCSharp.Shared.Core.Initialize(libDir); SafeLog("Core.Initialize(libDir) OK"); } catch { try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize() fallback OK"); } catch (Exception exInit) { SafeLog("Core.Initialize failed: " + exInit.Message); } }
+
+                // Prefer setting plugin path if present
+                var pluginsDir = Path.Combine(libDir, "plugins");
+                if (Directory.Exists(pluginsDir))
+                {
+                    SafeLog($"Creating LibVLC with plugins: {pluginsDir}");
+                    _libVLC = new LibVLC(new string[] { $"--plugin-path={pluginsDir}", "--no-video-title-show", "--avcodec-hw=none" });
+                }
+                else
+                {
+                    SafeLog("Creating LibVLC without explicit plugins path");
+                    _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none" });
+                }
+                SafeLog("LibVLC created");
+                return true;
             }
             else
             {
-                ShowFallback("No suitable navigation API found on WebView control.");
+                // Try default initialization; may succeed if system-wide VLC is installed
+                try { LibVLCSharp.Shared.Core.Initialize(); SafeLog("Core.Initialize(default) OK"); } catch (Exception exInit2) { SafeLog("Core.Initialize(default) failed: " + exInit2.Message); }
+                _libVLC = new LibVLC(new string[] { "--no-video-title-show", "--avcodec-hw=none" });
+                SafeLog("LibVLC created (default)");
+                return true;
             }
         }
         catch (Exception ex)
         {
-            ShowFallback("Unexpected WebView error: " + ex.Message);
+            SafeLog("EnsureLibVlcInitializedAsync failed: " + ex.ToString());
+            _libVLC = null;
+            return false;
         }
+        finally
+        {
+            await Task.CompletedTask;
+        }
+    }
+
+    private void HookVideoEvents()
+    {
+        try
+        {
+            var seek = this.FindControl<Slider>("SeekSlider");
+            var vol = this.FindControl<Slider>("VolumeSlider");
+            var cur = this.FindControl<TextBlock>("CurrentTimeText");
+            var tot = this.FindControl<TextBlock>("TotalTimeText");
+            var btn = this.FindControl<Button>("PlayPauseButton");
+            if (_mp == null || seek == null || vol == null || cur == null || tot == null || btn == null) return;
+
+            vol.Value = _mp.Volume;
+
+            _mp.TimeChanged += (_, e) =>
+            {
+                if (_isSeeking) return;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try
+                    {
+                        long time = (long)e.Time;
+                        cur.Text = FormatTime(time);
+                        var length = 0L;
+                        try { length = _mp?.Media?.Duration ?? _mp?.Length ?? 0; } catch { length = 0; }
+                        tot.Text = FormatTime(length);
+                        if (length > 0)
+                        {
+                            seek.Maximum = length;
+                            seek.Value = Math.Clamp(time, 0, length);
+                        }
+                    }
+                    catch { }
+                });
+            };
+
+            _mp.EndReached += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
+            _mp.Playing += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Pause"; } catch { } });
+            _mp.Paused += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
+            _mp.Stopped += (_, __) => Dispatcher.UIThread.Post(() => { try { btn.Content = "Play"; } catch { } });
+        }
+        catch { }
+    }
+
+    private static string FormatTime(long ms)
+    {
+        if (ms <= 0) return "00:00";
+        var ts = TimeSpan.FromMilliseconds(ms);
+    return ts.Hours > 0 ? ts.ToString(@"h\:mm\:ss") : ts.ToString(@"m\:ss");
+    }
+
+    private void OnPlayPause(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_mp == null) return;
+            if (_mp.IsPlaying) _mp.Pause(); else _mp.Play();
+        }
+        catch { }
+    }
+
+    private void OnSeekPointerPressed(object? sender, PointerPressedEventArgs e)
+    { _isSeeking = true; }
+
+    private void OnSeekPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        try
+        {
+            var seek = sender as Slider ?? this.FindControl<Slider>("SeekSlider");
+            if (_mp != null && seek != null)
+            {
+                var target = (long)seek.Value;
+                _mp.Time = target;
+            }
+        }
+        catch { }
+        finally { _isSeeking = false; }
+    }
+
+    private void OnSeekValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_isSeeking)
+        {
+            try
+            {
+                var cur = this.FindControl<TextBlock>("CurrentTimeText");
+                if (cur != null)
+                    cur.Text = FormatTime((long)e.NewValue);
+            }
+            catch { }
+        }
+    }
+
+    private void OnVolumeChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        try { if (_mp != null) _mp.Volume = (int)e.NewValue; } catch { }
+    }
+
+    private static void SetGifSource(Image gifControl, string url)
+    {
+        // AnimatedImage.Avalonia v2 uses an attached property on Image: anim:ImageBehavior.AnimatedSource
+        // We can't reference the assembly types directly here; set via reflection on attached property.
+        try
+        {
+            var uri = new Uri(url);
+            // Attached property owner type name: ImageBehavior in AnimatedImage.Avalonia
+            var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "AnimatedImage.Avalonia");
+            var owner = asm?.GetTypes().FirstOrDefault(t => t.Name == "ImageBehavior");
+            var propField = owner?.GetField("AnimatedSourceProperty", BindingFlags.Public | BindingFlags.Static);
+            if (owner != null && propField?.GetValue(null) is AvaloniaProperty ap)
+            {
+                gifControl.SetValue(ap, uri);
+                return;
+            }
+            // Fallback: show still image via RemoteImage behavior (works with remote URLs)
+            try { RemoteImage.SetSourceUri(gifControl, url); } catch { }
+        }
+        catch
+        {
+            try { RemoteImage.SetSourceUri(gifControl, url); } catch { }
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        try
+        {
+            if (_mp != null)
+            {
+                if (_mp.IsPlaying) _mp.Stop();
+                _mp.Dispose();
+                _mp = null;
+            }
+            _libVLC?.Dispose();
+            _libVLC = null;
+        }
+        catch { }
+    }
+
+    private void SafeLog(string message)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(_logPath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.AppendAllText(_logPath, $"[{DateTime.Now:O}] {message}\n");
+        }
+        catch { }
     }
 
     private void OnImageWheel(object? sender, PointerWheelEventArgs e)
