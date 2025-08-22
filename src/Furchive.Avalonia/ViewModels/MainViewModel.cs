@@ -24,13 +24,14 @@ public partial class MainViewModel : ObservableObject
     private readonly string _cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
     private readonly IPoolsCacheStore _cacheStore;
     private readonly IPlatformApi? _e621Platform;
+    private readonly IPlatformShellService? _shell;
 
     [ObservableProperty] private string _searchQuery = string.Empty;
     partial void OnSearchQueryChanged(string value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
     [ObservableProperty] private bool _isE621Enabled = true;
     [ObservableProperty] private bool _isSearching = false;
     [ObservableProperty] private MediaItem? _selectedMedia;
-    partial void OnSelectedMediaChanged(MediaItem? value) { OnPropertyChanged(nameof(IsSelectedDownloaded)); _ = EnsurePreviewPoolInfoAsync(value); }
+    partial void OnSelectedMediaChanged(MediaItem? value) { OnPropertyChanged(nameof(IsSelectedDownloaded)); OnPropertyChanged(nameof(CanOpenSelectedInBrowser)); OnPropertyChanged(nameof(CanOpenViewer)); _ = EnsurePreviewPoolInfoAsync(value); }
     [ObservableProperty] private string _statusMessage = "Ready";
     [ObservableProperty] private bool _isBackgroundCaching = false;
     [ObservableProperty] private int _backgroundCachingCurrent = 0;
@@ -88,9 +89,9 @@ public partial class MainViewModel : ObservableObject
     private double _galleryScale = 1.0;
     public double GalleryScale { get => _galleryScale; set { if (Math.Abs(_galleryScale - value) > 0.0001) { _galleryScale = value; OnPropertyChanged(nameof(GalleryScale)); OnPropertyChanged(nameof(GalleryTileWidth)); OnPropertyChanged(nameof(GalleryTileHeight)); OnPropertyChanged(nameof(GalleryImageSize)); } } }
 
-    public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore)
+    public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore, IPlatformShellService? shell = null)
     {
-        _apiService = apiService; _downloadService = downloadService; _settingsService = settingsService; _logger = logger; _thumbCache = thumbCache; _cpuQueue = cpuQueue; _cacheStore = cacheStore;
+        _apiService = apiService; _downloadService = downloadService; _settingsService = settingsService; _logger = logger; _thumbCache = thumbCache; _cpuQueue = cpuQueue; _cacheStore = cacheStore; _shell = shell;
         foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
         _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
     LoadSettings();
@@ -545,9 +546,30 @@ public partial class MainViewModel : ObservableObject
     private sealed class LastSession { public bool IsPoolMode { get; set; } public int? PoolId { get; set; } public string? SearchQuery { get; set; } public List<string> Include { get; set; } = new(); public List<string> Exclude { get; set; } = new(); public int RatingFilterIndex { get; set; } public int Page { get; set; } = 1; }
     public static (IEnumerable<string> include, IEnumerable<string> exclude) ParseQuery(string? query) { if (string.IsNullOrWhiteSpace(query)) return (Enumerable.Empty<string>(), Enumerable.Empty<string>()); var parts = query.Split(new[] { ' ', '\t', '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries); var include = new List<string>(); var exclude = new List<string>(); foreach (var raw in parts) { var t = raw.Trim(); if (t.StartsWith("-")) { t = t.Substring(1); if (!string.IsNullOrWhiteSpace(t)) exclude.Add(t); } else include.Add(t); } return (include, exclude); }
     public async Task<MediaItem?> FetchNextFromApiAsync(bool forward) { var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var (inc, exc) = ParseQuery(SearchQuery); var include = IncludeTags.Union(inc, StringComparer.OrdinalIgnoreCase).ToList(); var exclude = ExcludeTags.Union(exc, StringComparer.OrdinalIgnoreCase).ToList(); var page = Math.Max(1, CurrentPage + (forward ? 1 : -1)); var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) }); return result.Items.FirstOrDefault(); }
-    [RelayCommand] private async Task AddIncludeTag(string tag) { if (!string.IsNullOrWhiteSpace(tag) && !IncludeTags.Contains(tag)) { IncludeTags.Add(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
+    [RelayCommand] private async Task AddIncludeTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return;
+        // Split by whitespace to allow multi-tag entry
+        var parts = tag.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        bool changed = false;
+        foreach (var p in parts)
+        {
+            if (!IncludeTags.Contains(p)) { IncludeTags.Add(p); changed = true; }
+        }
+        if (changed) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
+    }
     [RelayCommand] private async Task RemoveIncludeTag(string tag) { IncludeTags.Remove(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
-    [RelayCommand] private async Task AddExcludeTag(string tag) { if (!string.IsNullOrWhiteSpace(tag) && !ExcludeTags.Contains(tag)) { ExcludeTags.Add(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
+    [RelayCommand] private async Task AddExcludeTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return;
+        var parts = tag.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        bool changed = false;
+        foreach (var p in parts)
+        {
+            if (!ExcludeTags.Contains(p)) { ExcludeTags.Add(p); changed = true; }
+        }
+        if (changed) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
+    }
     [RelayCommand] private async Task RemoveExcludeTag(string tag) { ExcludeTags.Remove(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     [RelayCommand] private async Task DownloadSelectedAsync() { if (SelectedMedia == null) return; try { var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"); var tempPath = GetTempPathFor(SelectedMedia); var finalPath = GenerateFinalPath(SelectedMedia, downloadPath); Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!); if (File.Exists(tempPath) && !File.Exists(finalPath)) { File.Move(tempPath, finalPath); StatusMessage = $"Saved from temp: {SelectedMedia.Title}"; OnPropertyChanged(nameof(IsSelectedDownloaded)); return; } await _downloadService.QueueDownloadAsync(SelectedMedia, downloadPath); StatusMessage = $"Queued download: {SelectedMedia.Title}"; } catch (Exception ex) { StatusMessage = $"Download failed: {ex.Message}"; _logger.LogError(ex, "Download failed for {Title}", SelectedMedia.Title); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Download failed", ex.Message)); } catch { } } }
     [RelayCommand] private async Task DownloadAllAsync() { if (!SearchResults.Any()) return; try { var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"); var toQueue = new List<MediaItem>(); foreach (var m in SearchResults) { var tempPath = GetTempPathFor(m); var finalPath = GenerateFinalPath(m, downloadPath); Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!); if (File.Exists(tempPath) && !File.Exists(finalPath)) { try { File.Move(tempPath, finalPath); } catch { toQueue.Add(m); } } else { toQueue.Add(m); } } if (toQueue.Any()) { if (IsPoolMode && CurrentPoolId.HasValue) { var label = SelectedPool?.Name ?? PreviewPoolName ?? "Pool"; await _downloadService.QueueAggregateDownloadsAsync("pool", toQueue, downloadPath, label); } else { await _downloadService.QueueMultipleDownloadsAsync(toQueue, downloadPath); } } StatusMessage = IsPoolMode ? $"Queued pool downloads ({SearchResults.Count} items)" : $"Queued {SearchResults.Count} downloads"; } catch (Exception ex) { StatusMessage = $"Batch download failed: {ex.Message}"; _logger.LogError(ex, "Batch download failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Batch download failed", ex.Message)); } catch { } } }
@@ -573,4 +595,47 @@ public partial class MainViewModel : ObservableObject
     // Clears the current selection (bound to Esc)
     [RelayCommand]
     private void SelectNone() => SelectedMedia = null;
+
+    // --- UI Helper Commands ---
+    public bool CanOpenDownloadsFolder => true; // always enabled; path existence checked in command
+    public bool CanOpenSelectedInBrowser => SelectedMedia != null && !string.IsNullOrWhiteSpace(SelectedMedia.SourceUrl);
+    public bool CanOpenViewer => SelectedMedia != null; // future: additional checks
+
+    [RelayCommand]
+    private void OpenDownloadsFolder()
+    {
+        try
+        {
+            var baseDir = _settingsService.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
+            if (!Directory.Exists(baseDir)) { try { Directory.CreateDirectory(baseDir); } catch { } }
+            _shell?.OpenFolder(baseDir);
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private void OpenSelectedInBrowser()
+    {
+        try { var url = SelectedMedia?.SourceUrl; if (!string.IsNullOrWhiteSpace(url)) _shell?.OpenUrl(url); } catch { }
+    }
+
+    [RelayCommand]
+    private void OpenViewer()
+    {
+        // Placeholder: In a future iteration, show a dedicated viewer window.
+        // For now, just open the full image/video URL in system browser as a stand-in.
+        try
+        {
+            var url = SelectedMedia?.FullImageUrl;
+            if (string.IsNullOrWhiteSpace(url)) url = SelectedMedia?.PreviewUrl;
+            if (!string.IsNullOrWhiteSpace(url)) _shell?.OpenUrl(url);
+        }
+        catch { }
+    }
+
+    // Called by view when pool selection changes (e.g., SelectionChanged event) to auto-load pool
+    public async Task OnPoolSelectionChangedAsync()
+    {
+        try { if (SelectedPool != null) await LoadSelectedPoolAsync(SelectedPool); } catch { }
+    }
 }

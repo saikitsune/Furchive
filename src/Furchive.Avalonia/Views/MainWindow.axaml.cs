@@ -63,6 +63,28 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnPoolsSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                await vm.OnPoolSelectionChangedAsync();
+            }
+        }
+        catch { }
+    }
+
+    private void OnOpenSettings(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var wnd = new SettingsWindow();
+            wnd.Show(this);
+        }
+        catch { }
+    }
+
 
     private void OnGalleryKeyDown(object? sender, KeyEventArgs e)
     {
