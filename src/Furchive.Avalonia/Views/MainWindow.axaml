@@ -161,7 +161,7 @@
 
                 <!-- Pinned Pools -->
                 <TextBlock Text="Pinned Pools" FontWeight="Bold" Margin="0,10,0,0"/>
-                <ListBox x:Name="PinnedPoolsList" ItemsSource="{Binding PinnedPools}"
+                <ListBox x:Name="PinnedPoolsList" ItemsSource="{Binding PinnedPools}" SelectionChanged="OnPinnedPoolsSelectionChanged"
                          MaxHeight="170"
                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
@@ -185,7 +185,7 @@
                     <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
                 </StackPanel>
                 <ScrollViewer Grid.Row="1">
-                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown">
+                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal"/>
@@ -236,7 +236,7 @@
                             <Button Content="Open Browser" Command="{Binding DataContext.OpenSelectedInBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding DataContext.CanOpenSelectedInBrowser, RelativeSource={RelativeSource AncestorType=Window}}"/>
                             <Button Content="Open Viewer" Command="{Binding DataContext.OpenViewerCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding DataContext.CanOpenViewer, RelativeSource={RelativeSource AncestorType=Window}}"/>
                         </StackPanel>
-                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}"/>
+                        <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}" Cursor="Hand" PointerReleased="OnPreviewImagePointerReleased"/>
                         <!-- Basic metadata -->
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding Artist}"/>

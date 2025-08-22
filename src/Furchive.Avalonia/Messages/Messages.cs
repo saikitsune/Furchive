@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Messaging.Messages;
+using Furchive.Core.Models;
 
 namespace Furchive.Avalonia.Messages;
 
@@ -21,4 +22,9 @@ public sealed class PoolsSoftRefreshRequestedMessage : ValueChangedMessage<bool>
 public sealed class SettingsSavedMessage : ValueChangedMessage<bool>
 {
     public SettingsSavedMessage(bool value = true) : base(value) { }
+}
+
+public sealed class OpenViewerMessage : ValueChangedMessage<MediaItem>
+{
+    public OpenViewerMessage(MediaItem item) : base(item) { }
 }

@@ -6,6 +6,9 @@ using Avalonia.Interactivity;
 using Furchive.Avalonia.ViewModels;
 using Furchive.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
+using Furchive.Avalonia.Messages;
+using Furchive.Core.Models;
 
 namespace Furchive.Avalonia.Views;
 
@@ -22,6 +25,21 @@ public partial class MainWindow : Window
             InitializeComponent();
             var services = App.Services ?? throw new InvalidOperationException("Service provider not initialized");
             DataContext = services.GetRequiredService<MainViewModel>();
+            // Subscribe to viewer open messages (MVVM: window creation in view layer)
+            try
+            {
+                WeakReferenceMessenger.Default.Register<OpenViewerMessage>(this, (_, msg) =>
+                {
+                    try
+                    {
+                        if (msg.Value == null) return;
+                        var vw = new ViewerWindow { DataContext = msg.Value };
+                        vw.Show(this);
+                    }
+                    catch { }
+                });
+            }
+            catch { }
             try { Icon = new WindowIcon(global::Avalonia.Platform.AssetLoader.Open(new Uri("avares://Furchive/Assets/icon.ico"))); } catch { }
             try
             {
@@ -224,5 +242,61 @@ public partial class MainWindow : Window
     private void OnRowSplitterDragCompleted(object? sender, VectorEventArgs e)
     {
         try { PersistDownloadsHeight(); } catch { }
+    }
+
+    private DateTime _lastClickTime = DateTime.MinValue;
+    private void OnGalleryPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        try
+        {
+            if (e.ClickCount >= 2)
+            {
+                if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
+                {
+                    WeakReferenceMessenger.Default.Send(new OpenViewerMessage(vm.SelectedMedia));
+                    e.Handled = true;
+                }
+                return;
+            }
+            // Fallback manual timing (in case ClickCount not reliable on platform)
+            var now = DateTime.UtcNow;
+            if ((now - _lastClickTime).TotalMilliseconds < 400)
+            {
+                if (DataContext is MainViewModel vm2 && vm2.SelectedMedia != null)
+                {
+                    WeakReferenceMessenger.Default.Send(new OpenViewerMessage(vm2.SelectedMedia));
+                    e.Handled = true;
+                }
+            }
+            _lastClickTime = now;
+        }
+        catch { }
+    }
+
+    private void OnPreviewImagePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
+            {
+                WeakReferenceMessenger.Default.Send(new OpenViewerMessage(vm.SelectedMedia));
+            }
+        }
+        catch { }
+    }
+
+    private async void OnPinnedPoolsSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is ListBox lb && lb.SelectedItem is PoolInfo pool)
+            {
+                await vm.LoadPinnedPoolAsync(pool);
+                // Optional: keep selection highlighted; comment out next line if not desired.
+                // lb.SelectedItem = null;
+            }
+        }
+        catch { }
     }
 }

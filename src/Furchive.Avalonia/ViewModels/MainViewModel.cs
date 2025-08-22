@@ -492,6 +492,8 @@ public partial class MainViewModel : ObservableObject
     }
 
     public Task TriggerLoadSelectedPoolAsync() => LoadSelectedPoolAsync(null);
+    // Public helper for view layer to load a pinned pool without exposing full command
+    public Task LoadPinnedPoolAsync(PoolInfo pool) => LoadSelectedPoolAsync(pool);
     private async Task PerformPoolPageAsync(int poolId, int page, bool reset) { await Task.CompletedTask; }
     [RelayCommand] private async Task SoftRefreshPoolsAsync() { try { var minutes = Math.Max(5, _settingsService.GetSetting<int>("PoolsUpdateIntervalMinutes", 360)); await IncrementalUpdatePoolsAsync(TimeSpan.FromMinutes(minutes)); } catch (Exception ex) { _logger.LogWarning(ex, "Soft refresh pools failed"); } }
     // Persist last session in SQLite via IPoolsCacheStore
@@ -622,15 +624,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenViewer()
     {
-        // Placeholder: In a future iteration, show a dedicated viewer window.
-        // For now, just open the full image/video URL in system browser as a stand-in.
-        try
-        {
-            var url = SelectedMedia?.FullImageUrl;
-            if (string.IsNullOrWhiteSpace(url)) url = SelectedMedia?.PreviewUrl;
-            if (!string.IsNullOrWhiteSpace(url)) _shell?.OpenUrl(url);
-        }
-        catch { }
+    // Notify UI layer (code-behind) to open a ViewerWindow for the selected media (MVVM rule: Window created in view layer).
+    try { if (SelectedMedia != null) WeakReferenceMessenger.Default.Send(new OpenViewerMessage(SelectedMedia)); } catch { }
     }
 
     // Called by view when pool selection changes (e.g., SelectionChanged event) to auto-load pool
