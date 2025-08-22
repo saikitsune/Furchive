@@ -233,7 +233,7 @@
                 <ScrollViewer DataContext="{Binding SelectedMedia}">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="Open Browser" Command="{Binding DataContext.OpenSelectedInBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding DataContext.CanOpenSelectedInBrowser, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                            <Button Content="Open in Browser" Command="{Binding DataContext.OpenSelectedInBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding DataContext.CanOpenSelectedInBrowser, RelativeSource={RelativeSource AncestorType=Window}}"/>
                             <Button Content="Open Viewer" Command="{Binding DataContext.OpenViewerCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding DataContext.CanOpenViewer, RelativeSource={RelativeSource AncestorType=Window}}"/>
                         </StackPanel>
                         <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}" Cursor="Hand" PointerReleased="OnPreviewImagePointerReleased"/>

@@ -600,7 +600,7 @@ public partial class MainViewModel : ObservableObject
 
     // --- UI Helper Commands ---
     public bool CanOpenDownloadsFolder => true; // always enabled; path existence checked in command
-    public bool CanOpenSelectedInBrowser => SelectedMedia != null && !string.IsNullOrWhiteSpace(SelectedMedia.SourceUrl);
+    public bool CanOpenSelectedInBrowser => SelectedMedia != null && (!string.IsNullOrWhiteSpace(SelectedMedia.SourceUrl) || !string.IsNullOrWhiteSpace(SelectedMedia.FullImageUrl) || !string.IsNullOrWhiteSpace(SelectedMedia.PreviewUrl));
     public bool CanOpenViewer => SelectedMedia != null; // future: additional checks
 
     [RelayCommand]
@@ -618,7 +618,14 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenSelectedInBrowser()
     {
-        try { var url = SelectedMedia?.SourceUrl; if (!string.IsNullOrWhiteSpace(url)) _shell?.OpenUrl(url); } catch { }
+        try
+        {
+            var url = SelectedMedia?.SourceUrl;
+            if (string.IsNullOrWhiteSpace(url)) url = SelectedMedia?.FullImageUrl;
+            if (string.IsNullOrWhiteSpace(url)) url = SelectedMedia?.PreviewUrl;
+            if (!string.IsNullOrWhiteSpace(url)) _shell?.OpenUrl(url);
+        }
+        catch { }
     }
 
     [RelayCommand]

@@ -34,6 +34,7 @@ public partial class ViewerWindow : Window
     private bool _isPanning;
     private Point _panStartPointer;
     private Vector _panStartOffset;
+    private string _sizeMode = "Fit to window"; // or Original
     private bool _isSeeking;
     private string _logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "viewer.log");
 
@@ -65,6 +66,7 @@ public partial class ViewerWindow : Window
                     ShowStartupError(ex);
                 }
             };
+            this.SizeChanged += (_, __) => ApplySizeModeFitIfNeeded();
         }
         catch (Exception ex)
         {
@@ -480,16 +482,12 @@ public partial class ViewerWindow : Window
     {
         try
         {
-            var props = e.GetCurrentPoint(this).Properties;
-            if (!(props.IsLeftButtonPressed || props.IsMiddleButtonPressed)) return;
-            var pos = e.GetPosition(this);
-            _isPanning = true;
-            _panStartPointer = pos;
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
             var sv = this.FindControl<ScrollViewer>("ImageScroll");
-            if (sv != null)
-            {
-                _panStartOffset = new Vector(sv.Offset.X, sv.Offset.Y);
-            }
+            if (sv == null) return;
+            _isPanning = true;
+            _panStartPointer = e.GetPosition(sv);
+            _panStartOffset = sv.Offset;
             e.Pointer.Capture(this);
             e.Handled = true;
         }
@@ -500,9 +498,12 @@ public partial class ViewerWindow : Window
     {
         try
         {
-            _isPanning = false;
-            if (e.Pointer.Captured == this) e.Pointer.Capture(null);
-            e.Handled = true;
+            if (_isPanning)
+            {
+                _isPanning = false;
+                if (e.Pointer.Captured == this) e.Pointer.Capture(null);
+                e.Handled = true;
+            }
         }
         catch { }
     }
@@ -514,12 +515,50 @@ public partial class ViewerWindow : Window
             if (!_isPanning) return;
             var sv = this.FindControl<ScrollViewer>("ImageScroll");
             if (sv == null) return;
-            var current = e.GetPosition(this);
+            var current = e.GetPosition(sv);
             var delta = current - _panStartPointer;
-            var targetX = _panStartOffset.X - delta.X;
-            var targetY = _panStartOffset.Y - delta.Y;
-            sv.Offset = new Vector(Math.Max(0, targetX), Math.Max(0, targetY));
+            // invert delta to move content with cursor drag
+            var target = _panStartOffset - new Vector(delta.X, delta.Y);
+            sv.Offset = new Vector(Math.Max(0, target.X), Math.Max(0, target.Y));
             e.Handled = true;
+        }
+        catch { }
+    }
+
+    private void OnSizeModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        try
+        {
+            var cb = sender as ComboBox;
+            var item = cb?.SelectedItem as ComboBoxItem;
+            _sizeMode = item?.Content?.ToString() ?? "Fit to window";
+            ApplySizeModeFitIfNeeded();
+        }
+        catch { }
+    }
+
+    private void ApplySizeModeFitIfNeeded()
+    {
+        try
+        {
+            if (_sizeMode != "Fit to window") return;
+            var img = this.FindControl<Image>("ImageView");
+            if (img?.Source is Bitmap bmp)
+            {
+                var host = this.FindControl<ScrollViewer>("ImageScroll");
+                var zoomSlider = this.FindControl<Slider>("ZoomSlider");
+                if (host == null || zoomSlider == null) return;
+                var availW = Math.Max(1, host.Viewport.Width - 20);
+                var availH = Math.Max(1, host.Viewport.Height - 20);
+                var scaleX = availW / bmp.PixelSize.Width;
+                var scaleY = availH / bmp.PixelSize.Height;
+                var scale = Math.Min(scaleX, scaleY);
+                scale = Math.Clamp(scale, zoomSlider.Minimum, zoomSlider.Maximum);
+                if (Math.Abs(zoomSlider.Value - scale) > 0.0001)
+                {
+                    zoomSlider.Value = scale;
+                }
+            }
         }
         catch { }
     }

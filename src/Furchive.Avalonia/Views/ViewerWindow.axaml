@@ -23,6 +23,12 @@
                 <TextBlock Text="Zoom"/>
                 <Slider x:Name="ZoomSlider" Width="160" Minimum="0.25" Maximum="4" Value="1"
                         TickFrequency="0.25" SmallChange="0.1" LargeChange="0.5"/>
+                <TextBlock Text="·"/>
+                <TextBlock Text="Size:"/>
+                <ComboBox x:Name="SizeModeCombo" Width="140" SelectionChanged="OnSizeModeChanged">
+                    <ComboBoxItem Content="Fit to window" IsSelected="True"/>
+                    <ComboBoxItem Content="Original"/>
+                </ComboBox>
             </StackPanel>
         </DockPanel>
 
