@@ -39,9 +39,9 @@
                 <ScrollViewer x:Name="ImageScroll"
                               HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
-                              PointerPressed="OnImagePointerPressed"
-                              PointerReleased="OnImagePointerReleased"
-                              PointerMoved="OnImagePointerMoved">
+                              PointerPressed="OnImageDragPointerPressed"
+                              PointerReleased="OnImageDragPointerReleased"
+                              PointerMoved="OnImageDragPointerMoved">
                     <LayoutTransformControl>
                         <LayoutTransformControl.LayoutTransform>
                             <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}"

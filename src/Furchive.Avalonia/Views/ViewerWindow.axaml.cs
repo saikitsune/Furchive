@@ -30,10 +30,10 @@ namespace Furchive.Avalonia.Views;
 
 public partial class ViewerWindow : Window
 {
-    // Deprecated WebView fields removed; LibVLC removed; using WebView (if available) and AnimatedImage instead
-    private bool _isPanning;
-    private Point _panStartPointer;
-    private Vector _panStartOffset;
+    // State for new drag-panning implementation
+    private bool _isDraggingImage;
+    private Point _dragStartPointer;
+    private Vector _dragStartOffset;
     private string _sizeMode = "Fit to window"; // or Original
     private bool _isSeeking;
     private string _logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "viewer.log");
@@ -478,47 +478,46 @@ public partial class ViewerWindow : Window
         catch { }
     }
 
-    private void OnImagePointerPressed(object? sender, PointerPressedEventArgs e)
+    // New panning (drag) handlers
+    private void OnImageDragPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         try
         {
-            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+            var point = e.GetCurrentPoint(this);
+            if (!point.Properties.IsLeftButtonPressed) return;
             var sv = this.FindControl<ScrollViewer>("ImageScroll");
             if (sv == null) return;
-            _isPanning = true;
-            _panStartPointer = e.GetPosition(sv);
-            _panStartOffset = sv.Offset;
+            _isDraggingImage = true;
+            _dragStartPointer = e.GetPosition(sv);
+            _dragStartOffset = sv.Offset;
             e.Pointer.Capture(this);
             e.Handled = true;
         }
         catch { }
     }
 
-    private void OnImagePointerReleased(object? sender, PointerReleasedEventArgs e)
+    private void OnImageDragPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         try
         {
-            if (_isPanning)
-            {
-                _isPanning = false;
-                if (e.Pointer.Captured == this) e.Pointer.Capture(null);
-                e.Handled = true;
-            }
+            if (!_isDraggingImage) return;
+            _isDraggingImage = false;
+            if (e.Pointer.Captured == this) e.Pointer.Capture(null);
+            e.Handled = true;
         }
         catch { }
     }
 
-    private void OnImagePointerMoved(object? sender, PointerEventArgs e)
+    private void OnImageDragPointerMoved(object? sender, PointerEventArgs e)
     {
         try
         {
-            if (!_isPanning) return;
+            if (!_isDraggingImage) return;
             var sv = this.FindControl<ScrollViewer>("ImageScroll");
             if (sv == null) return;
-            var current = e.GetPosition(sv);
-            var delta = current - _panStartPointer;
-            // invert delta to move content with cursor drag
-            var target = _panStartOffset - new Vector(delta.X, delta.Y);
+            var cur = e.GetPosition(sv);
+            var delta = cur - _dragStartPointer;
+            var target = _dragStartOffset - new Vector(delta.X, delta.Y);
             sv.Offset = new Vector(Math.Max(0, target.X), Math.Max(0, target.Y));
             e.Handled = true;
         }
@@ -531,8 +530,21 @@ public partial class ViewerWindow : Window
         {
             var cb = sender as ComboBox;
             var item = cb?.SelectedItem as ComboBoxItem;
-            _sizeMode = item?.Content?.ToString() ?? "Fit to window";
-            ApplySizeModeFitIfNeeded();
+            var selected = item?.Content?.ToString() ?? "Fit to window";
+            _sizeMode = selected;
+            if (_sizeMode == "Original")
+            {
+                // Reset zoom to 1 (original) if available
+                var zoomSlider = this.FindControl<Slider>("ZoomSlider");
+                if (zoomSlider != null)
+                {
+                    zoomSlider.Value = 1.0;
+                }
+            }
+            else
+            {
+                ApplySizeModeFitIfNeeded();
+            }
         }
         catch { }
     }
@@ -548,16 +560,28 @@ public partial class ViewerWindow : Window
                 var host = this.FindControl<ScrollViewer>("ImageScroll");
                 var zoomSlider = this.FindControl<Slider>("ZoomSlider");
                 if (host == null || zoomSlider == null) return;
-                var availW = Math.Max(1, host.Viewport.Width - 20);
-                var availH = Math.Max(1, host.Viewport.Height - 20);
+                // Provide generous padding but dynamic (smaller for small windows)
+                var padding = Math.Min(40, Math.Min(host.Viewport.Width * 0.05, host.Viewport.Height * 0.05));
+                var availW = Math.Max(1, host.Viewport.Width - padding);
+                var availH = Math.Max(1, host.Viewport.Height - padding);
                 var scaleX = availW / bmp.PixelSize.Width;
                 var scaleY = availH / bmp.PixelSize.Height;
                 var scale = Math.Min(scaleX, scaleY);
                 scale = Math.Clamp(scale, zoomSlider.Minimum, zoomSlider.Maximum);
-                if (Math.Abs(zoomSlider.Value - scale) > 0.0001)
+                zoomSlider.Value = scale;
+                // Center offsets after scaling
+                Dispatcher.UIThread.Post(() =>
                 {
-                    zoomSlider.Value = scale;
-                }
+                    try
+                    {
+                        var sv = this.FindControl<ScrollViewer>("ImageScroll");
+                        if (sv != null)
+                        {
+                            sv.Offset = new Vector(0, 0);
+                        }
+                    }
+                    catch { }
+                }, DispatcherPriority.Background);
             }
         }
         catch { }
