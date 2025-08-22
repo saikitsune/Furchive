@@ -283,7 +283,9 @@ public partial class ViewerWindow : Window
 		}
 		catch (Exception ex) { SafeLog("Error loading remote image: " + ex.ToString()); }
 
-		await Task.CompletedTask;
+    // After any load attempt, if we're in Fit mode, recalc now (image might have been set from cache or remote)
+    Dispatcher.UIThread.Post(() => ApplySizeModeFitIfNeeded(), DispatcherPriority.Background);
+    await Task.CompletedTask;
 	}
 
     // LibVLC playback removed; video control handlers below are no-ops with WebView backend
@@ -490,7 +492,7 @@ public partial class ViewerWindow : Window
             _isDraggingImage = true;
             _dragStartPointer = e.GetPosition(sv);
             _dragStartOffset = sv.Offset;
-            e.Pointer.Capture(this);
+            e.Pointer.Capture(sv);
             e.Handled = true;
         }
         catch { }
@@ -569,19 +571,12 @@ public partial class ViewerWindow : Window
                 var scale = Math.Min(scaleX, scaleY);
                 scale = Math.Clamp(scale, zoomSlider.Minimum, zoomSlider.Maximum);
                 zoomSlider.Value = scale;
-                // Center offsets after scaling
-                Dispatcher.UIThread.Post(() =>
+                // Reset scroll offset to top-left (content alignment centers visually)
+                var sv = this.FindControl<ScrollViewer>("ImageScroll");
+                if (sv != null)
                 {
-                    try
-                    {
-                        var sv = this.FindControl<ScrollViewer>("ImageScroll");
-                        if (sv != null)
-                        {
-                            sv.Offset = new Vector(0, 0);
-                        }
-                    }
-                    catch { }
-                }, DispatcherPriority.Background);
+                    sv.Offset = new Vector(0, 0);
+                }
             }
         }
         catch { }

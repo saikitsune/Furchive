@@ -39,6 +39,8 @@
                 <ScrollViewer x:Name="ImageScroll"
                               HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center"
                               PointerPressed="OnImageDragPointerPressed"
                               PointerReleased="OnImageDragPointerReleased"
                               PointerMoved="OnImageDragPointerMoved">
