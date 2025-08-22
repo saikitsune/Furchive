@@ -33,6 +33,8 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+    try
+    {
         // Simple file trace to diagnose startup even if regular logging fails
         string traceFile = string.Empty;
         try
@@ -112,24 +114,7 @@ public partial class App : Application
         catch { }
 
     // Optionally show a tiny placeholder window early to prove GUI can show while we continue init
-        Window? placeholder = null;
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime preDesktop)
-        {
-            try
-            {
-        // Prevent the app from shutting down when closing the placeholder by requiring explicit shutdown during splash
-        preDesktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] ShutdownMode set to OnExplicitShutdown before showing placeholder\n"); } catch { }
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Creating placeholder window...\n"); } catch { }
-                placeholder = new Window { Title = "Furchive", Width = 400, Height = 300, Content = new TextBlock { Text = "Launching…", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
-                placeholder.Show();
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Placeholder window shown\n"); } catch { }
-            }
-            catch (Exception ex)
-            {
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Placeholder failed: {ex}\n"); } catch { }
-            }
-        }
+    // Remove placeholder logic to avoid blocking startup
 
     // Ensure settings are loaded from disk before creating any windows/view models
         try
@@ -188,40 +173,23 @@ public partial class App : Application
                 var sp = _host!.Services;
                 var logger = sp.GetService<ILogger<App>>();
                 var wnd = sp.GetRequiredService<MainWindow>();
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] MainWindow resolved from DI\n"); } catch { }
                 desktop.MainWindow = wnd;
                 logger?.LogInformation("MainWindow created and assigned.");
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] MainWindow assigned to desktop lifetime\n"); } catch { }
-                // Show the main window before switching shutdown mode back and closing placeholder
-                try { if (!wnd.IsVisible) wnd.Show(); } catch { }
-                // Switch to normal shutdown behavior after MainWindow is visible
-                try
-                {
-                    desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
-                    if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] ShutdownMode set to OnLastWindowClose after showing MainWindow\n");
-                }
-                catch { }
-                try { placeholder?.Close(); } catch { }
+                if (!wnd.IsVisible) wnd.Show();
+                desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+                if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] MainWindow shown and shutdown mode set\n");
             }
             catch (Exception ex)
             {
-                try
-                {
-                    var logger = Services?.GetService<ILogger<App>>();
-                    logger?.LogError(ex, "Failed to create or assign MainWindow");
-                    try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] EXCEPTION creating/assigning MainWindow: {ex}\n"); } catch { }
-                }
-                catch { }
+                var logger = Services?.GetService<ILogger<App>>();
+                logger?.LogError(ex, "Failed to create or assign MainWindow");
+                if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] EXCEPTION creating/assigning MainWindow: {ex}\n");
                 // Show a minimal fallback window to surface the error instead of silently hanging
-                try
-                {
-                    var tb = new TextBlock { Text = ex.ToString(), TextWrapping = TextWrapping.Wrap };
-                    var sv = new ScrollViewer { Content = tb, Margin = new Thickness(12) };
-                    var fb = new Window { Title = "Furchive - Startup Error", Width = 900, Height = 600, Content = sv };
-                    desktop.MainWindow = fb;
-                    fb.Show();
-                }
-                catch { }
+                var tb = new TextBlock { Text = ex.ToString(), TextWrapping = TextWrapping.Wrap };
+                var sv = new ScrollViewer { Content = tb, Margin = new Thickness(12) };
+                var fb = new Window { Title = "Furchive - Startup Error", Width = 900, Height = 600, Content = sv };
+                desktop.MainWindow = fb;
+                fb.Show();
                 return;
             }
         }
@@ -243,6 +211,17 @@ public partial class App : Application
         }
         base.OnFrameworkInitializationCompleted();
         try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Exiting OnFrameworkInitializationCompleted\n"); } catch { }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                var path = Path.Combine(AppContext.BaseDirectory, "startup-fatal.txt");
+                File.WriteAllText(path, ex.ToString());
+            }
+            catch { }
+            throw;
+        }
     }
 
     private void OnSettingChanged(object? sender, string key)

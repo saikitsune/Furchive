@@ -33,8 +33,10 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 ; Application files (published output)
-Source: "..\\src\\Furchive.Avalonia\\publish\\*.*"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\\src\\Furchive.Avalonia\\publish\\win-x64\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Use the resolved AppPublishDir (defaults to win-x64 publish folder). The previous wildcard to the parent
+; publish directory caused a build failure when that folder only contained subdirectories (no direct files).
+; We now rely solely on the win-x64 (or overridden) publish output and recurse into it.
+Source: "{#AppPublishDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; WebView2 prerequisite copied to temporary folder and removed after install
 Source: "redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsWebView2Installed

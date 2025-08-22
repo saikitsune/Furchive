@@ -1,298 +1,68 @@
-using Avalonia.Controls;
-using Furchive.Avalonia.ViewModels;
-using Microsoft.Extensions.DependencyInjection;
-using Avalonia.Interactivity;
-using Furchive.Core.Models;
-using System.Diagnostics;
+using System;
 using System.IO;
-using Furchive.Core.Interfaces;
+using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Controls.Primitives;
-using Avalonia.Threading;
-using CommunityToolkit.Mvvm.Messaging;
-using Furchive.Avalonia.Messages;
-using Furchive.Avalonia.Infrastructure;
-using Avalonia;
-using Avalonia.Platform;
-using Avalonia.VisualTree;
-using System.Threading.Tasks;
-
+using Avalonia.Interactivity;
+using Furchive.Avalonia.ViewModels;
+using Furchive.Core.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Furchive.Avalonia.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly DispatcherTimer _scrollDebounceTimer;
     private ColumnDefinition? _leftCol;
-    private ColumnDefinition? _centerCol;
     private ColumnDefinition? _rightCol;
     private RowDefinition? _downloadsRow;
 
     public MainWindow()
     {
-        InitializeComponent();
-    // Ensure window icon is set from assets
-    try { this.Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Furchive/Assets/icon.ico"))); } catch { }
-        if (App.Services != null)
-        {
-            DataContext = App.Services.GetRequiredService<MainViewModel>();
-        }
-
-        // Set dynamic title with version: Furchive - VERSION
         try
         {
-            var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "";
-            this.Title = string.IsNullOrWhiteSpace(ver) ? "Furchive" : $"Furchive - {ver}";
-        }
-        catch { }
-
-        // Hook grid columns for persistence
-        try
-        {
-            var grid = this.FindControl<Grid>("MainColumnsGrid");
-            if (grid != null && grid.ColumnDefinitions?.Count >= 3)
+            InitializeComponent();
+            var services = App.Services ?? throw new InvalidOperationException("Service provider not initialized");
+            DataContext = services.GetRequiredService<MainViewModel>();
+            try { Icon = new WindowIcon(global::Avalonia.Platform.AssetLoader.Open(new Uri("avares://Furchive/Assets/icon.ico"))); } catch { }
+            try
             {
-                _leftCol = grid.ColumnDefinitions[0];
-                _centerCol = grid.ColumnDefinitions[1];
-                _rightCol = grid.ColumnDefinitions[2];
+                var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? string.Empty;
+                Title = string.IsNullOrWhiteSpace(ver) ? "Furchive" : $"Furchive - {ver}";
             }
-            RestoreSplitterSizes();
-        }
-        catch { }
-
-        // Hook downloads row for height persistence
-        try
-        {
-            var root = this.FindControl<Grid>("RootGrid");
-            if (root != null && root.RowDefinitions?.Count >= 4)
+            catch { }
+            try
             {
-                _downloadsRow = root.RowDefinitions[3];
+                var grid = this.FindControl<Grid>("MainColumnsGrid");
+                if (grid?.ColumnDefinitions?.Count >= 3)
+                {
+                    _leftCol = grid.ColumnDefinitions[0];
+                    _rightCol = grid.ColumnDefinitions[2];
+                }
+                var root = this.FindControl<Grid>("RootGrid");
+                if (root?.RowDefinitions?.Count >= 4)
+                {
+                    _downloadsRow = root.RowDefinitions[3];
+                }
+                RestoreSplitterSizes();
+                RestoreDownloadsHeight();
             }
-            RestoreDownloadsHeight();
+            catch { }
+            Closing += (_, __) => { try { PersistSplitterSizes(); PersistDownloadsHeight(); } catch { } };
         }
-        catch { }
-
-    _scrollDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-    _scrollDebounceTimer.Tick += (_, __) => { _scrollDebounceTimer.Stop(); };
-
-        // Keyboard shortcuts: Enter to search, Esc to clear selection (but not while typing in text inputs)
-    this.KeyDown += (s, e) =>
+        catch (Exception ex)
         {
             try
             {
-                if (DataContext is not MainViewModel vm) return;
-                if (e.Key == Key.Enter)
-                {
-            // Avoid intercepting Enter when a TextBox has focus
-            var top = TopLevel.GetTopLevel(this);
-            var focused = top?.FocusManager?.GetFocusedElement();
-            if (focused is not TextBox)
-                    {
-                        vm.SearchCommand.Execute(null);
-                        e.Handled = true;
-                    }
-                }
-                else if (e.Key == Key.Escape)
-                {
-                    vm.SelectNoneCommand.Execute(null);
-                    e.Handled = true;
-                }
+                var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs", "debug.log");
+                var dir = Path.GetDirectoryName(logPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.AppendAllText(logPath, $"[MainWindow Exception] {DateTime.Now}: {ex}\n");
             }
             catch { }
-        };
-
-        // Listen for UI error messages and show a simple dialog
-        try
-        {
-            WeakReferenceMessenger.Default.Register<UiErrorMessage>(this, async (_, msg) =>
-            {
-                try { await DialogService.ShowInfoAsync(this, msg.Title, msg.Message); } catch { }
-            });
-        }
-        catch { }
-
-        // Auto-load pool when selection changes; auto-scroll pinned list on add
-        try
-        {
-            if (DataContext is MainViewModel vm)
-            {
-    vm.PropertyChanged += async (_, args) =>
-                {
-                    // No-op on SelectedPool change; avoid auto-opening a pool when user selects a post.
-            await Task.Yield();
-                };
-
-                // Watch pinned pools collection changes to scroll to bottom
-                try
-                {
-                    vm.PinnedPools.CollectionChanged += (_, e) =>
-                    {
-                        if (e?.NewItems != null && e.NewItems.Count > 0)
-                        {
-                            var list = this.FindControl<ListBox>("PinnedPoolsList");
-                            if (list?.Items != null)
-                            {
-                                // Defer until layout updated
-                                Dispatcher.UIThread.Post(() =>
-                                {
-                                    try
-                                    {
-                                        var last = vm.PinnedPools.LastOrDefault();
-                                        if (last != null)
-                                        {
-                                            list.ScrollIntoView(last);
-                                        }
-                                    }
-                                    catch { }
-                                }, DispatcherPriority.Background);
-                            }
-                        }
-                    };
-                }
-                catch { }
-
-                // Single-click to load a pinned pool
-                try
-                {
-                    var list = this.FindControl<ListBox>("PinnedPoolsList");
-                    if (list != null)
-                    {
-                        list.DoubleTapped -= OnPinnedPoolsDoubleTapped; // disable double-click behavior
-                        list.PointerReleased += (s, e) =>
-                        {
-                            try
-                            {
-                                if (e.InitialPressMouseButton != MouseButton.Left) return;
-                                var item = list.SelectedItem as PoolInfo;
-                                if (item == null) return;
-                                vm.LoadSelectedPoolCommand.Execute(item);
-                                e.Handled = true;
-                            }
-                            catch { }
-                        };
-                    }
-                }
-                catch { }
-            }
-        }
-        catch { }
-
-        // Persist sizes on close
-    this.Closing += (_, __) => { try { PersistSplitterSizes(); PersistDownloadsHeight(); } catch { } };
-    }
-
-    private async void OnOpenDownloads(object? sender, RoutedEventArgs e)
-    {
-        var dlg = new Window { Width = 800, Height = 600, Title = "Downloads (placeholder)" };
-        await dlg.ShowDialog(this);
-    }
-
-    private async void OnOpenSettings(object? sender, RoutedEventArgs e)
-    {
-        var dlg = new SettingsWindow();
-        await dlg.ShowDialog(this);
-    }
-
-    private async void OnGalleryDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
-        {
-            var viewer = new ViewerWindow();
-            // Pass selected media to the viewer for now via DataContext
-            viewer.DataContext = vm.SelectedMedia;
-            await viewer.ShowDialog(this);
+            // Propagate so App startup can catch and display a fallback error window instead of silently exiting
+            throw new InvalidOperationException("Failed to construct MainWindow", ex);
         }
     }
 
-    private void OnOpenDownloaded(object? sender, RoutedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is DownloadJob job)
-        {
-            var path = job.DestinationPath;
-            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-            {
-                try { App.Services?.GetService<IPlatformShellService>()?.OpenPath(path); } catch { }
-            }
-        }
-    }
-
-    // Preview panel: open actions
-    private void OnOpenPreviewInBrowser(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm || vm.SelectedMedia is null) return;
-            var url = string.IsNullOrWhiteSpace(vm.SelectedMedia.SourceUrl) ? vm.SelectedMedia.FullImageUrl : vm.SelectedMedia.SourceUrl;
-            if (!string.IsNullOrWhiteSpace(url)) App.Services?.GetService<IPlatformShellService>()?.OpenUrl(url);
-        }
-        catch { }
-    }
-
-    private async void OnOpenPreviewInViewer(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm || vm.SelectedMedia is null) return;
-            var viewer = new ViewerWindow { DataContext = vm.SelectedMedia };
-            await viewer.ShowDialog(this);
-        }
-        catch { }
-    }
-
-    private void OnPreviewImagePressed(object? sender, PointerPressedEventArgs e)
-    {
-        try
-        {
-            if (sender is Visual vis && e.GetCurrentPoint(vis).Properties.IsLeftButtonPressed)
-            {
-                OnOpenPreviewInViewer(null, new RoutedEventArgs());
-                e.Handled = true;
-            }
-        }
-        catch { }
-    }
-
-    private void OnOpenDownloadedFolder(object? sender, RoutedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is DownloadJob job)
-        {
-            var path = job.DestinationPath;
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                var dir = File.Exists(path) ? Path.GetDirectoryName(path)! : path;
-                try { App.Services?.GetService<IPlatformShellService>()?.OpenFolder(dir); } catch { }
-            }
-        }
-    }
-
-    private void OnPinnedPoolsDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm) return;
-            if (sender is not ListBox lb) return;
-            var item = lb.SelectedItem as PoolInfo;
-            if (item == null) return;
-            vm.LoadSelectedPoolCommand.Execute(item);
-            e.Handled = true;
-        }
-        catch { }
-    }
-
-    private void OnOpenDownloadsFolder(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var settings = App.Services?.GetService<ISettingsService>();
-            var dir = settings?.GetSetting<string>("DefaultDownloadDirectory", "");
-            if (string.IsNullOrWhiteSpace(dir)) return;
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            App.Services?.GetService<IPlatformShellService>()?.OpenFolder(dir);
-        }
-        catch { }
-    }
-
-    private void OnGalleryScrollChanged(object? sender, ScrollChangedEventArgs e) { /* infinite scroll disabled */ }
 
     private void OnGalleryKeyDown(object? sender, KeyEventArgs e)
     {
@@ -324,129 +94,51 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    // Download queue button handlers
-    private async void OnPauseJob(object? sender, RoutedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is DownloadJob job)
-        {
-            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.PauseDownloadAsync(job.Id); } catch { }
-        }
-    }
-    private async void OnResumeJob(object? sender, RoutedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is DownloadJob job)
-        {
-            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.ResumeDownloadAsync(job.Id); } catch { }
-        }
-    }
-    private async void OnCancelJob(object? sender, RoutedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is DownloadJob job)
-        {
-            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.CancelDownloadAsync(job.Id); } catch { }
-        }
-    }
-    private async void OnRetryJob(object? sender, RoutedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is DownloadJob job)
-        {
-            try { var svc = App.Services?.GetService<IDownloadService>(); if (svc != null) await svc.RetryDownloadAsync(job.Id); } catch { }
-        }
-    }
-
-    private void OnTagChipPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm) return;
-            if (sender is not Control ctrl) return;
-            var tag = ctrl.DataContext as string;
-            if (string.IsNullOrWhiteSpace(tag)) return;
-            var props = e.GetCurrentPoint(ctrl);
-            if (props.Properties.IsRightButtonPressed)
-            {
-                // Right click → exclude
-                vm.AddExcludeTagCommand.Execute(tag);
-                e.Handled = true;
-            }
-            else if (props.Properties.IsLeftButtonPressed)
-            {
-                // Left click → include
-                vm.AddIncludeTagCommand.Execute(tag);
-                e.Handled = true;
-            }
-        }
-        catch { }
-    }
-
-    // Include/Exclude tag submit helpers
-    private void OnAddIncludeTag(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm) return;
-            var tb = this.FindControl<TextBox>("includeTagInput");
-            var tag = tb?.Text?.Trim();
-            if (!string.IsNullOrWhiteSpace(tag))
-            {
-                vm.AddIncludeTagCommand.Execute(tag);
-                tb!.Text = string.Empty;
-            }
-        }
-        catch { }
-    }
 
     private void OnIncludeTagKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            OnAddIncludeTag(sender, new RoutedEventArgs());
+            if (DataContext is MainViewModel vm)
+            {
+                var tb = this.FindControl<TextBox>("includeTagInput");
+                var tag = tb?.Text?.Trim();
+                if (!string.IsNullOrWhiteSpace(tag))
+                {
+                    vm.AddIncludeTagCommand.Execute(tag);
+                    if (tb != null) tb.Text = string.Empty;
+                }
+            }
             e.Handled = true;
         }
     }
-
-    private void OnAddExcludeTag(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm) return;
-            var tb = this.FindControl<TextBox>("excludeTagInput");
-            var tag = tb?.Text?.Trim();
-            if (!string.IsNullOrWhiteSpace(tag))
-            {
-                vm.AddExcludeTagCommand.Execute(tag);
-                tb!.Text = string.Empty;
-            }
-        }
-        catch { }
-    }
-
     private void OnExcludeTagKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            OnAddExcludeTag(sender, new RoutedEventArgs());
+            if (DataContext is MainViewModel vm)
+            {
+                var tb = this.FindControl<TextBox>("excludeTagInput");
+                var tag = tb?.Text?.Trim();
+                if (!string.IsNullOrWhiteSpace(tag))
+                {
+                    vm.AddExcludeTagCommand.Execute(tag);
+                    if (tb != null) tb.Text = string.Empty;
+                }
+            }
             e.Handled = true;
         }
     }
-
-    private void OnSaveSearchClick(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is not MainViewModel vm) return;
-            vm.SaveSearchCommand.Execute(null);
-            var tb = this.FindControl<TextBox>("saveSearchInput");
-            if (tb != null) tb.Text = string.Empty;
-        }
-        catch { }
-    }
-
     private void OnSaveSearchKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            OnSaveSearchClick(sender, new RoutedEventArgs());
+            if (DataContext is MainViewModel vm)
+            {
+                vm.SaveSearchCommand.Execute(null);
+                var tb = this.FindControl<TextBox>("saveSearchInput");
+                if (tb != null) tb.Text = string.Empty;
+            }
             e.Handled = true;
         }
     }

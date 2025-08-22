@@ -1,6 +1,6 @@
-ai/
 tests/
 **/installer/inno/output/
+**/.vscode/*.md
 
 # --- Standard .NET / Visual Studio build artifacts ---
 **/bin/

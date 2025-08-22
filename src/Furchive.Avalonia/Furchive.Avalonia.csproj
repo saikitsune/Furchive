@@ -5,12 +5,23 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Furchive</AssemblyName>
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  <!-- Disable XAML compilation to avoid phantom AVLN:0004 errors referencing non-existent event attributes -->
+  <AvaloniaXamlDisableCompile>true</AvaloniaXamlDisableCompile>
     <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <FileVersion>1.1.0.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <DefineConstants>$(DefineConstants);HAS_WEBVIEW_AVALONIA</DefineConstants>
+  <!-- Self-contained publish defaults -->
+  <SelfContained>true</SelfContained>
+  <!-- Enable single-file publish -->
+  <PublishSingleFile>true</PublishSingleFile>
+  <PublishTrimmed>false</PublishTrimmed>
+  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  <!-- Target RIDs we support -->
+  <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +31,8 @@
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
     <PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
+  <!-- Add base WebView package (contains WebView.Core assembly) to satisfy runtime load -->
+  <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
     <PackageReference Include="AnimatedImage.Avalonia" Version="2.0.0" />
   </ItemGroup>
 
