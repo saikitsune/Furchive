@@ -74,6 +74,11 @@ public interface IPlatformApi
     /// Returns null if the post does not belong to any pool or the platform doesn't support it.
     /// </summary>
     Task<(int poolId, string poolName, int pageNumber)?> GetPoolContextForPostAsync(string postId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the category string for a single tag if supported (e.g., e621). Returns null if unknown/unsupported.
+    /// </summary>
+    Task<string?> GetTagCategoryAsync(string tag);
 }
 
 /// <summary>
@@ -100,6 +105,13 @@ public interface IUnifiedApiService
     /// Get tag suggestions from enabled platforms
     /// </summary>
     Task<List<TagSuggestion>> GetTagSuggestionsAsync(string query, List<string> sources, int limit = 10);
+
+    /// <summary>
+    /// Resolve the category for a single tag from the first platform that can provide it.
+    /// Returns null if no enabled platform supplies a category.
+    /// Used for pre-search tag chip coloring.
+    /// </summary>
+    Task<string?> GetTagCategoryAsync(string tag, List<string> sources);
 
     /// <summary>
     /// Register a platform API implementation

@@ -420,6 +420,74 @@ public class E621Api : IPlatformApi
         }
     }
 
+    // --- Tag category lookup (used for pre-search tag chip coloring) ---
+    private readonly Dictionary<string, string> _tagCategoryCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _tagLookupLock = new(8, 8); // modest parallelism
+    /// <summary>
+    /// Returns the e621 tag category name for a tag (artist/character/species/general/meta/copyright/lore) or null if unknown.
+    /// Caches results in-memory for the session.
+    /// </summary>
+    public async Task<string?> GetTagCategoryAsync(string tag)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return null;
+            if (_tagCategoryCache.TryGetValue(tag, out var cachedCat)) return cachedCat;
+            await _tagLookupLock.WaitAsync();
+            try
+            {
+                if (_tagCategoryCache.TryGetValue(tag, out cachedCat)) return cachedCat; // double check after lock
+                // Ensure UA present
+                if (string.IsNullOrWhiteSpace(_userAgent))
+                {
+                    try
+                    {
+                        _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"Furchive/{version} (tag-lookup)");
+                    }
+                    catch { }
+                }
+                var url = AppendAuth($"https://e621.net/tags.json?search[name]={Uri.EscapeDataString(tag)}&limit=1");
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                using var resp = await _httpClient.SendAsync(req);
+                if (!resp.IsSuccessStatusCode) return null;
+                var json = await resp.Content.ReadAsStringAsync();
+                // Minimal parse: expecting array of objects with name & category (int)
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                {
+                    var el = doc.RootElement[0];
+                    if (el.TryGetProperty("category", out var catProp))
+                    {
+                        var catId = catProp.GetInt32();
+                        var name = catId switch
+                        {
+                            0 => "general",
+                            1 => "artist",
+                            3 => "copyright",
+                            4 => "character",
+                            5 => "species",
+                            7 => "meta",
+                            8 => "lore",
+                            _ => "general"
+                        };
+                        _tagCategoryCache[tag] = name;
+                        return name;
+                    }
+                }
+                return null;
+            }
+            finally { _tagLookupLock.Release(); }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Tag category lookup failed for {Tag}", tag);
+            return null;
+        }
+    }
+
     private async Task<SearchResult?> FetchSearchAsync(string tagQuery, int limit, int page)
     {
         var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={page}";
@@ -1545,6 +1613,16 @@ public class E621Api : IPlatformApi
         if (string.IsNullOrWhiteSpace(previewUrl)) previewUrl = NormalizeMediaUrl(p.Sample?.Url);
         if (string.IsNullOrWhiteSpace(previewUrl)) previewUrl = NormalizeMediaUrl(p.File?.Url);
         var fullUrl = NormalizeMediaUrl(p.File?.Url);
+
+        // Fallback: if no artist tags remain, assign a placeholder tag so UI & filename templates have a stable value
+        if (string.IsNullOrWhiteSpace(artist))
+        {
+            artist = "No_Artist";
+            if (categories.TryGetValue("artist", out var artistList) && artistList.Count == 0)
+            {
+                artistList.Add(artist);
+            }
+        }
 
         return new MediaItem
         {

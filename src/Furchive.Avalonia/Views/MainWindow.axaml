@@ -118,12 +118,14 @@
                                         <Border.Background>
                                             <MultiBinding Converter="{StaticResource TagStringCategoryBrush}">
                                                 <Binding Path="."/>
-                                                <Binding Path="SelectedMedia.TagCategories" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                <Binding Path="DataContext.AggregatedTagCategories" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             </MultiBinding>
                                         </Border.Background>
-                                        <Button Content="{Binding .}" Padding="0" Background="Transparent" BorderThickness="0"
+                                        <Button Padding="0" Background="Transparent" BorderThickness="0"
                                                 Command="{Binding DataContext.RemoveIncludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding .}"/>
+                                                CommandParameter="{Binding .}">
+                                            <TextBlock Text="{Binding .}"/>
+                                        </Button>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -152,12 +154,14 @@
                                         <Border.Background>
                                             <MultiBinding Converter="{StaticResource TagStringCategoryBrush}">
                                                 <Binding Path="."/>
-                                                <Binding Path="SelectedMedia.TagCategories" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                <Binding Path="DataContext.AggregatedTagCategories" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             </MultiBinding>
                                         </Border.Background>
-                                        <Button Content="{Binding .}" Padding="0" Background="Transparent" BorderThickness="0"
+                                        <Button Padding="0" Background="Transparent" BorderThickness="0"
                                                 Command="{Binding DataContext.RemoveExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding .}"/>
+                                                CommandParameter="{Binding .}">
+                                            <TextBlock Text="{Binding .}"/>
+                                        </Button>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

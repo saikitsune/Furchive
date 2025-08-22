@@ -49,6 +49,39 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ContentRating> SelectedRatings { get; } = new() { ContentRating.Safe };
     public ObservableCollection<DownloadJob> DownloadQueue { get; } = new();
 
+    // Aggregated tag categories across all current SearchResults so include/exclude tag chips can be color coded
+    // independent of the currently selected media item. Key = category name (artist/character/etc.),
+    // Value = list of tags belonging to that category (deduplicated). We expose as a materialized dictionary of lists
+    // for compatibility with existing TagStringToCategoryBrushConverter which expects Dictionary<string,List<string>>.
+    private readonly Dictionary<string, HashSet<string>> _aggregatedTagSets = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, List<string>> AggregatedTagCategories => _aggregatedTagSets.ToDictionary(kv => kv.Key, kv => kv.Value.ToList());
+    private void AddItemTagCategories(MediaItem item)
+    {
+        try
+        {
+            if (item?.TagCategories == null) return;
+            foreach (var kv in item.TagCategories)
+            {
+                if (kv.Value == null) continue;
+                if (!_aggregatedTagSets.TryGetValue(kv.Key, out var set))
+                {
+                    set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    _aggregatedTagSets[kv.Key] = set;
+                }
+                foreach (var tag in kv.Value)
+                {
+                    if (!string.IsNullOrWhiteSpace(tag)) set.Add(tag);
+                }
+            }
+        }
+        catch { }
+    }
+    private void ClearAggregatedTagCategories()
+    {
+        _aggregatedTagSets.Clear();
+        OnPropertyChanged(nameof(AggregatedTagCategories));
+    }
+
     [ObservableProperty] private string _poolSearch = string.Empty;
     [ObservableProperty] private PoolInfo? _selectedPool;
     partial void OnSelectedPoolChanged(PoolInfo? value) { OnPropertyChanged(nameof(ShowPinPoolButton)); }
@@ -207,18 +240,41 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            if (Dispatcher.UIThread.CheckAccess()) { IsSearching = true; StatusMessage = "Searching..."; if (reset) SearchResults.Clear(); }
-            else { await Dispatcher.UIThread.InvokeAsync(() => { IsSearching = true; StatusMessage = "Searching..."; if (reset) SearchResults.Clear(); }); }
+            if (Dispatcher.UIThread.CheckAccess()) { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); } }
+            else { await Dispatcher.UIThread.InvokeAsync(() => { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); } }); }
 
             await EnsureE621AuthAsync();
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
             var includeTags = IncludeTags.ToList(); var excludeTags = ExcludeTags.ToList();
+            // Virtual tag handling: no_artist -> posts with no real artist (Artist == "No Artist")
+            ProcessVirtualNoArtist(ref includeTags, ref excludeTags, out bool includeNoArtist, out bool excludeNoArtist);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            if (Dispatcher.UIThread.CheckAccess()) { foreach (var item in result.Items) { if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; } SearchResults.Add(item); } CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }
-            else { await Dispatcher.UIThread.InvokeAsync(() => { foreach (var item in result.Items) { if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; } SearchResults.Add(item); } CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }); }
-            var status = result.Errors.Any() ? $"Found {result.Items.Count} items with errors: {string.Join(", ", result.Errors.Keys)}" : $"Found {result.Items.Count} items"; if (Dispatcher.UIThread.CheckAccess()) StatusMessage = status; else await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = status);
+            var filteredItems = result.Items.Where(i =>
+                (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) &&
+                (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true)
+            ).ToList();
+            if (Dispatcher.UIThread.CheckAccess()) {
+                foreach (var item in filteredItems)
+                {
+                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; }
+                    SearchResults.Add(item);
+                    AddItemTagCategories(item);
+                }
+                OnPropertyChanged(nameof(AggregatedTagCategories));
+                CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
+            }
+            else { await Dispatcher.UIThread.InvokeAsync(() => {
+                foreach (var item in filteredItems)
+                {
+                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; }
+                    SearchResults.Add(item);
+                    AddItemTagCategories(item);
+                }
+                OnPropertyChanged(nameof(AggregatedTagCategories));
+                CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }); }
+            var status = result.Errors.Any() ? $"Found {filteredItems.Count} items (errors: {string.Join(", ", result.Errors.Keys)})" : $"Found {filteredItems.Count} items"; if (Dispatcher.UIThread.CheckAccess()) StatusMessage = status; else await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = status);
             try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
         }
         finally { if (Dispatcher.UIThread.CheckAccess()) IsSearching = false; else await Dispatcher.UIThread.InvokeAsync(() => IsSearching = false); }
@@ -239,15 +295,19 @@ public partial class MainViewModel : ObservableObject
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
             var includeTags = IncludeTags.ToList();
             var excludeTags = ExcludeTags.ToList();
+            ProcessVirtualNoArtist(ref includeTags, ref excludeTags, out bool includeNoArtist, out bool excludeNoArtist);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1;
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            foreach (var item in result.Items)
+            var filteredItems = result.Items.Where(i => (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) && (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true));
+            foreach (var item in filteredItems)
             {
                 if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
                 SearchResults.Add(item);
+                AddItemTagCategories(item);
             }
+            OnPropertyChanged(nameof(AggregatedTagCategories));
             CurrentPage = nextPage;
             HasNextPage = result.HasNextPage;
             TotalCount = Math.Max(TotalCount, result.TotalCount);
@@ -278,15 +338,19 @@ public partial class MainViewModel : ObservableObject
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
             var includeTags = IncludeTags.ToList();
             var excludeTags = ExcludeTags.ToList();
+            ProcessVirtualNoArtist(ref includeTags, ref excludeTags, out bool includeNoArtist, out bool excludeNoArtist);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1; // do NOT assign to CurrentPage
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            foreach (var item in result.Items)
+            var filteredItems = result.Items.Where(i => (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) && (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true));
+            foreach (var item in filteredItems)
             {
                 if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
                 SearchResults.Add(item);
+                AddItemTagCategories(item);
             }
+            OnPropertyChanged(nameof(AggregatedTagCategories));
             // Update HasNextPage & TotalCount but leave CurrentPage untouched for gallery UI stability.
             HasNextPage = result.HasNextPage;
             TotalCount = Math.Max(TotalCount, result.TotalCount);
@@ -642,7 +706,64 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to restore last session"); }
     }
     private sealed class LastSession { public bool IsPoolMode { get; set; } public int? PoolId { get; set; } public List<string> Include { get; set; } = new(); public List<string> Exclude { get; set; } = new(); public int RatingFilterIndex { get; set; } public int Page { get; set; } = 1; }
-    public async Task<MediaItem?> FetchNextFromApiAsync(bool forward) { var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var include = IncludeTags.ToList(); var exclude = ExcludeTags.ToList(); var page = Math.Max(1, CurrentPage + (forward ? 1 : -1)); var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) }); return result.Items.FirstOrDefault(); }
+    public async Task<MediaItem?> FetchNextFromApiAsync(bool forward)
+    {
+        var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
+        var include = IncludeTags.ToList(); var exclude = ExcludeTags.ToList();
+        ProcessVirtualNoArtist(ref include, ref exclude, out bool includeNoArtist, out bool excludeNoArtist);
+        var page = Math.Max(1, CurrentPage + (forward ? 1 : -1));
+        var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) });
+        var filtered = result.Items.Where(i => (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) && (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true)).ToList();
+        return filtered.FirstOrDefault();
+    }
+
+    // Extracts virtual tag markers and signals filtering requirements.
+    private static void ProcessVirtualNoArtist(ref List<string> includeTags, ref List<string> excludeTags, out bool includeNoArtist, out bool excludeNoArtist)
+    {
+        includeNoArtist = false; excludeNoArtist = false;
+        // Normalize comparison to case-insensitive exact match on token "no_artist"
+        for (int i = includeTags.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(includeTags[i], "no_artist", StringComparison.OrdinalIgnoreCase)) { includeNoArtist = true; includeTags.RemoveAt(i); }
+        }
+        for (int i = excludeTags.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(excludeTags[i], "no_artist", StringComparison.OrdinalIgnoreCase)) { excludeNoArtist = true; excludeTags.RemoveAt(i); }
+        }
+    }
+
+    // Resolve categories for newly added include/exclude tags before any search results.
+    // Adds them into _aggregatedTagSets so chips colorize immediately. Safe to call concurrently.
+    private async Task EnrichTagsWithCategoriesAsync(IEnumerable<string> tags)
+    {
+        try
+        {
+            var list = tags.Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .ToList();
+            if (list.Count == 0) return;
+            var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
+            foreach (var tag in list)
+            {
+                try
+                {
+                    // Skip if already present in aggregated sets
+                    if (_aggregatedTagSets.Any(kv => kv.Value.Contains(tag))) continue;
+                    var cat = await _apiService.GetTagCategoryAsync(tag, sources);
+                    if (string.IsNullOrWhiteSpace(cat)) continue;
+                    lock (_aggregatedTagSets)
+                    {
+                        if (!_aggregatedTagSets.TryGetValue(cat, out var set)) { set = new HashSet<string>(StringComparer.OrdinalIgnoreCase); _aggregatedTagSets[cat] = set; }
+                        set.Add(tag);
+                    }
+                }
+                catch { }
+            }
+            // Notify UI once after batch
+            try { await Dispatcher.UIThread.InvokeAsync(() => OnPropertyChanged(nameof(AggregatedTagCategories))); } catch { }
+        }
+        catch { }
+    }
     [RelayCommand] private async Task AddIncludeTag(string tag)
     {
         if (string.IsNullOrWhiteSpace(tag)) return;
@@ -653,7 +774,12 @@ public partial class MainViewModel : ObservableObject
         {
             if (!IncludeTags.Contains(p)) { IncludeTags.Add(p); changed = true; }
         }
-        if (changed) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
+        if (changed)
+        {
+            // Fire-and-forget category lookups so chips can colorize before results
+            _ = Task.Run(async () => await EnrichTagsWithCategoriesAsync(parts));
+            try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
+        }
     }
     [RelayCommand] private async Task RemoveIncludeTag(string tag) { IncludeTags.Remove(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     [RelayCommand] private async Task AddExcludeTag(string tag)
@@ -665,7 +791,11 @@ public partial class MainViewModel : ObservableObject
         {
             if (!ExcludeTags.Contains(p)) { ExcludeTags.Add(p); changed = true; }
         }
-        if (changed) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
+        if (changed)
+        {
+            _ = Task.Run(async () => await EnrichTagsWithCategoriesAsync(parts));
+            try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
+        }
     }
     [RelayCommand] private async Task RemoveExcludeTag(string tag) { ExcludeTags.Remove(tag); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     [RelayCommand] private async Task DownloadSelectedAsync() { if (SelectedMedia == null) return; try { var downloadPath = _settingsService.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive")) ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"); var tempPath = GetTempPathFor(SelectedMedia); var finalPath = GenerateFinalPath(SelectedMedia, downloadPath); Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!); if (File.Exists(tempPath) && !File.Exists(finalPath)) { File.Move(tempPath, finalPath); StatusMessage = $"Saved from temp: {SelectedMedia.Title}"; OnPropertyChanged(nameof(IsSelectedDownloaded)); return; } await _downloadService.QueueDownloadAsync(SelectedMedia, downloadPath); StatusMessage = $"Queued download: {SelectedMedia.Title}"; } catch (Exception ex) { StatusMessage = $"Download failed: {ex.Message}"; _logger.LogError(ex, "Download failed for {Title}", SelectedMedia.Title); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Download failed", ex.Message)); } catch { } } }

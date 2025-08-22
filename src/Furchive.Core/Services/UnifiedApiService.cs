@@ -258,6 +258,37 @@ public class UnifiedApiService : IUnifiedApiService
         return allSuggestions;
     }
 
+    /// <summary>
+    /// Resolve category for a single tag using the first platform that returns a value.
+    /// Currently primarily e621. Platforms that don't implement the call return null.
+    /// </summary>
+    public async Task<string?> GetTagCategoryAsync(string tag, List<string> sources)
+    {
+        try
+        {
+            var enabledPlatforms = sources.Any()
+                ? _platforms.Where(p => sources.Contains(p.Key))
+                : _platforms;
+            foreach (var p in enabledPlatforms)
+            {
+                try
+                {
+                    var cat = await p.Value.GetTagCategoryAsync(tag);
+                    if (!string.IsNullOrWhiteSpace(cat)) return cat;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Tag category lookup failed on {Platform} for {Tag}", p.Key, tag);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Unified tag category lookup failed for {Tag}", tag);
+        }
+        return null;
+    }
+
     // Cache maintenance passthroughs for E621 (no-op for others)
     public void ClearE621SearchCache()
     {
