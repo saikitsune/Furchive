@@ -126,6 +126,20 @@
 			"group": "build"
 		},
 		{
+			"label": "publish: win-x64",
+			"type": "shell",
+			"command": "dotnet publish .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=True /p:PublishTrimmed=false -o .\\src\\Furchive.Avalonia\\publish\\win-x64",
+			"problemMatcher": ["$msCompile"],
+			"group": "build"
+		},
+		{
+			"label": "Publish: Test",
+			"type": "shell",
+			"command": "dotnet publish .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=True /p:PublishTrimmed=false -o .\\src\\Furchive.Avalonia\\publish\\win-x64; .\\src\\Furchive.Avalonia\\publish\\win-x64\\Furchive.exe",
+			"problemMatcher": ["$msCompile"],
+			"group": "build"
+		},
+		{
 			"label": "build-avalonia-after-guard",
 			"type": "shell",
 			"command": "dotnet build .\\src\\Furchive.Avalonia\\Furchive.Avalonia.csproj -c Release",
