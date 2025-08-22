@@ -44,8 +44,8 @@ public partial class MainWindow : Window
                     {
                         var req = msg.Value;
                         if (req == null || req.Items.Count == 0) return;
-                        var vw = new ViewerWindow();
-                        vw.Initialize(req.Items, req.Index);
+                        var idx = Math.Clamp(req.Index, 0, req.Items.Count - 1);
+                        var vw = new ViewerWindow { DataContext = req.Items[idx] };
                         vw.Show(this);
                     }
                     catch { }

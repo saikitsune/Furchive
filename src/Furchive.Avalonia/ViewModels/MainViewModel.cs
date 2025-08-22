@@ -249,6 +249,43 @@ public partial class MainViewModel : ObservableObject
     finally { IsSearching = false; System.Threading.Interlocked.Exchange(ref _appendInFlight, 0); }
     }
 
+    // Viewer-specific append: fetch next page items without advancing CurrentPage to avoid altering gallery panel state.
+    public async Task<bool> AppendNextPageForViewerAsync()
+    {
+        if (!HasNextPage) return false;
+        if (System.Threading.Interlocked.CompareExchange(ref _appendInFlight, 1, 0) != 0) return false;
+        try
+        {
+            // Do not set IsSearching to true (avoid UI spinner change); operate silently.
+            await EnsureE621AuthAsync();
+            var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
+            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
+            var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
+            var nextPage = CurrentPage + 1; // do NOT assign to CurrentPage
+            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
+            var result = await _apiService.SearchAsync(searchParams);
+            foreach (var item in result.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
+                SearchResults.Add(item);
+            }
+            // Update HasNextPage & TotalCount but leave CurrentPage untouched for gallery UI stability.
+            HasNextPage = result.HasNextPage;
+            TotalCount = Math.Max(TotalCount, result.TotalCount);
+            OnPropertyChanged(nameof(CanGoNext));
+            OnPropertyChanged(nameof(PageInfo)); // total count might change
+            return result.Items.Any();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Viewer append next page failed");
+            return false;
+        }
+        finally { System.Threading.Interlocked.Exchange(ref _appendInFlight, 0); }
+    }
+
     private async Task PrefetchNextPagesAsync(int currentPage)
     {
         try

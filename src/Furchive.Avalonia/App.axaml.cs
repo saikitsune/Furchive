@@ -177,6 +177,30 @@ public partial class App : Application
                 logger?.LogInformation("MainWindow created and assigned.");
                 if (!wnd.IsVisible) wnd.Show();
                 desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+                try
+                {
+                    desktop.Exit += (_, __) =>
+                    {
+                        try
+                        {
+                            var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
+                            if (Directory.Exists(tempDir))
+                            {
+                                foreach (var file in Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories))
+                                {
+                                    try { File.Delete(file); } catch { }
+                                }
+                                // Optionally remove empty subdirectories
+                                foreach (var dir in Directory.EnumerateDirectories(tempDir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length))
+                                {
+                                    try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); } catch { }
+                                }
+                            }
+                        }
+                        catch { }
+                    };
+                }
+                catch { }
                 if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] MainWindow shown and shutdown mode set\n");
             }
             catch (Exception ex)
