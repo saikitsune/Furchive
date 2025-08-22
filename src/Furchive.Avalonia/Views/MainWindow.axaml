@@ -240,7 +240,7 @@
 
             <Grid Grid.Column="1">
                 <ScrollViewer>
-                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed" DoubleTapped="OnGalleryDoubleTapped">
+                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal"/>
@@ -293,23 +293,40 @@
                         <TextBlock Text="{Binding Artist}"/>
                         <TextBlock Text="{Binding Source}"/>
 
-                        <!-- Pool info if available -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding DataContext.PreviewPoolVisible, RelativeSource={RelativeSource AncestorType=Window}}">
-                            <TextBlock Text="Pool:" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding DataContext.PreviewPoolDisplayName, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <!-- Pool name surfaced earlier with explicit label and clickable buttons (hide if empty) -->
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Spacing="4" IsVisible="{Binding TagCategories[pool_name], Converter={StaticResource EnumerableHasItems}}">
+                            <TextBlock Text="Pool:" FontWeight="SemiBold" Margin="0,0,4,0"/>
+                            <ItemsControl ItemsSource="{Binding TagCategories[pool_name]}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Padding="6,2" Margin="0,0,4,0" Tag="{Binding .}" Click="OnPoolNameButtonClick" Cursor="Hand" ToolTip.Tip="Load this pool">
+                                            <TextBlock Text="{Binding .}"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
 
-                        <!-- Description -->
-                        <TextBlock Text="Description" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxHeight="200"/>
+                        <!-- Description (hide if empty) -->
+                        <StackPanel IsVisible="{Binding Description, Converter={StaticResource StringNotEmpty}}">
+                            <TextBlock Text="Description" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxHeight="200"/>
+                        </StackPanel>
 
-                        <!-- Categorized tag chips -->
+                        <!-- Categorized tag chips (hide block if no visible categories besides pool_name) -->
+                        <StackPanel IsVisible="{Binding TagCategories, Converter={StaticResource TagCategoriesAnyVisible}}">
                         <TextBlock Text="Tags" FontWeight="SemiBold" Margin="0,8,0,4"/>
                         <ItemsControl ItemsSource="{Binding TagCategories}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Margin="0,4,0,8">
-                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold"/>
+                                    <!-- Hide category block if no tags OR if it's pool_name (converter enforces) -->
+                                    <StackPanel Margin="0,4,0,8" IsVisible="{Binding ., Converter={StaticResource TagCategoryGroupVisible}}">
+                                        <TextBlock Text="{Binding Key, Converter={StaticResource TagCategoryKeyDisplay}}" FontWeight="SemiBold"/>
                                         <ItemsControl ItemsSource="{Binding Value}">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
@@ -318,13 +335,13 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border CornerRadius="12"
-                                                            Padding="6,2"
-                                                            Margin="0,4,4,0"
-                                                            Cursor="Hand"
-                                                            ToolTip.Tip="Left-click: include tag; Right-click: exclude tag"
-                                                            Background="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryBrush}}"
-                                                            PointerReleased="OnTagChipPointerReleased">
+                            <Border CornerRadius="12"
+                                Padding="6,2"
+                                Margin="0,4,4,0"
+                                Cursor="Hand"
+                                ToolTip.Tip="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryTooltip}}"
+                                Background="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryBrush}}"
+                                PointerReleased="OnTagChipPointerReleased">
                                                         <TextBlock Text="{Binding .}"/>
                                                     </Border>
                                                 </DataTemplate>
@@ -334,6 +351,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

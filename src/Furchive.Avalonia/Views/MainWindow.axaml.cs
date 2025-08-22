@@ -287,6 +287,9 @@ public partial class MainWindow : Window
     {
         try
         {
+            // Primary detection using platform click count from pointer event
+            var pt = e.GetCurrentPoint(null);
+            // Avalonia PointerPoint lacks ClickCount; retain earlier event argument ClickCount logic via PointerPressed args (already removed DoubleTapped). Use timing fallback below.
             if (e.ClickCount >= 2)
             {
                 if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
@@ -298,9 +301,10 @@ public partial class MainWindow : Window
                     WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
                     e.Handled = true;
                 }
+                _lastClickTime = DateTime.UtcNow; // reset double-click timing baseline
                 return;
             }
-            // Fallback manual timing (in case ClickCount not reliable on platform)
+            // Fallback manual timing (in case ClickCount unreliable on some platforms)
             var now = DateTime.UtcNow;
             if ((now - _lastClickTime).TotalMilliseconds < 400)
             {
@@ -313,6 +317,11 @@ public partial class MainWindow : Window
                     WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
                     e.Handled = true;
                 }
+                _lastClickTime = now; // prevent triple-trigger
+            }
+            else
+            {
+                _lastClickTime = now;
             }
         }
         catch { }
@@ -334,6 +343,39 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    private async void OnPoolNameButtonClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not Button btn) return;
+            var poolName = btn.Tag as string;
+            if (string.IsNullOrWhiteSpace(poolName)) return;
+            // Attempt to derive pool id from selected media tag categories first
+            int poolId = 0;
+            try
+            {
+                var media = vm.SelectedMedia;
+                if (media?.TagCategories != null && media.TagCategories.TryGetValue("pool_id", out var idList) && idList.Count > 0)
+                {
+                    int.TryParse(idList[0], out poolId);
+                }
+            }
+            catch { }
+            if (poolId <= 0)
+            {
+                // Fallback: search in pools list
+                var match = vm.Pools.FirstOrDefault(p => string.Equals(p.Name, poolName, StringComparison.OrdinalIgnoreCase));
+                if (match != null) poolId = match.Id;
+            }
+            if (poolId > 0)
+            {
+                await vm.LoadPoolByIdAsync(poolId, poolName);
+            }
+        }
+        catch { }
+    }
+
     private void SyncTopBarWidths()
     {
         try
@@ -345,21 +387,6 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    private void OnGalleryDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        try
-        {
-            if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
-            {
-                var list = vm.SearchResults.ToList();
-                var idx = list.FindIndex(m => m.Id == vm.SelectedMedia.Id);
-                if (idx < 0) idx = 0;
-                int? poolId = (vm.IsPoolMode && vm.CurrentPoolId.HasValue) ? vm.CurrentPoolId : null;
-                WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
-            }
-        }
-        catch { }
-    }
 
     private bool _downloadsExpanded = false;
     private double _downloadsExpandedHeight = 220; // default full height (will be overridden by saved setting)
@@ -486,7 +513,79 @@ public partial class MainWindow : Window
             if (DataContext is not MainViewModel vm) return;
             if (sender is not Border border) return;
             if (border.DataContext is not string tag || string.IsNullOrWhiteSpace(tag)) return;
-            // Left = include, Right = exclude
+            // Special handling: clicking 'pool_name:<name>' or 'pool_id:<id>' loads that pool instead of tag include/exclude.
+            // We expect pool_name/page_number/pool_id tags stored in TagCategories with raw value (not prefixed). Values are the chip content.
+            // Recognize either exact 'pool_name'/'pool_id' category association by inspecting parent ItemsControl DataContext if possible.
+            try
+            {
+                // Infer category key by walking visual tree (border -> parent ItemsControl whose DataContext is KeyValuePair<string,List<string>>)
+                var parent = border.Parent;
+                while (parent != null && parent is not ItemsControl) parent = (parent as Control)?.Parent;
+                string? categoryKey = null;
+                if (parent is ItemsControl ic && ic.DataContext is KeyValuePair<string, List<string>> kvp)
+                {
+                    categoryKey = kvp.Key;
+                }
+                if (!string.IsNullOrWhiteSpace(categoryKey) && (string.Equals(categoryKey, "pool_name", StringComparison.OrdinalIgnoreCase) || string.Equals(categoryKey, "pool_id", StringComparison.OrdinalIgnoreCase) || string.Equals(categoryKey, "page_number", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Attempt to parse pool id either from category data (pool_id tag) or via lookup by name
+                    int poolId = 0;
+                    string? poolName = null;
+                    if (string.Equals(categoryKey, "pool_id", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int.TryParse(tag, out poolId);
+                    }
+                    else if (string.Equals(categoryKey, "pool_name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        poolName = tag;
+                        // If currently selected media has pool_id we can use that for faster direct load
+                        try
+                        {
+                            var media = vm.SelectedMedia;
+                            if (media?.TagCategories != null && media.TagCategories.TryGetValue("pool_id", out var idList) && idList.Count > 0)
+                            {
+                                int.TryParse(idList[0], out poolId);
+                            }
+                        }
+                        catch { }
+                    }
+                    else if (string.Equals(categoryKey, "page_number", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // We are on a page number chip; derive pool id/name from other tag categories if present
+                        try
+                        {
+                            var media = vm.SelectedMedia;
+                            if (media?.TagCategories != null)
+                            {
+                                if (media.TagCategories.TryGetValue("pool_id", out var idList) && idList.Count > 0)
+                                {
+                                    int.TryParse(idList[0], out poolId);
+                                }
+                                if (media.TagCategories.TryGetValue("pool_name", out var nameList) && nameList.Count > 0)
+                                {
+                                    poolName = nameList[0];
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    if (poolId <= 0)
+                    {
+                        // Fallback: attempt to resolve name to existing pool list entry
+                        var match = vm.Pools.FirstOrDefault(p => string.Equals(p.Name, poolName, StringComparison.OrdinalIgnoreCase));
+                        if (match != null) poolId = match.Id;
+                    }
+                    if (poolId > 0)
+                    {
+                        _ = vm.LoadPoolByIdAsync(poolId, poolName);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+            catch { }
+
+            // Default: Left = include, Right = exclude
             var button = e.InitialPressMouseButton;
             if (button == MouseButton.Right)
             {

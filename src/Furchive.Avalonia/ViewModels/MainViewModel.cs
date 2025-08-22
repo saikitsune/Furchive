@@ -732,6 +732,24 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Load a pool directly by id (invoked when user clicks pool_name / pool_id tag chip in preview panel).
+    /// </summary>
+    public async Task LoadPoolByIdAsync(int poolId, string? poolName = null)
+    {
+        try
+        {
+            if (poolId <= 0) return;
+            // Avoid redundant reload if already showing same pool
+            if (IsPoolMode && CurrentPoolId == poolId && SearchResults.Count > 0) return;
+            var pool = Pools.FirstOrDefault(p => p.Id == poolId) ?? new PoolInfo { Id = poolId, Name = poolName ?? ($"Pool {poolId}") };
+            // Set selection then reuse existing loader
+            SelectedPool = pool;
+            await LoadSelectedPoolAsync(pool);
+        }
+        catch { }
+    }
+
     // Resolve categories for newly added include/exclude tags before any search results.
     // Adds them into _aggregatedTagSets so chips colorize immediately. Safe to call concurrently.
     private async Task EnrichTagsWithCategoriesAsync(IEnumerable<string> tags)

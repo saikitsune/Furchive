@@ -16,5 +16,12 @@
   <cvt:IsMediaDownloadedConverter x:Key="IsMediaDownloaded" />
   <cvt:TagCategoryToBrushConverter x:Key="TagCategoryBrush" />
   <cvt:TagStringToCategoryBrushConverter x:Key="TagStringCategoryBrush" />
+  <cvt:TagCategoryToTooltipConverter x:Key="TagCategoryTooltip" />
+  <cvt:TagCategoryKeyToDisplayConverter x:Key="TagCategoryKeyDisplay" />
+  <cvt:TagCategoryIsNotPoolNameConverter x:Key="TagCategoryIsNotPoolName" />
+  <cvt:StringNotEmptyConverter x:Key="StringNotEmpty" />
+  <cvt:EnumerableHasItemsConverter x:Key="EnumerableHasItems" />
+  <cvt:TagCategoryGroupVisibleConverter x:Key="TagCategoryGroupVisible" />
+  <cvt:TagCategoriesAnyVisibleConverter x:Key="TagCategoriesAnyVisible" />
   </Application.Resources>
 </Application>
