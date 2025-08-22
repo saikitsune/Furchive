@@ -2,6 +2,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Avalonia.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.VisualTree;
+using Avalonia.Controls.ApplicationLifetimes;
 using Furchive.Core.Interfaces;
 using Furchive.Core.Models;
 using Furchive.Avalonia.Messages;
@@ -69,6 +73,8 @@ public partial class MainViewModel : ObservableObject
     private HashSet<int> _excludedPoolIds = new();
     private CancellationTokenSource? _poolsCts;
     private bool _rebuildScheduled = false;
+    // Streaming pool load cancellation source
+    private CancellationTokenSource? _poolStreamCts;
 
     public partial class SavedSearch { public string Name { get; set; } = string.Empty; public List<string> IncludeTags { get; set; } = new(); public List<string> ExcludeTags { get; set; } = new(); public int RatingFilterIndex { get; set; } public string? SearchQuery { get; set; } }
     [ObservableProperty] private string _saveSearchName = string.Empty;
@@ -330,7 +336,41 @@ public partial class MainViewModel : ObservableObject
         try { FilteredPools.Clear(); if (string.IsNullOrWhiteSpace(PoolSearch)) { foreach (var p in Pools.Take(1000)) FilteredPools.Add(p); PoolsStatusText = $"{FilteredPools.Count} pools"; return; } var q = PoolSearch.Trim(); bool isNumber = int.TryParse(q, out var id); foreach (var p in Pools) { if (isNumber) { if (p.Id.ToString().Contains(q, StringComparison.OrdinalIgnoreCase)) FilteredPools.Add(p); } else if (p.Name.Contains(q, StringComparison.OrdinalIgnoreCase)) { FilteredPools.Add(p); } if (FilteredPools.Count >= 1000) break; } PoolsStatusText = $"{FilteredPools.Count} pools"; } catch { }
     }
 
-    [RelayCommand] private async Task PinSelectedPoolAsync() { try { if (!IsPoolMode) return; var pool = SelectedPool; if (pool == null) return; if (!PinnedPools.Any(p => p.Id == pool.Id)) { PinnedPools.Add(new PoolInfo { Id = pool.Id, Name = pool.Name, PostCount = pool.PostCount }); await PersistPinnedPoolsAsync(); } } catch { } }
+    [RelayCommand] private async Task PinSelectedPoolAsync() {
+        try {
+            if (!IsPoolMode) return; var pool = SelectedPool; if (pool == null) return;
+            if (!PinnedPools.Any(p => p.Id == pool.Id)) {
+                PinnedPools.Add(new PoolInfo { Id = pool.Id, Name = pool.Name, PostCount = pool.PostCount });
+                await PersistPinnedPoolsAsync();
+                // Scroll pinned pools list to bottom (view layer will find control by name)
+                try {
+                    Dispatcher.UIThread.Post(() => {
+                        try {
+                            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null) {
+                                var lb = FindDescendantListBoxByName(desktop.MainWindow, "PinnedPoolsList");
+                                if (lb != null && lb.ItemCount > 0) {
+                                    var last = PinnedPools.LastOrDefault();
+                                    if (last != null) lb.ScrollIntoView(last);
+                                }
+                            }
+                        } catch { }
+                    });
+                } catch { }
+            }
+        } catch { }
+    }
+
+    private static ListBox? FindDescendantListBoxByName(Control root, string name)
+    {
+        try {
+            if (root is ListBox lb && lb.Name == name) return lb;
+            foreach (var child in root.GetVisualDescendants())
+            {
+                if (child is ListBox lb2 && lb2.Name == name) return lb2;
+            }
+        } catch { }
+        return null;
+    }
     [RelayCommand] private async Task UnpinPoolAsync(PoolInfo? pool) { if (pool == null) return; try { var existing = PinnedPools.FirstOrDefault(p => p.Id == pool.Id); if (existing != null) PinnedPools.Remove(existing); await PersistPinnedPoolsAsync(); } catch { } }
     private async Task PersistPinnedPoolsAsync() { try { await _cacheStore.SavePinnedPoolsAsync(PinnedPools.ToList()); } catch { } }
     private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "pools_cache.sqlite");
@@ -428,95 +468,106 @@ public partial class MainViewModel : ObservableObject
             IsSearching = true; StatusMessage = $"Loading pool {pool.Id} ({pool.Name})..."; SearchResults.Clear(); CurrentPage = 1;
             await EnsureE621AuthAsync(); IsPoolMode = true; CurrentPoolId = pool.Id; SelectedPool = Pools.FirstOrDefault(p => p.Id == pool.Id) ?? pool;
 
-            // 1) Try cached posts first
+            // Cancel any prior streaming (covers cached + fresh phases)
+            _poolStreamCts?.Cancel();
+            _poolStreamCts = new CancellationTokenSource();
+            var streamToken = _poolStreamCts.Token;
+
             var cached = await _cacheStore.GetPoolPostsAsync(pool.Id);
-            if (cached != null && cached.Count > 0)
+            int cachedTotal = cached?.Count ?? 0;
+            TotalCount = cachedTotal; OnPropertyChanged(nameof(PageInfo));
+
+            // Add first batch immediately so UI shows content fast
+            if (cachedTotal > 0)
             {
-                var poolName = pool.Name;
-                for (int i = 0; i < cached.Count; i++)
+                var firstSlice = cached!.Take(5).ToList();
+                var poolNameLocal = pool.Name;
+                foreach (var m in firstSlice)
                 {
-                    var pageNum = (i + 1).ToString("D5");
-                    cached[i].TagCategories ??= new Dictionary<string, List<string>>();
-                    cached[i].TagCategories["pool_name"] = new List<string> { poolName };
-                    cached[i].TagCategories["page_number"] = new List<string> { pageNum };
-                    if (string.IsNullOrWhiteSpace(cached[i].PreviewUrl) && !string.IsNullOrWhiteSpace(cached[i].FullImageUrl)) cached[i].PreviewUrl = cached[i].FullImageUrl;
-                    SearchResults.Add(cached[i]);
+                    var idx = SearchResults.Count + 1;
+                    var pageNum = idx.ToString("D5");
+                    m.TagCategories ??= new Dictionary<string, List<string>>();
+                    m.TagCategories["pool_name"] = new List<string> { poolNameLocal };
+                    m.TagCategories["page_number"] = new List<string> { pageNum };
+                    if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
+                    SearchResults.Add(m);
                 }
-                HasNextPage = false; TotalCount = cached.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
-                StatusMessage = $"Loaded cached pool {pool.Id}: {cached.Count} items (checking for updates…)";
+                StatusMessage = $"Loaded {Math.Min(5, cachedTotal)} / {cachedTotal} cached…";
+            }
+            else
+            {
+                StatusMessage = "Loading pool posts… (streaming)";
             }
 
-            // 2) In background, fetch latest posts and update DB; if changed, reload UI
+            // Background task to stream remaining cached items (if any) then fetch & stream fresh updates
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var fresh = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
-                    if (fresh == null) fresh = new List<MediaItem>();
-                    // Compare counts/IDs to detect change
-                    bool changed = false;
-                    if (cached == null || cached.Count != fresh.Count) changed = true;
-                    else if (cached.Zip(fresh, (a, b) => a.Id == b.Id).Any(eq => !eq)) changed = true;
-
-                    if (changed)
+                    var poolNameLocal = pool.Name;
+                    // Stream remaining cached items
+                    if (cachedTotal > 5)
                     {
-                        await _cacheStore.UpsertPoolPostsAsync(pool.Id, fresh);
-                        // Rebind on UI thread if user still viewing this pool
-                        if (CurrentPoolId == pool.Id)
+                        for (int i = 5; i < cachedTotal; i += 5)
                         {
-                            var poolName = pool.Name;
+                            if (streamToken.IsCancellationRequested) return;
+                            var slice = cached!.Skip(i).Take(5).ToList();
                             await Dispatcher.UIThread.InvokeAsync(() =>
                             {
-                                SearchResults.Clear();
-                                for (int i = 0; i < fresh.Count; i++)
+                                foreach (var m in slice)
                                 {
-                                    var pageNum = (i + 1).ToString("D5");
-                                    fresh[i].TagCategories ??= new Dictionary<string, List<string>>();
-                                    fresh[i].TagCategories["pool_name"] = new List<string> { poolName };
-                                    fresh[i].TagCategories["page_number"] = new List<string> { pageNum };
-                                    if (string.IsNullOrWhiteSpace(fresh[i].PreviewUrl) && !string.IsNullOrWhiteSpace(fresh[i].FullImageUrl)) fresh[i].PreviewUrl = fresh[i].FullImageUrl;
-                                    SearchResults.Add(fresh[i]);
+                                    var idx = SearchResults.Count + 1;
+                                    var pageNum = idx.ToString("D5");
+                                    m.TagCategories ??= new Dictionary<string, List<string>>();
+                                    m.TagCategories["pool_name"] = new List<string> { poolNameLocal };
+                                    m.TagCategories["page_number"] = new List<string> { pageNum };
+                                    if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
+                                    SearchResults.Add(m);
                                 }
-                                HasNextPage = false; TotalCount = fresh.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
-                                StatusMessage = $"Updated pool {pool.Id}: {SearchResults.Count} items";
+                                StatusMessage = $"Loaded {SearchResults.Count} / {cachedTotal} cached…";
                             });
+                            await Task.Delay(35, streamToken);
                         }
                     }
-                }
-                catch (Exception ex) { _logger.LogWarning(ex, "Background refresh of pool {PoolId} failed", pool.Id); }
-            });
 
-            // If no cached items were available, do an immediate fetch for initial display
-            if (SearchResults.Count == 0)
-            {
-                var items = await _apiService.GetAllPoolPostsAsync("e621", pool.Id);
-                if (items == null || items.Count == 0)
-                {
-                    Dispatcher.UIThread.Post(() =>
+                    // After cached items streamed, fetch fresh full list to detect new additions; stream only new tail beyond cached count
+                    var fresh = await _apiService.GetAllPoolPostsAsync("e621", pool.Id, streamToken) ?? new List<MediaItem>();
+                    if (streamToken.IsCancellationRequested) return;
+                    try { await _cacheStore.UpsertPoolPostsAsync(pool.Id, fresh); } catch { }
+                    if (fresh.Count > cachedTotal)
                     {
-                        _excludedPoolIds.Add(pool.Id);
-                        var toRemove = Pools.FirstOrDefault(p => p.Id == pool.Id);
-                        if (toRemove != null) Pools.Remove(toRemove);
-                        ApplyPoolsFilter();
-                        PoolsStatusText = $"{Pools.Count} pools";
+                        for (int i = cachedTotal; i < fresh.Count; i += 5)
+                        {
+                            if (streamToken.IsCancellationRequested) return;
+                            var slice = fresh.Skip(i).Take(5).ToList();
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                foreach (var m in slice)
+                                {
+                                    var idx = SearchResults.Count + 1;
+                                    var pageNum = idx.ToString("D5");
+                                    m.TagCategories ??= new Dictionary<string, List<string>>();
+                                    m.TagCategories["pool_name"] = new List<string> { poolNameLocal };
+                                    m.TagCategories["page_number"] = new List<string> { pageNum };
+                                    if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
+                                    SearchResults.Add(m);
+                                }
+                                TotalCount = fresh.Count; OnPropertyChanged(nameof(PageInfo));
+                                StatusMessage = $"Loaded {SearchResults.Count} / {fresh.Count} (updated)";
+                            });
+                            await Task.Delay(50, streamToken);
+                        }
+                    }
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        HasNextPage = false; OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(CanGoPrev));
+                        TotalCount = Math.Max(fresh.Count, cachedTotal); OnPropertyChanged(nameof(PageInfo));
+                        StatusMessage = $"Loaded pool {pool.Id}: {SearchResults.Count} items";
                     });
-                    StatusMessage = "Pool appears empty or unavailable.";
-                    return;
                 }
-                var poolName = pool.Name;
-                for (int i = 0; i < items.Count; i++)
-                {
-                    var pageNum = (i + 1).ToString("D5");
-                    items[i].TagCategories ??= new Dictionary<string, List<string>>();
-                    items[i].TagCategories["pool_name"] = new List<string> { poolName };
-                    items[i].TagCategories["page_number"] = new List<string> { pageNum };
-                    if (string.IsNullOrWhiteSpace(items[i].PreviewUrl) && !string.IsNullOrWhiteSpace(items[i].FullImageUrl)) items[i].PreviewUrl = items[i].FullImageUrl;
-                    SearchResults.Add(items[i]);
-                }
-                HasNextPage = false; TotalCount = items.Count; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
-                StatusMessage = $"Loaded pool {pool.Id}: {SearchResults.Count} items";
-                try { await _cacheStore.UpsertPoolPostsAsync(pool.Id, items); } catch { }
-            }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { _logger.LogWarning(ex, "Streaming pool load failed for {PoolId}", pool.Id); }
+            }, streamToken);
 
             try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
         }
@@ -676,7 +727,8 @@ public partial class MainViewModel : ObservableObject
                 var list = SearchResults.ToList();
                 var idx = list.FindIndex(m => m.Id == SelectedMedia.Id);
                 if (idx < 0) idx = 0;
-                WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx)));
+                int? poolId = (IsPoolMode && CurrentPoolId.HasValue) ? CurrentPoolId : null;
+                WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
             }
         }
         catch { }

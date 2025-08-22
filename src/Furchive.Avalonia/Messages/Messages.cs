@@ -35,4 +35,4 @@ public sealed class OpenViewerRequestMessage : ValueChangedMessage<OpenViewerReq
     public OpenViewerRequestMessage(OpenViewerRequest value) : base(value) { }
 }
 
-public sealed record OpenViewerRequest(IReadOnlyList<MediaItem> Items, int Index);
+public sealed record OpenViewerRequest(IReadOnlyList<MediaItem> Items, int Index, int? PoolId = null);

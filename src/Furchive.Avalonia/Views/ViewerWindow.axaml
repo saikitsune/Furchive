@@ -9,6 +9,10 @@
                     <ComboBoxItem Content="Fit" />
                     <ComboBoxItem Content="Original" />
                 </ComboBox>
+                <Button x:Name="PrevButton" Content="Prev" Margin="24,0,0,0" IsVisible="False" Click="OnPrevClick" />
+                <Button x:Name="NextButton" Content="Next" IsVisible="False" Click="OnNextClick" />
+                <TextBlock x:Name="IndexLabel" Text="" Margin="12,0,0,0" VerticalAlignment="Center" IsVisible="False" />
+                <TextBlock x:Name="PoolNameLabel" Text="" Margin="24,0,0,0" VerticalAlignment="Center" IsVisible="False" />
             </StackPanel>
         </DockPanel>
         <!-- Zoom slider panel (collapsible) -->

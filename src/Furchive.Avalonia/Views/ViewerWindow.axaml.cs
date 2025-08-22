@@ -1,43 +1,62 @@
 using System;
 using System.IO;
-using Avalonia.Controls;
-using Avalonia.Media.Imaging;
-using Avalonia.Markup.Xaml;
-using Furchive.Core.Models;
-using Furchive.Avalonia.Behaviors;
-using Avalonia.Input;
-using Avalonia.Media;
 using Avalonia;
-using Avalonia.Interactivity;
+using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Furchive.Avalonia.Behaviors;
+using Furchive.Core.Models;
 
 namespace Furchive.Avalonia.Views;
 
-// Minimal viewer: on open, display the media item's image (FullImageUrl preferred, else PreviewUrl).
 public partial class ViewerWindow : Window
 {
-    private double _zoom = 1.0; // scale factor (1 = 100%)
-    private bool _zoomPanelVisible;
-    private bool _initialFitApplied;
-    private double _translateX; // manual pan (since ScrollViewer removed)
+    // Zoom & pan state
+    private double _zoom = 1.0;
+    private double _translateX;
     private double _translateY;
-    private bool _autoFitEnabled = true; // while true, resizing refits image
+    private bool _initialFitApplied;
+    private bool _autoFitEnabled = true;
+    private bool _zoomPanelVisible;
+    private bool _suppressZoomSlider;
     private PixelSize _lastBitmapPixelSize;
-    private bool _suppressZoomSlider; // prevents programmatic slider updates from firing change logic
+
+    // Panning
     private bool _isPanning;
-    private Point _panStartPoint; // in viewport coordinates
+    private Point _panStartPoint;
     private double _panStartTranslateX;
     private double _panStartTranslateY;
     private DateTime _lastClickTime;
     private const int DoubleClickThresholdMs = 350;
+
+    // Size mode
     private enum SizeMode { Fit, Original }
-    private SizeMode _currentSizeMode = SizeMode.Fit; // default
+    private SizeMode _currentSizeMode = SizeMode.Fit;
+
+    // Navigation
+    private IReadOnlyList<MediaItem>? _items;
+    private int _index;
+    private int? _poolId;
+
+    // Simple in-memory bitmap cache for adjacent prefetch
+    private readonly Dictionary<string, Bitmap> _bitmapCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly int _prefetchRadius = 2; // prev 2 / next 2
+    private bool _prefetchScheduled;
+
+    // Image source change handler (reuse so we can detach on navigation)
+    private EventHandler<AvaloniaPropertyChangedEventArgs>? _imageSourceHandler;
+    // Logging synchronization for viewer.log writes
+    private static readonly object _viewerLogLock = new();
 
     public ViewerWindow()
     {
         InitializeComponent();
         Opened += (_, _) => LoadMedia();
+        KeyDown += OnViewerKeyDown;
         this.PropertyChanged += (_, args) =>
         {
             if (args.Property == BoundsProperty && _autoFitEnabled)
@@ -47,39 +66,200 @@ public partial class ViewerWindow : Window
         };
     }
 
+    public void InitializeNavigationContext(IReadOnlyList<MediaItem> items, int index, int? poolId)
+    {
+        _items = items;
+        _index = Math.Clamp(index, 0, items.Count - 1);
+        _poolId = poolId;
+        if (_items.Count > 0)
+            DataContext = _items[_index];
+        UpdateNavButtonsVisibility();
+        UpdateIndexLabel();
+    UpdatePoolNameLabel();
+        if (IsLoaded)
+            LoadMedia();
+    }
+
     private void LoadMedia()
     {
-        if (DataContext is not MediaItem item) return;
+        if (DataContext is not MediaItem item)
+        {
+            UpdateNavButtonsVisibility();
+            return;
+        }
         try { Title = string.IsNullOrWhiteSpace(item.Title) ? "Viewer" : item.Title; } catch { }
-        var img = this.FindControl<Image>("ImageElement");
+        UpdateNavButtonsVisibility();
+        UpdateIndexLabel();
+    UpdatePoolNameLabel();
+
+    var img = this.FindControl<Image>("ImageElement");
         if (img == null) return;
+
+        // Detach previous source handler to avoid multiple subscriptions
+        if (_imageSourceHandler != null)
+        {
+            try { img.PropertyChanged -= _imageSourceHandler; } catch { }
+        }
+
+        _initialFitApplied = false;
         var url = string.IsNullOrWhiteSpace(item.FullImageUrl) ? item.PreviewUrl : item.FullImageUrl;
         if (string.IsNullOrWhiteSpace(url)) return;
+
+        // Log each attempted load (one line per navigation / data context change)
+        try
+        {
+            var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
+            try { Directory.CreateDirectory(logsRoot); } catch { }
+            var logFile = Path.Combine(logsRoot, "viewer.log");
+            var line = $"[{DateTime.Now:O}] load item index={_index + 1} total={_items?.Count ?? 0} id={item.Id} url={url}\n";
+            lock (_viewerLogLock)
+            {
+                try { File.AppendAllText(logFile, line); } catch { }
+            }
+        }
+        catch { }
+
+        // Local file?
         try
         {
             if (File.Exists(url))
             {
                 using var fs = File.OpenRead(url);
-                img.Source = new Bitmap(fs);
-                ApplyInitialFit();
+                if (_bitmapCache.TryGetValue(url, out var cachedBmp))
+                {
+                    img.Source = cachedBmp;
+                }
+                else
+                {
+                    var bmp = new Bitmap(fs);
+                    _bitmapCache[url] = bmp;
+                    img.Source = bmp;
+                }
+                ApplyInitialFit(force: true);
+                if (_currentSizeMode == SizeMode.Original)
+                    ApplyOriginalSize();
+                SchedulePrefetch();
                 return;
             }
         }
         catch { }
+
+        // Remote: set URI and wait for bitmap to arrive
+        // Remote: check cache first (prefetched)
+        if (_bitmapCache.TryGetValue(url, out var remoteCached))
+        {
+            img.Source = remoteCached;
+            ApplyInitialFit(force: true);
+            if (_currentSizeMode == SizeMode.Original)
+                ApplyOriginalSize();
+            SchedulePrefetch();
+            return;
+        }
+
         try { RemoteImage.SetSourceUri(img, url); } catch { }
-        // If remote, wait for source to appear then apply fit once.
-        img.PropertyChanged += (s, e) =>
+        _imageSourceHandler = (s, e) =>
         {
             if (e.Property == Image.SourceProperty && img.Source is Bitmap b)
             {
-                // If bitmap size changed (e.g., preview -> full), force a fit unless user already adjusted zoom.
                 if (_autoFitEnabled && b.PixelSize != _lastBitmapPixelSize)
                 {
                     _lastBitmapPixelSize = b.PixelSize;
+                    _initialFitApplied = false;
                     ApplyInitialFit(force: true);
                 }
+                if (_currentSizeMode == SizeMode.Original)
+                    ApplyOriginalSize();
+                // Cache fetched bitmap
+                if (!_bitmapCache.ContainsKey(url))
+                {
+                    _bitmapCache[url] = b;
+                }
+                SchedulePrefetch();
             }
         };
+        try { img.PropertyChanged += _imageSourceHandler; } catch { }
+    }
+
+    private void UpdateNavButtonsVisibility()
+    {
+        var prevBtn = this.FindControl<Button>("PrevButton");
+        var nextBtn = this.FindControl<Button>("NextButton");
+        bool inferredPool = false;
+        if (!_poolId.HasValue && DataContext is MediaItem mi && mi.TagCategories != null)
+        {
+            try { inferredPool = mi.TagCategories.ContainsKey("pool_name") || mi.TagCategories.ContainsKey("pool_id"); } catch { }
+        }
+        bool poolContext = _poolId.HasValue || inferredPool;
+        bool show = poolContext && _items != null && _items.Count > 1;
+        if (prevBtn != null)
+        {
+            prevBtn.IsVisible = show;
+            prevBtn.IsEnabled = show && _index > 0;
+        }
+        if (nextBtn != null)
+        {
+            nextBtn.IsVisible = show;
+            nextBtn.IsEnabled = show && _items != null && _index < _items.Count - 1;
+        }
+        var idxLabel = this.FindControl<TextBlock>("IndexLabel");
+        if (idxLabel != null) idxLabel.IsVisible = show;
+    }
+
+    private void OnPrevClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_items == null || _items.Count == 0) return;
+            if (_index <= 0) return;
+            _index--;
+            DataContext = _items[_index];
+            LoadMedia();
+        }
+        catch { }
+    }
+
+    private void OnNextClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_items == null || _items.Count == 0) return;
+            if (_index >= _items.Count - 1) return;
+            _index++;
+            DataContext = _items[_index];
+            LoadMedia();
+        }
+        catch { }
+    }
+
+    private void UpdateIndexLabel()
+    {
+        var idxLabel = this.FindControl<TextBlock>("IndexLabel");
+        if (idxLabel == null) return;
+        if (_items == null || _items.Count == 0)
+        {
+            idxLabel.Text = string.Empty;
+            return;
+        }
+        idxLabel.Text = $"{_index + 1} / {_items.Count}";
+    }
+
+    private void OnViewerKeyDown(object? sender, KeyEventArgs e)
+    {
+    if (e.Key == Key.Left || e.Key == Key.A)
+        {
+            OnPrevClick(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+    else if (e.Key == Key.Right || e.Key == Key.D)
+        {
+            OnNextClick(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+        }
     }
 
     private void ApplyInitialFit(bool force = false)
@@ -87,17 +267,12 @@ public partial class ViewerWindow : Window
         if (_initialFitApplied && !force) return;
         var img = this.FindControl<Image>("ImageElement");
         var host = this.FindControl<Grid>("ViewportHost");
-        if (img?.Source is not Bitmap bmp || host == null)
-            return;
-
+        if (img?.Source is not Bitmap || host == null) return;
         if (host.Bounds.Width <= 0 || host.Bounds.Height <= 0)
         {
             Dispatcher.UIThread.Post(() => ApplyInitialFit(force), DispatcherPriority.Render);
             return;
         }
-
-        // With Stretch=Uniform the framework already sizes the image to fit while preserving aspect.
-        // Treat that fitted size as zoom=1 baseline. Translation starts at 0 because alignment is Center.
         _zoom = 1.0;
         _translateX = 0;
         _translateY = 0;
@@ -111,50 +286,27 @@ public partial class ViewerWindow : Window
         var img = this.FindControl<Image>("ImageElement");
         var host = this.FindControl<Grid>("ViewportHost");
         if (img?.Source is not Bitmap bmp || host == null) return;
-        // Remove "fit" baseline: make baseline zoom=1 mean 1 image pixel = 1 logical unit (approx 96dpi scaling)
         double logicalW = bmp.PixelSize.Width;
         double logicalH = bmp.PixelSize.Height;
-        if (bmp.Dpi.X > 0 && Math.Abs(bmp.Dpi.X - 96) > 0.1)
-            logicalW = bmp.PixelSize.Width * 96.0 / bmp.Dpi.X;
-        if (bmp.Dpi.Y > 0 && Math.Abs(bmp.Dpi.Y - 96) > 0.1)
-            logicalH = bmp.PixelSize.Height * 96.0 / bmp.Dpi.Y;
-
-        // Determine scale currently applied by Uniform fit so we can cancel it out by setting an appropriate zoom.
+        if (bmp.Dpi.X > 0 && Math.Abs(bmp.Dpi.X - 96) > 0.1) logicalW = bmp.PixelSize.Width * 96.0 / bmp.Dpi.X;
+        if (bmp.Dpi.Y > 0 && Math.Abs(bmp.Dpi.Y - 96) > 0.1) logicalH = bmp.PixelSize.Height * 96.0 / bmp.Dpi.Y;
         var fitScale = Math.Min(host.Bounds.Width / logicalW, host.Bounds.Height / logicalH);
         if (fitScale <= 0 || double.IsNaN(fitScale) || double.IsInfinity(fitScale)) fitScale = 1.0;
-
-        // We want final displayed size = logical size. Currently baseline includes fitScale at zoom=1. So required zoom = 1 / fitScale
         _zoom = 1.0 / fitScale;
         _translateX = 0;
         _translateY = 0;
+        _autoFitEnabled = false;
         UpdateZoomTransform();
         UpdateZoomUi();
-        _autoFitEnabled = false; // Original mode breaks auto fit-on-resize
-    }
-
-    private void UpdateZoomTransform()
-    {
-        var img = this.FindControl<Image>("ImageElement");
-        if (img == null) return;
-        if (_zoom <= 0 || !double.IsFinite(_zoom)) _zoom = 1.0;
-        // Compose scale then translation.
-        img.RenderTransform = new TransformGroup
-        {
-            Children = new Transforms()
-            {
-                new ScaleTransform(_zoom, _zoom),
-                new TranslateTransform(_translateX, _translateY)
-            }
-        };
     }
 
     private void ResetToFit()
     {
         _autoFitEnabled = true;
-    _currentSizeMode = SizeMode.Fit;
-    var combo = this.FindControl<ComboBox>("SizeModeCombo");
-    if (combo != null && combo.SelectedIndex != 0) combo.SelectedIndex = 0; // ensure UI reflects state
-        _initialFitApplied = false; // force recompute
+        _currentSizeMode = SizeMode.Fit;
+        var combo = this.FindControl<ComboBox>("SizeModeCombo");
+        if (combo != null && combo.SelectedIndex != 0) combo.SelectedIndex = 0;
+        _initialFitApplied = false;
         ApplyInitialFit(force: true);
     }
 
@@ -187,13 +339,12 @@ public partial class ViewerWindow : Window
             _initialFitApplied = false;
             ApplyInitialFit(force: true);
         }
-        else // Original
+        else
         {
             ApplyOriginalSize();
         }
     }
 
-    // Pointer events for panning & double-click reset
     private void OnViewportPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         var host = this.FindControl<Grid>("ViewportHost"); if (host == null) return;
@@ -202,9 +353,8 @@ public partial class ViewerWindow : Window
             var now = DateTime.UtcNow;
             if ((now - _lastClickTime).TotalMilliseconds <= DoubleClickThresholdMs)
             {
-                // Double-click: reset fit
                 ResetToFit();
-                _lastClickTime = DateTime.MinValue; // reset
+                _lastClickTime = DateTime.MinValue;
                 return;
             }
             _lastClickTime = now;
@@ -222,10 +372,8 @@ public partial class ViewerWindow : Window
         if (!_isPanning) return;
         var host = this.FindControl<Grid>("ViewportHost"); if (host == null) return;
         var current = e.GetPosition(host);
-        var dx = current.X - _panStartPoint.X;
-        var dy = current.Y - _panStartPoint.Y;
-        _translateX = _panStartTranslateX + dx;
-        _translateY = _panStartTranslateY + dy;
+        _translateX = _panStartTranslateX + (current.X - _panStartPoint.X);
+        _translateY = _panStartTranslateY + (current.Y - _panStartPoint.Y);
         UpdateZoomTransform();
     }
 
@@ -249,9 +397,9 @@ public partial class ViewerWindow : Window
     private void OnZoomSliderChanged(object? sender, RangeBaseValueChangedEventArgs e)
     {
         var slider = sender as Slider; if (slider == null) return;
-    if (_suppressZoomSlider) return; // ignore programmatic changes
-        _zoom = slider.Value / 100.0; // slider in percent
-    _autoFitEnabled = false; // user intentionally changed zoom
+        if (_suppressZoomSlider) return;
+        _zoom = slider.Value / 100.0;
+        _autoFitEnabled = false;
         UpdateZoomTransform();
         UpdateZoomUi();
         CenterAnchorAfterZoom();
@@ -271,7 +419,7 @@ public partial class ViewerWindow : Window
         double factor = e.Delta.Y > 0 ? 1.15 : 1.0 / 1.15;
         var cursor = e.GetPosition(host);
         AnchorZoom(cursor, applyScale: true, scaleFactor: factor);
-        e.Handled = true; // suppress default
+        e.Handled = true;
     }
 
     private void AnchorZoom(Point viewportPoint, bool applyScale, double scaleFactor = 1.0, bool keepPoint = false)
@@ -282,31 +430,21 @@ public partial class ViewerWindow : Window
         if (applyScale)
         {
             _zoom = Math.Clamp(_zoom * scaleFactor, 0.10, 10.0);
-            _autoFitEnabled = false; // user interaction
+            _autoFitEnabled = false;
         }
         double newZoom = _zoom;
         if (!applyScale && !keepPoint) return;
-    // world (image) coordinates of the point under cursor before zoom
-    // Current transform: screen = world*oldZoom + T
-    // Reverse: world = (screen - T)/oldZoom
-        // Compute displayed (fitted) size at baseline zoom=1 (Uniform). We derive from host & bitmap aspect.
+
         var hostW = host.Bounds.Width; var hostH = host.Bounds.Height;
         double bmpW = bmp.PixelSize.Width; double bmpH = bmp.PixelSize.Height;
         if (bmp.Dpi.X > 0 && Math.Abs(bmp.Dpi.X - 96) > 0.1) bmpW = bmp.PixelSize.Width * 96.0 / bmp.Dpi.X;
         if (bmp.Dpi.Y > 0 && Math.Abs(bmp.Dpi.Y - 96) > 0.1) bmpH = bmp.PixelSize.Height * 96.0 / bmp.Dpi.Y;
         var fitScale = Math.Min(hostW / bmpW, hostH / bmpH);
         var displayW = bmpW * fitScale; var displayH = bmpH * fitScale;
-        // Center offsets (because Horizontal/VerticalAlignment=Center)
         var baseOffsetX = (hostW - displayW) / 2.0;
         var baseOffsetY = (hostH - displayH) / 2.0;
-        // Current transform: screen = ((world * fitScale) * (zoom)) + baseOffset + T
-        // Combine baseline fitScale into world->screen scaling factor = fitScale * zoom.
-        // Existing _translateX/_translateY only represent user panning offsets T (start at 0).
-        // To anchor a point, express world coords in original bitmap logical space.
-        // First remove baseOffset: local = screen - baseOffset - T; world = local / (fitScale * oldZoom)
         var worldX = (viewportPoint.X - baseOffsetX - _translateX) / (fitScale * oldZoom);
         var worldY = (viewportPoint.Y - baseOffsetY - _translateY) / (fitScale * oldZoom);
-        // New translation so that world point maps back to same screen point
         _translateX = viewportPoint.X - baseOffsetX - worldX * (fitScale * newZoom);
         _translateY = viewportPoint.Y - baseOffsetY - worldY * (fitScale * newZoom);
         NormalizeTranslation(bmp.PixelSize.Width, bmp.PixelSize.Height, bmp.Dpi, fitScale);
@@ -314,36 +452,115 @@ public partial class ViewerWindow : Window
         UpdateZoomUi();
     }
 
+    private void UpdateZoomTransform()
+    {
+        var img = this.FindControl<Image>("ImageElement"); if (img == null) return;
+        if (_zoom <= 0 || !double.IsFinite(_zoom)) _zoom = 1.0;
+        img.RenderTransform = new TransformGroup
+        {
+            Children = new Transforms
+            {
+                new ScaleTransform(_zoom, _zoom),
+                new TranslateTransform(_translateX, _translateY)
+            }
+        };
+    }
+
+    private void SchedulePrefetch()
+    {
+        if (_prefetchScheduled) return;
+        _prefetchScheduled = true;
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try { await PrefetchAdjacentAsync(); } catch { }
+            finally { _prefetchScheduled = false; }
+        }, DispatcherPriority.Background);
+    }
+
+    private async Task PrefetchAdjacentAsync()
+    {
+        if (_items == null || _items.Count == 0) return;
+        var img = this.FindControl<Image>("ImageElement"); if (img == null) return;
+        // Collect target indices
+        var targets = new List<int>();
+        for (int delta = 1; delta <= _prefetchRadius; delta++)
+        {
+            var forward = _index + delta; if (forward < _items.Count) targets.Add(forward);
+            var backward = _index - delta; if (backward >= 0) targets.Add(backward);
+        }
+        foreach (var ti in targets)
+        {
+            MediaItem m; try { m = _items[ti]; } catch { continue; }
+            var url = string.IsNullOrWhiteSpace(m.FullImageUrl) ? m.PreviewUrl : m.FullImageUrl;
+            if (string.IsNullOrWhiteSpace(url)) continue;
+            if (_bitmapCache.ContainsKey(url)) continue;
+            // Skip if local file missing
+            try
+            {
+                if (File.Exists(url))
+                {
+                    using var fs = File.OpenRead(url);
+                    var bmp = new Bitmap(fs);
+                    _bitmapCache[url] = bmp;
+                    continue;
+                }
+            }
+            catch { }
+            // Remote fetch via RemoteImage helper (load into temp Image control)
+            var temp = new Image();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<AvaloniaPropertyChangedEventArgs>? handler = null;
+            handler = (s, e) =>
+            {
+                if (e.Property == Image.SourceProperty && temp.Source is Bitmap b)
+                {
+                    _bitmapCache[url] = b;
+                    try { temp.PropertyChanged -= handler; } catch { }
+                    tcs.TrySetResult(true);
+                }
+            };
+            temp.PropertyChanged += handler;
+            try { RemoteImage.SetSourceUri(temp, url); } catch { tcs.TrySetResult(false); }
+            // Allow up to 8 seconds for a prefetch; ignore result
+            try { using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)); await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, cts.Token)); } catch { }
+        }
+    }
+
+    private void UpdatePoolNameLabel()
+    {
+        var label = this.FindControl<TextBlock>("PoolNameLabel"); if (label == null) return;
+        if (_items == null || _items.Count == 0 || _index < 0 || _index >= _items.Count)
+        {
+            label.IsVisible = false; label.Text = string.Empty; return;
+        }
+        var item = _items[_index];
+        string poolName = string.Empty;
+        try
+        {
+            if (item.TagCategories != null)
+            {
+                if (item.TagCategories.TryGetValue("pool_name", out var list) && list.Count > 0) poolName = list[0];
+            }
+        }
+        catch { }
+        if (string.IsNullOrWhiteSpace(poolName)) { label.IsVisible = false; label.Text = string.Empty; }
+        else { label.IsVisible = true; label.Text = poolName; }
+    }
+
     private void NormalizeTranslation(double pixelWidth, double pixelHeight, Vector? dpi = null, double fitScale = 1.0)
     {
         var host = this.FindControl<Grid>("ViewportHost"); if (host == null) return;
-        // Convert pixel dimensions to logical if DPI != 96
         double logicalWidth = pixelWidth;
         double logicalHeight = pixelHeight;
         if (dpi.HasValue)
         {
-            if (dpi.Value.X > 0 && Math.Abs(dpi.Value.X - 96) > 0.1)
-                logicalWidth = pixelWidth * 96.0 / dpi.Value.X;
-            if (dpi.Value.Y > 0 && Math.Abs(dpi.Value.Y - 96) > 0.1)
-                logicalHeight = pixelHeight * 96.0 / dpi.Value.Y;
+            if (dpi.Value.X > 0 && Math.Abs(dpi.Value.X - 96) > 0.1) logicalWidth = pixelWidth * 96.0 / dpi.Value.X;
+            if (dpi.Value.Y > 0 && Math.Abs(dpi.Value.Y - 96) > 0.1) logicalHeight = pixelHeight * 96.0 / dpi.Value.Y;
         }
-    // Displayed size at current zoom factoring baseline fitScale
-    double scaledW = logicalWidth * fitScale * _zoom;
-    double scaledH = logicalHeight * fitScale * _zoom;
-
-        // Center if image smaller than viewport along an axis; otherwise leave panning as-is (future pan feature).
-        if (scaledW <= host.Bounds.Width)
-        {
-            // center by resetting translation relative to center alignment
-            _translateX = 0;
-        }
-        if (scaledH <= host.Bounds.Height)
-        {
-            _translateY = 0;
-        }
-
-        // (Optional) If we ever add panning, clamp so image covers viewport (no blank gaps) when larger.
-        // For now ensure we don't inadvertently push image partly out leaving cropping when smaller.
+        double scaledW = logicalWidth * fitScale * _zoom;
+        double scaledH = logicalHeight * fitScale * _zoom;
+        if (scaledW <= host.Bounds.Width) _translateX = 0;
+        if (scaledH <= host.Bounds.Height) _translateY = 0;
     }
 }
 

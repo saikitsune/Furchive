@@ -91,7 +91,10 @@
                     <ProgressBar Width="100" Height="10" Minimum="0" Maximum="100" IsVisible="{Binding IsPoolsLoading}" Value="{Binding PoolsProgressCurrent}"/>
                     <Button Content="Cancel" Command="{Binding CancelPoolsUpdateCommand}" IsVisible="{Binding IsPoolsLoading}"/>
                 </StackPanel>
-                <TextBox Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox Width="160" Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
+                    <Button Content="Filter" Command="{Binding RunPoolsFilterCommand}"/>
+                </StackPanel>
         <!-- Limit to ~5 items tall with scroll; template clamps name within column -->
     <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}" SelectionChanged="OnPoolsSelectionChanged"
             MaxHeight="170"

@@ -33,8 +33,17 @@ public partial class MainWindow : Window
                     try
                     {
                         if (msg.Value == null) return;
-                        var vw = new ViewerWindow { DataContext = msg.Value };
-                        vw.Show(this);
+                        // Build navigation context from current gallery so Prev/Next work (esp. pools)
+                        if (DataContext is MainViewModel vm)
+                        {
+                            var list = vm.SearchResults.ToList();
+                            var idx = list.FindIndex(m => m.Id == msg.Value.Id);
+                            if (idx < 0) idx = 0;
+                            int? poolId = (vm.IsPoolMode && vm.CurrentPoolId.HasValue) ? vm.CurrentPoolId : null;
+                            var vw = new ViewerWindow();
+                            vw.InitializeNavigationContext(list, idx, poolId);
+                            vw.Show(this);
+                        }
                     }
                     catch { }
                 });
@@ -45,7 +54,8 @@ public partial class MainWindow : Window
                         var req = msg.Value;
                         if (req == null || req.Items.Count == 0) return;
                         var idx = Math.Clamp(req.Index, 0, req.Items.Count - 1);
-                        var vw = new ViewerWindow { DataContext = req.Items[idx] };
+                        var vw = new ViewerWindow();
+                        vw.InitializeNavigationContext(req.Items, idx, req.PoolId);
                         vw.Show(this);
                     }
                     catch { }
@@ -265,7 +275,11 @@ public partial class MainWindow : Window
             {
                 if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
                 {
-                    WeakReferenceMessenger.Default.Send(new OpenViewerMessage(vm.SelectedMedia));
+                    var list = vm.SearchResults.ToList();
+                    var idx = list.FindIndex(m => m.Id == vm.SelectedMedia.Id);
+                    if (idx < 0) idx = 0;
+                    int? poolId = (vm.IsPoolMode && vm.CurrentPoolId.HasValue) ? vm.CurrentPoolId : null;
+                    WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
                     e.Handled = true;
                 }
                 return;
@@ -276,7 +290,11 @@ public partial class MainWindow : Window
             {
                 if (DataContext is MainViewModel vm2 && vm2.SelectedMedia != null)
                 {
-                    WeakReferenceMessenger.Default.Send(new OpenViewerMessage(vm2.SelectedMedia));
+                    var list = vm2.SearchResults.ToList();
+                    var idx = list.FindIndex(m => m.Id == vm2.SelectedMedia.Id);
+                    if (idx < 0) idx = 0;
+                    int? poolId = (vm2.IsPoolMode && vm2.CurrentPoolId.HasValue) ? vm2.CurrentPoolId : null;
+                    WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
                     e.Handled = true;
                 }
             }
@@ -291,7 +309,11 @@ public partial class MainWindow : Window
         {
             if (DataContext is MainViewModel vm && vm.SelectedMedia != null)
             {
-                WeakReferenceMessenger.Default.Send(new OpenViewerMessage(vm.SelectedMedia));
+                var list = vm.SearchResults.ToList();
+                var idx = list.FindIndex(m => m.Id == vm.SelectedMedia.Id);
+                if (idx < 0) idx = 0;
+                int? poolId = (vm.IsPoolMode && vm.CurrentPoolId.HasValue) ? vm.CurrentPoolId : null;
+                WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
             }
         }
         catch { }
