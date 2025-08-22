@@ -350,9 +350,10 @@ public class DownloadService : IDownloadService
                 
                 // Save metadata if enabled
                 var saveMetadata = _settingsService.GetSetting<bool>("SaveMetadataJson", false);
-                if (saveMetadata)
+                var savePostJson = _settingsService.GetSetting<bool>("SavePostJson", false);
+                if (saveMetadata || savePostJson)
                 {
-                    await SaveMetadataAsync(job);
+                    await SaveMetadataAsync(job, savePostJson);
                 }
             }
 
@@ -422,13 +423,21 @@ public class DownloadService : IDownloadService
         catch { return null; }
     }
 
-    private async Task SaveMetadataAsync(DownloadJob job)
+    private async Task SaveMetadataAsync(DownloadJob job, bool savePostJson)
     {
         try
         {
-            var metadataPath = Path.ChangeExtension(job.DestinationPath, "json");
+            var basePath = Path.ChangeExtension(job.DestinationPath, "json");
+            string path = basePath;
+            if (savePostJson)
+            {
+                // Write post JSON under a distinct name (e.g., originalname.post.json) to avoid collision with legacy metadata
+                var dir = Path.GetDirectoryName(job.DestinationPath) ?? string.Empty;
+                var nameNoExt = Path.GetFileNameWithoutExtension(job.DestinationPath);
+                path = Path.Combine(dir, nameNoExt + ".post.json");
+            }
             var metadata = System.Text.Json.JsonSerializer.Serialize(job.MediaItem, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(metadataPath, metadata);
+            await File.WriteAllTextAsync(path, metadata);
         }
         catch (Exception ex)
         {

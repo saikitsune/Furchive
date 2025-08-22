@@ -14,5 +14,7 @@
     <cvt:NullToGridLengthConverter x:Key="NullToGridLength" />
   <cvt:ImageCacheConverter x:Key="ImageCache" />
   <cvt:IsMediaDownloadedConverter x:Key="IsMediaDownloaded" />
+  <cvt:TagCategoryToBrushConverter x:Key="TagCategoryBrush" />
+  <cvt:TagStringToCategoryBrushConverter x:Key="TagStringCategoryBrush" />
   </Application.Resources>
 </Application>

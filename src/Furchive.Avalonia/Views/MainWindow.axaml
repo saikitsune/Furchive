@@ -21,62 +21,56 @@
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
-    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto,*" ColumnDefinitions="*">
-        <!-- Top header: use DockPanel to keep right actions anchored and avoid overlap -->
-        <DockPanel Margin="8" LastChildFill="True">
-            <StackPanel Orientation="Horizontal" Spacing="8" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}"/>
+    <!-- Restructured layout: Top header, content area (three columns); downloads now live only under center column -->
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*" ColumnDefinitions="*">
+        <!-- Top bar aligned with main content 3 columns -->
+        <Grid x:Name="TopBarGrid" Grid.Row="0" Margin="8,8,8,4">
+            <!-- Use Auto columns with MinWidth so the header doesn't push outside window bounds on small widths -->
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="200" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" MinWidth="240" />
+            </Grid.ColumnDefinitions>
+            <!-- Left column: status + found items/progress indicators -->
+            <StackPanel Grid.Column="0" Orientation="Vertical" Spacing="4">
+                <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
+                <!-- Inline small progress indicators stacked -->
+                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsSearching}">
+                    <TextBlock Text="Searching…"/>
+                    <ProgressBar Width="100" Height="10" IsIndeterminate="True"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsBackgroundCaching}">
+                    <TextBlock>
+                        <Run Text="Prefetch:"/>
+                        <Run Text="{Binding BackgroundCachingCurrent}"/>
+                        <Run Text="/"/>
+                        <Run Text="{Binding BackgroundCachingTotal}"/>
+                        <Run Text=" pages"/>
+                    </TextBlock>
+                    <ProgressBar Width="90" Height="10" Minimum="0" Maximum="{Binding BackgroundCachingTotal}" Value="{Binding BackgroundCachingCurrent}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPoolsLoading}">
+                    <TextBlock Text="Pools:"/>
+                    <TextBlock Text="{Binding PoolsStatusText}"/>
+                    <ProgressBar Width="90" Height="10"
+                                 Minimum="0" Maximum="{Binding PoolsProgressTotal}"
+                                 IsIndeterminate="{Binding PoolsProgressHasTotal, Converter={StaticResource InverseBoolean}}"
+                                 Value="{Binding PoolsProgressCurrent}"/>
+                    <Button Content="×" Padding="4,0" Command="{Binding CancelPoolsUpdateCommand}"/>
+                </StackPanel>
+            </StackPanel>
+            <!-- Middle column: centered pagination -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Top" IsVisible="{Binding IsPoolMode, Converter={StaticResource InverseBoolean}}">
+                <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
+                <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
+                <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
+            </StackPanel>
+            <!-- Right column: favorites + settings buttons aligned right -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Top">
+                <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
                 <Button Content="Settings" Click="OnOpenSettings"/>
             </StackPanel>
-            <!-- WrapPanel to prevent overlap on narrow widths/DPI -->
-            <WrapPanel>
-                <TextBox Width="420" Watermark="Search tags" Text="{Binding SearchQuery, Mode=TwoWay}"/>
-                <ComboBox Width="160" SelectedIndex="{Binding RatingFilterIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="All"/>
-                    <ComboBoxItem Content="Explicit"/>
-                    <ComboBoxItem Content="Questionable"/>
-                    <ComboBoxItem Content="Safe"/>
-                </ComboBox>
-                <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
-                <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>
-                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding StatusMessage}" IsVisible="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
-            </WrapPanel>
-
-            <!-- Top status/progress panel docked at bottom of header -->
-            <Border DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                <StackPanel Spacing="4">
-                    <!-- Global search indicator -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsSearching}">
-                        <TextBlock Text="Searching…"/>
-                        <ProgressBar Width="160" Height="10" IsIndeterminate="True"/>
-                    </StackPanel>
-                    <!-- Background prefetch indicator -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBackgroundCaching}">
-                        <TextBlock>
-                            <Run Text="Prefetching:"/>
-                            <Run Text=" "/>
-                            <Run Text="{Binding BackgroundCachingCurrent}"/>
-                            <Run Text="/"/>
-                            <Run Text="{Binding BackgroundCachingTotal}"/>
-                            <Run Text=" pages • "/>
-                            <Run Text="{Binding BackgroundCachingItemsFetched}"/>
-                            <Run Text=" items"/>
-                        </TextBlock>
-                        <ProgressBar Width="200" Height="10" Minimum="0" Maximum="{Binding BackgroundCachingTotal}" Value="{Binding BackgroundCachingCurrent}"/>
-                    </StackPanel>
-                    <!-- Pools cache refresh indicator -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsPoolsLoading}">
-                        <TextBlock Text="Pools:"/>
-                        <TextBlock Text="{Binding PoolsStatusText}"/>
-                        <ProgressBar Width="200" Height="10"
-                                     Minimum="0" Maximum="{Binding PoolsProgressTotal}"
-                                     IsIndeterminate="{Binding PoolsProgressHasTotal, Converter={StaticResource InverseBoolean}}"
-                                     Value="{Binding PoolsProgressCurrent}"/>
-                        <Button Content="Cancel" Command="{Binding CancelPoolsUpdateCommand}"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-        </DockPanel>
+        </Grid>
 
     <Grid x:Name="MainColumnsGrid" Grid.Row="1" Margin="8,0,8,0">
             <Grid.ColumnDefinitions>
@@ -84,9 +78,119 @@
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="360"/>
             </Grid.ColumnDefinitions>
-            <StackPanel>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <!-- Left Side Panel (stretches full height) -->
+            <StackPanel Grid.Row="0">
+                <!-- Rating + Search moved to top -->
+                <TextBlock Text="Rating" FontWeight="Bold"/>
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,8">
+                    <ComboBox Width="140" SelectedIndex="{Binding RatingFilterIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="All"/>
+                        <ComboBoxItem Content="Explicit"/>
+                        <ComboBoxItem Content="Questionable"/>
+                        <ComboBoxItem Content="Safe"/>
+                    </ComboBox>
+                    <Button Content="Search" Command="{Binding SearchCommand}" IsEnabled="{Binding IsSearching, Converter={StaticResource InverseBoolean}}"/>
+                    <Button Content="Clear" Command="{Binding ClearTagsCommand}"/>
+                </StackPanel>
+
+                <!-- Include Tags -->
+                <TextBlock Text="Include Tags" FontWeight="Bold"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="Pools" FontWeight="Bold"/>
+                    <TextBox x:Name="includeTagInput" Width="160" Watermark="tag" KeyDown="OnIncludeTagKeyDown"/>
+                    <Button Content="Add" Click="OnAddIncludeTagClick"/>
+                </StackPanel>
+                <!-- Scrollable tag chips area (no list box chrome) -->
+                <Border Height="80" MinHeight="80" Background="Transparent" Margin="0,2,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding IncludeTags}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="12" Padding="6,2" Margin="0,4,4,0" Cursor="Hand">
+                                        <Border.Background>
+                                            <MultiBinding Converter="{StaticResource TagStringCategoryBrush}">
+                                                <Binding Path="."/>
+                                                <Binding Path="SelectedMedia.TagCategories" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            </MultiBinding>
+                                        </Border.Background>
+                                        <Button Content="{Binding .}" Padding="0" Background="Transparent" BorderThickness="0"
+                                                Command="{Binding DataContext.RemoveIncludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding .}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Exclude Tags -->
+                <TextBlock Text="Exclude Tags" FontWeight="Bold" Margin="0,10,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox x:Name="excludeTagInput" Width="160" Watermark="-tag" KeyDown="OnExcludeTagKeyDown"/>
+                    <Button Content="Add" Click="OnAddExcludeTagClick"/>
+                </StackPanel>
+                <!-- Scrollable exclude tag chips area -->
+                <Border Height="80" MinHeight="80" Background="Transparent" Margin="0,2,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ExcludeTags}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="12" Padding="6,2" Margin="0,4,4,0" Cursor="Hand">
+                                        <Border.Background>
+                                            <MultiBinding Converter="{StaticResource TagStringCategoryBrush}">
+                                                <Binding Path="."/>
+                                                <Binding Path="SelectedMedia.TagCategories" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            </MultiBinding>
+                                        </Border.Background>
+                                        <Button Content="{Binding .}" Padding="0" Background="Transparent" BorderThickness="0"
+                                                Command="{Binding DataContext.RemoveExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding .}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Saved Searches -->
+                <TextBlock Text="Saved Searches" FontWeight="Bold" Margin="0,10,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox x:Name="saveSearchInput" Width="160" Text="{Binding SaveSearchName, Mode=TwoWay}" Watermark="Name" KeyDown="OnSaveSearchKeyDown"/>
+                    <Button Content="Save" Command="{Binding SaveSearchCommand}"/>
+                </StackPanel>
+                <!-- Styled Saved Searches list similar to Pools/Pinned Pools -->
+                <ListBox ItemsSource="{Binding SavedSearches}" MinHeight="130" MaxHeight="130" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,2">
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                <Button Grid.Column="1" Content="Search" Padding="6,0" Margin="6,0,0,0"
+                                        Command="{Binding DataContext.ApplySavedSearchCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding .}"/>
+                                <Button Grid.Column="2" Content="×" Padding="6,0" Margin="6,0,0,0"
+                                        Command="{Binding DataContext.DeleteSavedSearchCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding .}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Pools Section (moved below saved searches) -->
+                <TextBlock Text="Pools" FontWeight="Bold" Margin="0,10,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="{Binding PoolsStatusText}"/>
                     <ProgressBar Width="100" Height="10" Minimum="0" Maximum="100" IsVisible="{Binding IsPoolsLoading}" Value="{Binding PoolsProgressCurrent}"/>
                     <Button Content="Cancel" Command="{Binding CancelPoolsUpdateCommand}" IsVisible="{Binding IsPoolsLoading}"/>
@@ -95,10 +199,9 @@
                     <TextBox Width="160" Watermark="Filter pools" Text="{Binding PoolSearch, Mode=TwoWay}"/>
                     <Button Content="Filter" Command="{Binding RunPoolsFilterCommand}"/>
                 </StackPanel>
-        <!-- Limit to ~5 items tall with scroll; template clamps name within column -->
-    <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}" SelectionChanged="OnPoolsSelectionChanged"
-            MaxHeight="170"
-            ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox ItemsSource="{Binding FilteredPools}" SelectedItem="{Binding SelectedPool}" SelectionChanged="OnPoolsSelectionChanged"
+                         MinHeight="130" MaxHeight="130"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,2">
@@ -112,60 +215,10 @@
                     <Button Content="📌 Pin" Command="{Binding PinSelectedPoolCommand}" IsVisible="{Binding ShowPinPoolButton}"/>
                 </StackPanel>
 
-                <!-- Include Tags -->
-                <TextBlock Text="Include Tags" FontWeight="Bold" Margin="0,10,0,0"/>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBox x:Name="includeTagInput" Width="160" Watermark="tag" KeyDown="OnIncludeTagKeyDown"/>
-                    <Button Content="Add" Command="{Binding AddIncludeTagCommand}" CommandParameter="{Binding Text, ElementName=includeTagInput}"/>
-                </StackPanel>
-                <ItemsControl ItemsSource="{Binding IncludeTags}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <Button Content="{Binding .}" Command="{Binding DataContext.RemoveIncludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- Exclude Tags -->
-                <TextBlock Text="Exclude Tags" FontWeight="Bold" Margin="0,10,0,0"/>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBox x:Name="excludeTagInput" Width="160" Watermark="-tag" KeyDown="OnExcludeTagKeyDown"/>
-                    <Button Content="Add" Command="{Binding AddExcludeTagCommand}" CommandParameter="{Binding Text, ElementName=excludeTagInput}"/>
-                </StackPanel>
-                <ItemsControl ItemsSource="{Binding ExcludeTags}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <Button Content="{Binding .}" Command="{Binding DataContext.RemoveExcludeTagCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- Saved Searches -->
-                <TextBlock Text="Saved Searches" FontWeight="Bold" Margin="0,10,0,0"/>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBox x:Name="saveSearchInput" Width="160" Text="{Binding SaveSearchName, Mode=TwoWay}" Watermark="Name" KeyDown="OnSaveSearchKeyDown"/>
-                    <Button Content="Save" Command="{Binding SaveSearchCommand}"/>
-                </StackPanel>
-                <ItemsControl ItemsSource="{Binding SavedSearches}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="{Binding Name}" Width="140"/>
-                                <Button Content="Search" Command="{Binding DataContext.ApplySavedSearchCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" />
-                                <Button Content="Delete" Command="{Binding DataContext.DeleteSavedSearchCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
                 <!-- Pinned Pools -->
                 <TextBlock Text="Pinned Pools" FontWeight="Bold" Margin="0,10,0,0"/>
                 <ListBox x:Name="PinnedPoolsList" ItemsSource="{Binding PinnedPools}" SelectionChanged="OnPinnedPoolsSelectionChanged"
-                         MaxHeight="170"
+                         MinHeight="130" MaxHeight="130"
                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -181,14 +234,9 @@
                 </ListBox>
             </StackPanel>
 
-            <Grid Grid.Column="1" RowDefinitions="Auto,*">
-                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                    <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
-                    <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
-                    <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
-                </StackPanel>
-                <ScrollViewer Grid.Row="1">
-                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed">
+            <Grid Grid.Column="1">
+                <ScrollViewer>
+                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed" DoubleTapped="OnGalleryDoubleTapped">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal"/>
@@ -197,7 +245,7 @@
                         <!-- Double-tap handler can be wired in code-behind if needed. -->
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" MinHeight="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
                                     <Grid RowDefinitions="Auto,Auto">
                                         <Image Stretch="UniformToFill"
                              Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -205,18 +253,14 @@
                              beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
                                         <TextBlock FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">▶</TextBlock>
                                         <StackPanel Grid.Row="1" Margin="2,4,2,0" Spacing="2">
-                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="{Binding Artist}" Foreground="Gray"/>
-                                                <TextBlock>·</TextBlock>
-                                                <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}"/>
+                                                <TextBlock Text="{Binding Artist}" Foreground="Gray" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                <TextBlock Text="·" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                                <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                             </StackPanel>
-                                            <!-- ID and downloaded checkmark -->
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="ID:" Foreground="Gray"/>
-                                                <TextBlock Text="{Binding Id}"/>
-                                                <TextBlock Text="✔" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}"/>
-                                            </StackPanel>
+                                            <!-- Downloaded indicator only -->
+                                            <TextBlock Text="✔ Downloaded" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -231,7 +275,7 @@
             <!-- Splitter between center and right (invisible, still draggable) -->
             <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns" DragCompleted="OnColumnSplitterDragCompleted"/>
 
-            <!-- Preview Pane -->
+            <!-- Preview Pane (right panel stretches full height) -->
             <Border Grid.Column="2" Padding="8" IsVisible="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}">
                 <ScrollViewer DataContext="{Binding SelectedMedia}">
                     <StackPanel>
@@ -270,12 +314,13 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                            <Border CornerRadius="12"
-                                Background="#333"
-                                Padding="6,2"
-                                Margin="0,4,4,0"
-                                Cursor="Hand"
-                                ToolTip.Tip="Left-click: include tag; Right-click: exclude tag">
+                                                    <Border CornerRadius="12"
+                                                            Padding="6,2"
+                                                            Margin="0,4,4,0"
+                                                            Cursor="Hand"
+                                                            ToolTip.Tip="Left-click: include tag; Right-click: exclude tag"
+                                                            Background="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryBrush}}"
+                                                            PointerReleased="OnTagChipPointerReleased">
                                                         <TextBlock Text="{Binding .}"/>
                                                     </Border>
                                                 </DataTemplate>
@@ -288,50 +333,72 @@
                     </StackPanel>
                 </ScrollViewer>
             </Border>
+            <!-- Downloads panel now only under gallery (center column) -->
+            <Border x:Name="DownloadsPanel" Grid.Column="1" Grid.Row="1" Margin="0,8,0,0" Padding="6" BorderBrush="#333" BorderThickness="1" VerticalAlignment="Bottom" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <!-- Header / collapsed bar -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                            <TextBlock Text="Downloads" FontWeight="Bold"/>
+                            <Button Content="Download Selected" Command="{Binding DownloadSelectedCommand}" IsEnabled="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}"/>
+                            <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
+                            <Button Content="Open Folder" Command="{Binding OpenDownloadsFolderCommand}"/>
+                        </StackPanel>
+                        <Button x:Name="DownloadsToggleButton" Content="^" HorizontalAlignment="Center" Click="OnToggleDownloadsPanelClick"/>
+            <!-- Header resize grip (always visible; allows drag even when body collapsed) -->
+            <Border x:Name="DownloadsHeaderResizeHandle" Height="6" Background="#404040" CornerRadius="2" Margin="0,0,0,-3"
+                HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Cursor="SizeNorthSouth"
+                PointerPressed="OnDownloadsResizeHandlePressed" PointerReleased="OnDownloadsResizeHandleReleased" PointerMoved="OnDownloadsResizeHandleMoved"/>
+                    </Grid>
+                    <!-- Expanding body -->
+                    <Border x:Name="DownloadsBody" Grid.Row="1" Margin="0,6,0,0" Height="0" ClipToBounds="True">
+                        <Border.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="Height" Duration="0:0:0.18" Easing="CircularEaseOut"/>
+                            </Transitions>
+                        </Border.Transitions>
+                        <StackPanel>
+                            <!-- Drag handle for resizing -->
+                            <Border x:Name="DownloadsResizeHandle" Height="12" Margin="0,0,0,6" Background="#303030" CornerRadius="2" Cursor="SizeNorthSouth"
+                                    PointerPressed="OnDownloadsResizeHandlePressed" PointerReleased="OnDownloadsResizeHandleReleased" PointerMoved="OnDownloadsResizeHandleMoved"/>
+                            <DataGrid ItemsSource="{Binding DownloadQueue}" AutoGenerateColumns="False" HeadersVisibility="Column">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Title" Binding="{Binding MediaItem.Title}" Width="2*"/>
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
+                                <DataGridTemplateColumn Header="Progress" Width="*">
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <ProgressBar Width="120" Height="14" Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
+                                            <TextBlock Text="{Binding . , Converter={StaticResource DownloadEta}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Actions" Width="240">
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Button Content="Open" IsEnabled="False"/>
+                                            <Button Content="Folder" IsEnabled="False"/>
+                                            <Button Content="Pause" Command="{Binding DataContext.PauseDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsDownloading}}"/>
+                                            <Button Content="Resume" Command="{Binding DataContext.ResumeDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsPaused}}"/>
+                                            <Button Content="Cancel" Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsActive}}"/>
+                                            <Button Content="Retry" Command="{Binding DataContext.RetryDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsFailed}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Path" Binding="{Binding DestinationPath}" Width="2*"/>
+                            </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
-    <!-- Horizontal splitter above Downloads (invisible, still draggable) -->
-    <GridSplitter Grid.Row="2" Height="2" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows" DragCompleted="OnRowSplitterDragCompleted"/>
-
-    <!-- Downloads -->
-    <Border x:Name="DownloadsPanel" Grid.Row="3" Margin="8,8,8,8" Padding="6" BorderBrush="#333" BorderThickness="1">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="Downloads" FontWeight="Bold"/>
-                    <Button Content="Download Selected" Command="{Binding DownloadSelectedCommand}" IsEnabled="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}"/>
-                    <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
-                </StackPanel>
-                <DataGrid Grid.Row="1" ItemsSource="{Binding DownloadQueue}" AutoGenerateColumns="False" HeadersVisibility="Column">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Title" Binding="{Binding MediaItem.Title}" Width="2*"/>
-                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
-                        <DataGridTemplateColumn Header="Progress" Width="*">
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ProgressBar Width="120" Height="14" Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
-                                    <TextBlock Text="{Binding . , Converter={StaticResource DownloadEta}}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="Actions" Width="240">
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Button Content="Open" IsEnabled="False"/>
-                                    <Button Content="Folder" IsEnabled="False"/>
-                                    <Button Content="Pause" Command="{Binding DataContext.PauseDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsDownloading}}"/>
-                                    <Button Content="Resume" Command="{Binding DataContext.ResumeDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsPaused}}"/>
-                                    <Button Content="Cancel" Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsActive}}"/>
-                                    <Button Content="Retry" Command="{Binding DataContext.RetryDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsFailed}}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Path" Binding="{Binding DestinationPath}" Width="2*"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-            </Grid>
-        </Border>
     </Grid>
 </Window>

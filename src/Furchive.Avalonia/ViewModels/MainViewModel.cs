@@ -30,8 +30,6 @@ public partial class MainViewModel : ObservableObject
     private readonly IPlatformApi? _e621Platform;
     private readonly IPlatformShellService? _shell;
 
-    [ObservableProperty] private string _searchQuery = string.Empty;
-    partial void OnSearchQueryChanged(string value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
     [ObservableProperty] private bool _isE621Enabled = true;
     [ObservableProperty] private bool _isSearching = false;
     [ObservableProperty] private MediaItem? _selectedMedia;
@@ -76,7 +74,7 @@ public partial class MainViewModel : ObservableObject
     // Streaming pool load cancellation source
     private CancellationTokenSource? _poolStreamCts;
 
-    public partial class SavedSearch { public string Name { get; set; } = string.Empty; public List<string> IncludeTags { get; set; } = new(); public List<string> ExcludeTags { get; set; } = new(); public int RatingFilterIndex { get; set; } public string? SearchQuery { get; set; } }
+    public partial class SavedSearch { public string Name { get; set; } = string.Empty; public List<string> IncludeTags { get; set; } = new(); public List<string> ExcludeTags { get; set; } = new(); public int RatingFilterIndex { get; set; } }
     [ObservableProperty] private string _saveSearchName = string.Empty;
     public ObservableCollection<SavedSearch> SavedSearches { get; } = new();
     public Dictionary<string, PlatformHealth> PlatformHealth { get; private set; } = new();
@@ -92,8 +90,9 @@ public partial class MainViewModel : ObservableObject
     public double GalleryTileWidth => 180 * GalleryScale;
     public double GalleryTileHeight => 210 * GalleryScale;
     public double GalleryImageSize => 170 * GalleryScale;
+    public double GalleryFontSize => 12 * GalleryScale;
     private double _galleryScale = 1.0;
-    public double GalleryScale { get => _galleryScale; set { if (Math.Abs(_galleryScale - value) > 0.0001) { _galleryScale = value; OnPropertyChanged(nameof(GalleryScale)); OnPropertyChanged(nameof(GalleryTileWidth)); OnPropertyChanged(nameof(GalleryTileHeight)); OnPropertyChanged(nameof(GalleryImageSize)); } } }
+    public double GalleryScale { get => _galleryScale; set { if (Math.Abs(_galleryScale - value) > 0.0001) { _galleryScale = value; OnPropertyChanged(nameof(GalleryScale)); OnPropertyChanged(nameof(GalleryTileWidth)); OnPropertyChanged(nameof(GalleryTileHeight)); OnPropertyChanged(nameof(GalleryImageSize)); OnPropertyChanged(nameof(GalleryFontSize)); } } }
 
     public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore, IPlatformShellService? shell = null)
     {
@@ -188,6 +187,19 @@ public partial class MainViewModel : ObservableObject
     finally { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     }
 
+    [RelayCommand]
+    private async Task ClearTagsAsync()
+    {
+        try
+        {
+            IncludeTags.Clear();
+            ExcludeTags.Clear();
+            StatusMessage = "Tags cleared";
+            if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync();
+        }
+        catch { }
+    }
+
     [RelayCommand] private async Task NextPageAsync() { if (!CanGoNext || IsSearching) return; try { if (IsPoolMode && CurrentPoolId.HasValue) { await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage + 1, reset: true); } else { await PerformSearchAsync(CurrentPage + 1, reset: true); } } catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Next page failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Next page failed", ex.Message)); } catch { } } finally { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
     [RelayCommand] private async Task PrevPageAsync() { if (!CanGoPrev || IsSearching) return; try { if (IsPoolMode && CurrentPoolId.HasValue) { await PerformPoolPageAsync(CurrentPoolId.Value, CurrentPage - 1, reset: true); } else { await PerformSearchAsync(CurrentPage - 1, reset: true); } } catch (Exception ex) { StatusMessage = $"Search failed: {ex.Message}"; _logger.LogError(ex, "Prev page failed"); try { WeakReferenceMessenger.Default.Send(new UiErrorMessage("Prev page failed", ex.Message)); } catch { } } finally { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } } }
 
@@ -200,7 +212,7 @@ public partial class MainViewModel : ObservableObject
 
             await EnsureE621AuthAsync();
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
-            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery); var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList(); var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var includeTags = IncludeTags.ToList(); var excludeTags = ExcludeTags.ToList();
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
@@ -225,9 +237,8 @@ public partial class MainViewModel : ObservableObject
             IsSearching = true;
             await EnsureE621AuthAsync();
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
-            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
-            var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
-            var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var includeTags = IncludeTags.ToList();
+            var excludeTags = ExcludeTags.ToList();
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1;
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
@@ -265,9 +276,8 @@ public partial class MainViewModel : ObservableObject
             // Do not set IsSearching to true (avoid UI spinner change); operate silently.
             await EnsureE621AuthAsync();
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
-            var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery);
-            var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList();
-            var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList();
+            var includeTags = IncludeTags.ToList();
+            var excludeTags = ExcludeTags.ToList();
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1; // do NOT assign to CurrentPage
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
@@ -297,7 +307,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var ahead = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchPagesAhead", 2), 0, 5); if (ahead <= 0) return;
-            await EnsureE621AuthAsync(); var (inlineInclude, inlineExclude) = ParseQuery(SearchQuery); var includeTags = IncludeTags.Union(inlineInclude, StringComparer.OrdinalIgnoreCase).ToList(); var excludeTags = ExcludeTags.Union(inlineExclude, StringComparer.OrdinalIgnoreCase).ToList(); var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
+            await EnsureE621AuthAsync(); var includeTags = IncludeTags.ToList(); var excludeTags = ExcludeTags.ToList(); var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
             var pages = Enumerable.Range(currentPage + 1, ahead).ToList(); if (pages.Count == 0) return;
             await Dispatcher.UIThread.InvokeAsync(() => { IsBackgroundCaching = true; BackgroundCachingCurrent = 0; BackgroundCachingTotal = pages.Count; BackgroundCachingItemsFetched = 0; });
             var degree = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchParallelism", 2), 1, 4); using var throttler = new SemaphoreSlim(degree); var tasks = new List<Task>();
@@ -593,7 +603,6 @@ public partial class MainViewModel : ObservableObject
             {
                 IsPoolMode = IsPoolMode,
                 PoolId = CurrentPoolId,
-                SearchQuery = SearchQuery,
                 Include = IncludeTags.ToList(),
                 Exclude = ExcludeTags.ToList(),
                 RatingFilterIndex = RatingFilterIndex,
@@ -615,7 +624,6 @@ public partial class MainViewModel : ObservableObject
             if (session == null) return;
 
             RatingFilterIndex = session.RatingFilterIndex;
-            SearchQuery = session.SearchQuery ?? string.Empty;
             IncludeTags.Clear(); foreach (var t in (session.Include ?? new())) IncludeTags.Add(t);
             ExcludeTags.Clear(); foreach (var t in (session.Exclude ?? new())) ExcludeTags.Add(t);
 
@@ -633,9 +641,8 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to restore last session"); }
     }
-    private sealed class LastSession { public bool IsPoolMode { get; set; } public int? PoolId { get; set; } public string? SearchQuery { get; set; } public List<string> Include { get; set; } = new(); public List<string> Exclude { get; set; } = new(); public int RatingFilterIndex { get; set; } public int Page { get; set; } = 1; }
-    public static (IEnumerable<string> include, IEnumerable<string> exclude) ParseQuery(string? query) { if (string.IsNullOrWhiteSpace(query)) return (Enumerable.Empty<string>(), Enumerable.Empty<string>()); var parts = query.Split(new[] { ' ', '\t', '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries); var include = new List<string>(); var exclude = new List<string>(); foreach (var raw in parts) { var t = raw.Trim(); if (t.StartsWith("-")) { t = t.Substring(1); if (!string.IsNullOrWhiteSpace(t)) exclude.Add(t); } else include.Add(t); } return (include, exclude); }
-    public async Task<MediaItem?> FetchNextFromApiAsync(bool forward) { var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var (inc, exc) = ParseQuery(SearchQuery); var include = IncludeTags.Union(inc, StringComparer.OrdinalIgnoreCase).ToList(); var exclude = ExcludeTags.Union(exc, StringComparer.OrdinalIgnoreCase).ToList(); var page = Math.Max(1, CurrentPage + (forward ? 1 : -1)); var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) }); return result.Items.FirstOrDefault(); }
+    private sealed class LastSession { public bool IsPoolMode { get; set; } public int? PoolId { get; set; } public List<string> Include { get; set; } = new(); public List<string> Exclude { get; set; } = new(); public int RatingFilterIndex { get; set; } public int Page { get; set; } = 1; }
+    public async Task<MediaItem?> FetchNextFromApiAsync(bool forward) { var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } }; var include = IncludeTags.ToList(); var exclude = ExcludeTags.ToList(); var page = Math.Max(1, CurrentPage + (forward ? 1 : -1)); var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) }); return result.Items.FirstOrDefault(); }
     [RelayCommand] private async Task AddIncludeTag(string tag)
     {
         if (string.IsNullOrWhiteSpace(tag)) return;
@@ -676,10 +683,10 @@ public partial class MainViewModel : ObservableObject
     private void OnDownloadStatusChanged(object? sender, DownloadJob job) { Dispatcher.UIThread.Post(() => { if (!string.IsNullOrEmpty(job.ParentId)) { return; } var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id); if (existing != null) { existing.Status = job.Status; existing.DestinationPath = job.DestinationPath; existing.CompletedAt = job.CompletedAt; existing.ErrorMessage = job.ErrorMessage; existing.TotalBytes = job.TotalBytes; existing.BytesDownloaded = job.BytesDownloaded; } else { DownloadQueue.Add(job); } if (job.Status == DownloadStatus.Completed) { try { var match = SearchResults.FirstOrDefault(m => m.Id == job.MediaItem.Id); if (match != null) { OnPropertyChanged(nameof(SearchResults)); } } catch { } if (SelectedMedia?.Id == job.MediaItem.Id) { OnPropertyChanged(nameof(IsSelectedDownloaded)); } } }); }
     private void OnDownloadProgressUpdated(object? sender, DownloadJob job) { Dispatcher.UIThread.Post(() => { if (!string.IsNullOrEmpty(job.ParentId)) return; var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id); if (existing != null) { existing.BytesDownloaded = job.BytesDownloaded; existing.TotalBytes = job.TotalBytes; } }); }
     [ObservableProperty] private bool _showFavoritesButton; private void UpdateFavoritesVisibility() { var user = _settingsService.GetSetting<string>("E621Username", "") ?? ""; var key = _settingsService.GetSetting<string>("E621ApiKey", "") ?? ""; ShowFavoritesButton = !string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(key); }
-    [RelayCommand] private async Task FavoritesAsync() { var user = _settingsService.GetSetting<string>("E621Username", "") ?? ""; if (string.IsNullOrWhiteSpace(user)) return; SearchQuery = $"fav:{user}"; IncludeTags.Clear(); ExcludeTags.Clear(); await SearchAsync(); }
-    [RelayCommand] private async Task SaveSearchAsync() { var name = SaveSearchName?.Trim(); if (string.IsNullOrWhiteSpace(name)) return; var ss = new SavedSearch { Name = name, IncludeTags = IncludeTags.ToList(), ExcludeTags = ExcludeTags.ToList(), RatingFilterIndex = RatingFilterIndex, SearchQuery = SearchQuery }; var existing = SavedSearches.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)); if (existing != null) SavedSearches.Remove(existing); SavedSearches.Add(ss); await PersistSavedSearchesAsync(); SaveSearchName = string.Empty; }
+    [RelayCommand] private async Task FavoritesAsync() { var user = _settingsService.GetSetting<string>("E621Username", "") ?? ""; if (string.IsNullOrWhiteSpace(user)) return; IncludeTags.Clear(); ExcludeTags.Clear(); IncludeTags.Add($"fav:{user}"); await SearchAsync(); }
+    [RelayCommand] private async Task SaveSearchAsync() { var name = SaveSearchName?.Trim(); if (string.IsNullOrWhiteSpace(name)) return; var ss = new SavedSearch { Name = name, IncludeTags = IncludeTags.ToList(), ExcludeTags = ExcludeTags.ToList(), RatingFilterIndex = RatingFilterIndex }; var existing = SavedSearches.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)); if (existing != null) SavedSearches.Remove(existing); SavedSearches.Add(ss); await PersistSavedSearchesAsync(); SaveSearchName = string.Empty; }
     [RelayCommand] private async Task DeleteSavedSearchAsync(SavedSearch? ss) { if (ss == null) return; SavedSearches.Remove(ss); await PersistSavedSearchesAsync(); }
-    [RelayCommand] private async Task ApplySavedSearchAsync(SavedSearch? ss) { if (ss == null) return; IncludeTags.Clear(); foreach (var t in ss.IncludeTags) IncludeTags.Add(t); ExcludeTags.Clear(); foreach (var t in ss.ExcludeTags) ExcludeTags.Add(t); RatingFilterIndex = ss.RatingFilterIndex; SearchQuery = ss.SearchQuery ?? string.Empty; await SearchAsync(); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
+    [RelayCommand] private async Task ApplySavedSearchAsync(SavedSearch? ss) { if (ss == null) return; IncludeTags.Clear(); foreach (var t in ss.IncludeTags) IncludeTags.Add(t); ExcludeTags.Clear(); foreach (var t in ss.ExcludeTags) ExcludeTags.Add(t); RatingFilterIndex = ss.RatingFilterIndex; await SearchAsync(); try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { } }
     private async Task PersistSavedSearchesAsync() { try { var json = JsonSerializer.Serialize(SavedSearches.ToList()); await _settingsService.SetSettingAsync("SavedSearches", json); } catch { } }
 
     // Clears the current selection (bound to Esc)

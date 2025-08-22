@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Collections.Generic;
 using Avalonia.Data.Converters;
 using Avalonia.Controls;
+using Avalonia.Media;
 
 namespace Furchive.Avalonia.Converters;
 
@@ -135,4 +136,82 @@ public class NullToGridLengthConverter : IValueConverter
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
+}
+
+// Maps a tag category string to a background brush for tag chips.
+public class TagCategoryToBrushConverter : IValueConverter
+{
+    private static readonly Dictionary<string, SolidColorBrush> _map = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["artist"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x2d, 0x6c, 0xdf)),
+        ["character"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x9c, 0x27, 0xb0)),
+        ["species"] = new SolidColorBrush(Color.FromArgb(0xFF, 0xff, 0x98, 0x00)),
+        ["general"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x55, 0x55, 0x55)),
+        ["meta"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x60, 0x7d, 0x8b)),
+        ["lore"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x4c, 0xaf, 0x50)),
+        ["copyright"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x79, 0x55, 0x48)),
+    };
+
+    // Slightly rounded fallback neutral color.
+    private static readonly SolidColorBrush _default = new(Color.FromArgb(0xFF, 0x44, 0x44, 0x44));
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        try
+        {
+            if (value == null) return _default;
+            var key = value.ToString() ?? string.Empty;
+            if (_map.TryGetValue(key, out var brush)) return brush;
+            return _default;
+        }
+        catch { return _default; }
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+// Determines a tag's category using the currently selected media's TagCategories dictionary
+// (value[0] = tag string, value[1] = Dictionary<string,List<string>> TagCategories) then maps to brush.
+public class TagStringToCategoryBrushConverter : IMultiValueConverter
+{
+    private static readonly Dictionary<string, SolidColorBrush> _map = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["artist"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x2d, 0x6c, 0xdf)),
+        ["character"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x9c, 0x27, 0xb0)),
+        ["species"] = new SolidColorBrush(Color.FromArgb(0xFF, 0xff, 0x98, 0x00)),
+        ["general"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x55, 0x55, 0x55)),
+        ["meta"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x60, 0x7d, 0x8b)),
+        ["lore"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x4c, 0xaf, 0x50)),
+        ["copyright"] = new SolidColorBrush(Color.FromArgb(0xFF, 0x79, 0x55, 0x48)),
+    };
+    private static readonly SolidColorBrush _default = new(Color.FromArgb(0xFF, 0x44, 0x44, 0x44));
+
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        try
+        {
+            if (values == null || values.Count < 2) return _default;
+            var tag = values[0]?.ToString();
+            if (string.IsNullOrWhiteSpace(tag)) return _default;
+            var dict = values[1] as IDictionary<string, List<string>>;
+            if (dict != null)
+            {
+                foreach (var kvp in dict)
+                {
+                    try
+                    {
+                        if (kvp.Value != null && kvp.Value.Any(v => string.Equals(v, tag, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            if (_map.TryGetValue(kvp.Key, out var brush)) return brush;
+                            break; // matched category but no color mapping -> fallback
+                        }
+                    }
+                    catch { }
+                }
+            }
+            return _default;
+        }
+        catch { return _default; }
+    }
 }

@@ -40,7 +40,7 @@ public partial class SettingsWindow : Window
         DownloadDir.Text = _settings?.GetSetting<string>("DefaultDownloadDirectory", fallback) ?? fallback;
         E621User.Text = _settings?.GetSetting<string>("E621Username", "") ?? "";
         E621Key.Text = _settings?.GetSetting<string>("E621ApiKey", "") ?? "";
-        FilenameTemplate.Text = _settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}";
+    FilenameTemplate.Text = _settings?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}";
         PoolFilenameTemplate.Text = _settings?.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
         try { PrefetchPagesAhead.Value = _settings?.GetSetting<int>("E621SearchPrefetchPagesAhead", 2) ?? 2; } catch { PrefetchPagesAhead.Value = 2; }
         try { PrefetchParallelism.Value = _settings?.GetSetting<int>("E621SearchPrefetchParallelism", 2) ?? 2; } catch { PrefetchParallelism.Value = 2; }
@@ -53,7 +53,8 @@ public partial class SettingsWindow : Window
         try { PoolsUpdateIntervalMinutes.Value = _settings?.GetSetting<int>("PoolsUpdateIntervalMinutes", 360) ?? 360; } catch { PoolsUpdateIntervalMinutes.Value = 360; }
         try { ThumbnailPrewarmEnabled.IsChecked = _settings?.GetSetting<bool>("ThumbnailPrewarmEnabled", true) ?? true; } catch { ThumbnailPrewarmEnabled.IsChecked = true; }
         try { SaveMetadataJson.IsChecked = _settings?.GetSetting<bool>("SaveMetadataJson", false) ?? false; } catch { SaveMetadataJson.IsChecked = false; }
-        try { UseOriginalFilename.IsChecked = _settings?.GetSetting<bool>("UseOriginalFilename", false) ?? false; } catch { UseOriginalFilename.IsChecked = false; }
+    try { UseOriginalFilename.IsChecked = _settings?.GetSetting<bool>("UseOriginalFilename", false) ?? false; } catch { UseOriginalFilename.IsChecked = false; }
+    try { SavePostJson.IsChecked = _settings?.GetSetting<bool>("SavePostJson", false) ?? false; } catch { SavePostJson.IsChecked = false; }
     // e621 Advanced (defaults chosen conservatively)
     try { E621MaxPoolDetailConcurrency.Value = _settings?.GetSetting<int>("E621MaxPoolDetailConcurrency", 8) ?? 8; } catch { E621MaxPoolDetailConcurrency.Value = 8; }
     try { E621SearchTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.Search", 10) ?? 10; } catch { E621SearchTtlMinutes.Value = 10; }
@@ -124,6 +125,7 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("DownloadDuplicatesPolicy", policy);
             await _settings.SetSettingAsync("SaveMetadataJson", SaveMetadataJson.IsChecked == true);
             await _settings.SetSettingAsync("UseOriginalFilename", UseOriginalFilename.IsChecked == true);
+            await _settings.SetSettingAsync("SavePostJson", SavePostJson.IsChecked == true);
             await _settings.SetSettingAsync("NetworkTimeoutSeconds", Math.Clamp((int)(NetworkTimeoutSeconds.Value ?? 30), 5, 120));
             await _settings.SetSettingAsync("MaxResultsPerSource", Math.Clamp((int)(MaxResultsPerSource.Value ?? 50), 10, 320));
             // Keep PostsPerPage (Appearance) synced

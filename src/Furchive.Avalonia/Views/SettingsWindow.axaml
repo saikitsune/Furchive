@@ -17,7 +17,7 @@
         </StackPanel>
         <ScrollViewer Grid.Row="2">
             <TabControl>
-                <TabItem Header="General">
+                <TabItem Header="Download">
                     <ScrollViewer>
                         <StackPanel Spacing="10" Margin="0,8,0,0">
                 <StackPanel>
@@ -37,6 +37,10 @@
                 <StackPanel>
                     <TextBlock Text="Pool Template"/>
                     <TextBox x:Name="PoolFilenameTemplate"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
+                    <CheckBox x:Name="SavePostJson" Content="Save post JSON alongside media"/>
+                    <CheckBox x:Name="UseOriginalFilename" Content="Use original filename when available"/>
                 </StackPanel>
                 </StackPanel>
                     </ScrollViewer>
@@ -96,7 +100,7 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <CheckBox x:Name="SaveMetadataJson" Content="Save metadata .json next to file"/>
-                    <CheckBox x:Name="UseOriginalFilename" Content="Use original filename when available"/>
+                    <!-- Removed duplicate UseOriginalFilename checkbox (already present under Download tab) -->
                     <Button Content="Open downloads folder" Click="OnOpenDownloadsFolder"/>
                 </StackPanel>
                 <Separator/>
