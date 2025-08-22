@@ -38,6 +38,18 @@ public partial class MainWindow : Window
                     }
                     catch { }
                 });
+                WeakReferenceMessenger.Default.Register<OpenViewerRequestMessage>(this, (_, msg) =>
+                {
+                    try
+                    {
+                        var req = msg.Value;
+                        if (req == null || req.Items.Count == 0) return;
+                        var vw = new ViewerWindow();
+                        vw.Initialize(req.Items, req.Index);
+                        vw.Show(this);
+                    }
+                    catch { }
+                });
             }
             catch { }
             try { Icon = new WindowIcon(global::Avalonia.Platform.AssetLoader.Open(new Uri("avares://Furchive/Assets/icon.ico"))); } catch { }

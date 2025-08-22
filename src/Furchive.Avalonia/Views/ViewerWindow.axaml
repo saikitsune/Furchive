@@ -1,84 +1,48 @@
-<Window xmlns="https://github.com/avaloniaui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:beh="using:Furchive.Avalonia.Behaviors"
-    xmlns:anim="https://github.com/whistyun/AnimatedImage.Avalonia"
-        x:Class="Furchive.Avalonia.Views.ViewerWindow"
-        Width="1000" Height="800" Title="Viewer"
-        Icon="avares://Furchive/Assets/icon.ico">
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:beh="using:Furchive.Avalonia.Behaviors" x:Class="Furchive.Avalonia.Views.ViewerWindow" Width="1400" Height="900" MinWidth="900" MinHeight="480" Title="Viewer" Icon="avares://Furchive/Assets/icon.ico">
     <Grid RowDefinitions="Auto,*">
-        <!-- Toolbar -->
-        <DockPanel Margin="8">
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Spacing="8">
-                <Button Content="Open Source" Click="OnOpenSource"/>
-                <Button Content="Open Original" Click="OnOpenOriginal"/>
-                <Button Content="Close" Click="OnClose"/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="Viewer" FontSize="18"/>
-                <TextBlock Text="·"/>
-                <TextBlock Text="{Binding Title}"/>
-                <TextBlock Text="·"/>
-                <TextBlock Text="{Binding Artist}"/>
-                <TextBlock Text="·"/>
-                <TextBlock Text="Zoom"/>
-                <Slider x:Name="ZoomSlider" Width="160" Minimum="0.25" Maximum="4" Value="1"
-                        TickFrequency="0.25" SmallChange="0.1" LargeChange="0.5"/>
-                <TextBlock Text="·"/>
-                <TextBlock Text="Size:"/>
-                <ComboBox x:Name="SizeModeCombo" Width="140" SelectionChanged="OnSizeModeChanged">
-                    <ComboBoxItem Content="Fit to window" IsSelected="True"/>
+        <DockPanel Margin="6">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button x:Name="PrevButton" Content="◀ Prev" Click="OnPrev"/>
+                <Button x:Name="NextButton" Content="Next ▶" Click="OnNext"/>
+                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding Title}"/>
+                <TextBlock Text="  •  " VerticalAlignment="Center"/>
+                <TextBlock x:Name="PageNumberText" VerticalAlignment="Center"/>
+                <Button Content="Open in Browser" Margin="12,0,0,0" Click="OnOpenSource"/>
+                <Button Content="Download" Margin="6,0,0,0" Click="OnDownload"/>
+                <Button Content="Folder" Margin="6,0,0,0" Click="OnOpenDownloads"/>
+                <TextBlock Margin="12,0,4,0" Text="Fit:" VerticalAlignment="Center"/>
+                <ComboBox x:Name="FitModeCombo" Width="110" SelectionChanged="OnFitModeChanged">
+                    <ComboBoxItem Content="Contain" IsSelected="True"/>
+                    <ComboBoxItem Content="Fill"/>
                     <ComboBoxItem Content="Original"/>
                 </ComboBox>
+                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="ZoomPercentText" Text="100%" Margin="0,0,6,0"/>
+                    <Slider x:Name="ZoomSlider" Width="160" Minimum="10" Maximum="500" Value="100" ValueChanged="OnZoomSliderChanged"/>
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Spacing="6">
+                <Button Content="Fullscreen" Click="OnToggleFullscreen"/>
+                <Button Content="Close" Click="OnClose"/>
             </StackPanel>
         </DockPanel>
-
-        <!-- Content area: Image/GIF mode or Video mode (LibVLC) -->
-        <Grid Grid.Row="1" Background="#202020">
-            <!-- Image mode -->
-            <Border x:Name="ImageContainer" Background="#202020" IsVisible="True">
-                <ScrollViewer x:Name="ImageScroll"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalContentAlignment="Center"
-                              VerticalContentAlignment="Center"
-                              PointerPressed="OnImageDragPointerPressed"
-                              PointerReleased="OnImageDragPointerReleased"
-                              PointerMoved="OnImageDragPointerMoved">
-                    <LayoutTransformControl>
-                        <LayoutTransformControl.LayoutTransform>
-                            <ScaleTransform ScaleX="{Binding #ZoomSlider.Value}"
-                                            ScaleY="{Binding #ZoomSlider.Value}"/>
-                        </LayoutTransformControl.LayoutTransform>
-                        <Grid x:Name="ImageContent" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Image x:Name="ImageView" Stretch="None"
-                                   PointerWheelChanged="OnImageWheel"
-                                   beh:RemoteImage.SourceUri=""/>
-                            <!-- Animated GIF via AnimatedImage.Avalonia attached property -->
-                            <Image x:Name="GifView" Stretch="None" IsVisible="False"/>
+        <Grid Grid.Row="1">
+            <ScrollViewer x:Name="ViewportScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                        PointerPressed="OnViewportPointerPressed" PointerReleased="OnViewportPointerReleased" PointerMoved="OnViewportPointerMoved" PointerWheelChanged="OnViewportWheel">
+                <Grid x:Name="ViewportContent" Width="{Binding #ViewportScroll.Viewport.Width}" Height="{Binding #ViewportScroll.Viewport.Height}">
+                    <Viewbox x:Name="ImageBox" Stretch="Uniform" IsVisible="True">
+                        <Grid>
+                            <Image x:Name="ImageElement" Stretch="None" beh:RemoteImage.SourceUri=""/>
                         </Grid>
-                    </LayoutTransformControl>
-                </ScrollViewer>
-            </Border>
-
-            <!-- Video mode (LibVLC) -->
-            <Border x:Name="VideoContainer" Background="#000000" IsVisible="False">
-                <Grid RowDefinitions="*,Auto">
-                    <!-- Lazy host; replaced at runtime by VideoView (VLC) or WebView (HTML5) depending on backend -->
-                    <ContentControl x:Name="VideoHost"/>
-                    <!-- Controls -->
-                    <Grid Grid.Row="1" Margin="8" ColumnDefinitions="Auto,Auto,*,Auto,Auto,120">
-                        <Button x:Name="PlayPauseButton" Grid.Column="0" Width="80" Content="Play" Click="OnPlayPause"/>
-                        <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" x:Name="CurrentTimeText" Text="00:00"/>
-            <Slider x:Name="SeekSlider" Grid.Column="2" Minimum="0" Maximum="1000" Value="0"
-                IsSnapToTickEnabled="False"
-                PointerPressed="OnSeekPointerPressed"
-                PointerReleased="OnSeekPointerReleased"
-                ValueChanged="OnSeekValueChanged"/>
-                        <TextBlock Grid.Column="3" Margin="8,0" VerticalAlignment="Center" x:Name="TotalTimeText" Text="00:00"/>
-                        <TextBlock Grid.Column="4" Margin="12,0,6,0" VerticalAlignment="Center" Text="Vol"/>
-                        <Slider x:Name="VolumeSlider" Grid.Column="5" Minimum="0" Maximum="100" Value="100" ValueChanged="OnVolumeChanged"/>
-                    </Grid>
+                    </Viewbox>
+                    <ContentControl x:Name="VideoHost" IsVisible="False"/>
                 </Grid>
+            </ScrollViewer>
+            <Border x:Name="LoadingOverlay" Background="#B3000000" IsVisible="False">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="LoadingText" Text="Loading..." Foreground="White" FontSize="20" HorizontalAlignment="Center"/>
+                    <ProgressBar x:Name="LoadingProgress" Width="360" Height="16" Margin="0,10,0,0" Minimum="0" Maximum="100" IsIndeterminate="True"/>
+                </StackPanel>
             </Border>
         </Grid>
     </Grid>

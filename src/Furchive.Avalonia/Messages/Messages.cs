@@ -28,3 +28,11 @@ public sealed class OpenViewerMessage : ValueChangedMessage<MediaItem>
 {
     public OpenViewerMessage(MediaItem item) : base(item) { }
 }
+
+// New richer viewer open request including navigation context (list snapshot + current index)
+public sealed class OpenViewerRequestMessage : ValueChangedMessage<OpenViewerRequest>
+{
+    public OpenViewerRequestMessage(OpenViewerRequest value) : base(value) { }
+}
+
+public sealed record OpenViewerRequest(IReadOnlyList<MediaItem> Items, int Index);

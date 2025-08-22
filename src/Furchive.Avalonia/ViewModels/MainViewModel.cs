@@ -631,8 +631,18 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenViewer()
     {
-    // Notify UI layer (code-behind) to open a ViewerWindow for the selected media (MVVM rule: Window created in view layer).
-    try { if (SelectedMedia != null) WeakReferenceMessenger.Default.Send(new OpenViewerMessage(SelectedMedia)); } catch { }
+        // Notify UI layer with navigation context (snapshot of current SearchResults)
+        try
+        {
+            if (SelectedMedia != null)
+            {
+                var list = SearchResults.ToList();
+                var idx = list.FindIndex(m => m.Id == SelectedMedia.Id);
+                if (idx < 0) idx = 0;
+                WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx)));
+            }
+        }
+        catch { }
     }
 
     // Called by view when pool selection changes (e.g., SelectionChanged event) to auto-load pool
