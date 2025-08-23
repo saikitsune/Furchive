@@ -82,8 +82,7 @@ public partial class SettingsWindow : Window
     try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
         try { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } catch { }
     try { LoadLastSessionEnabled.IsChecked = _settings?.GetSetting<bool>("LoadLastSessionEnabled", true) ?? true; } catch { LoadLastSessionEnabled.IsChecked = true; }
-    // WebView enabled (default true)
-    try { WebViewEnabled.IsChecked = _settings?.GetSetting<bool>("WebViewEnabled", true) ?? true; } catch { WebViewEnabled.IsChecked = true; }
+    // (Legacy WebView setting removed; LibVLC used for video playback)
         // Computed UA
         try
         {
@@ -145,7 +144,7 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay.IsChecked == true);
             await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted.IsChecked == true);
             await _settings.SetSettingAsync("ViewerGpuAccelerationEnabled", ViewerGpuAccelerationEnabled.IsChecked == true);
-            await _settings.SetSettingAsync("WebViewEnabled", WebViewEnabled.IsChecked == true);
+            // WebViewEnabled removed: always use native LibVLC path
             var loadLast = LoadLastSessionEnabled.IsChecked == true;
             await _settings.SetSettingAsync("LoadLastSessionEnabled", loadLast);
             if (!loadLast)

@@ -1,9 +1,6 @@
 using System;
 using System.IO;
 using Avalonia;
-#if HAS_WEBVIEW_AVALONIA
-using Avalonia.WebView.Desktop; // enables UseDesktopWebView()
-#endif
 
 namespace Furchive.Avalonia;
 
@@ -43,8 +40,5 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
-#if HAS_WEBVIEW_AVALONIA
-            .UseDesktopWebView()
-#endif
             .LogToTrace();
 }

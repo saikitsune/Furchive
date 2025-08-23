@@ -1,5 +1,9 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -10,6 +14,11 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Furchive.Avalonia.Behaviors;
 using Furchive.Core.Models;
+#if HAS_LIBVLC
+using LibVLCSharp.Shared; // LibVLC core
+using LibVLCSharp.Avalonia; // VideoView control
+#endif
+using Avalonia.Platform; // For TryGetPlatformHandle / IPlatformHandle
 
 namespace Furchive.Avalonia.Views;
 
@@ -51,10 +60,23 @@ public partial class ViewerWindow : Window
     private EventHandler<AvaloniaPropertyChangedEventArgs>? _imageSourceHandler;
     // Logging synchronization for viewer.log writes
     private static readonly object _viewerLogLock = new();
+    private static readonly System.Net.Http.HttpClient _httpClient = new();
+    // LibVLC shared state
+    #if HAS_LIBVLC
+    private static LibVLC? _sharedLibVlc;
+    private static bool _libVlcInitAttempted;
+    private MediaPlayer? _activeMediaPlayer;
+    private Furchive.Avalonia.Controls.VlcNativeHost? _activeVlcHost; // track current native host
+    private bool _isClosing;
+    #endif
 
     public ViewerWindow()
     {
         InitializeComponent();
+    #if HAS_LIBVLC
+    // LibVLC one-time initialization (ignore failures so image viewing still works)
+    TryInitLibVlc();
+    #endif
         Opened += (_, _) => LoadMedia();
         KeyDown += OnViewerKeyDown;
         this.PropertyChanged += (_, args) =>
@@ -116,6 +138,68 @@ public partial class ViewerWindow : Window
             {
                 try { File.AppendAllText(logFile, line); } catch { }
             }
+        }
+        catch { }
+
+        // Very simple video detection (extensions)
+    bool isVideo = false;
+        try
+        {
+            var ext = System.IO.Path.GetExtension(url)?.Trim('.').ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(ext) && (ext == "mp4" || ext == "webm" || ext == "mkv" || ext == "mov"))
+                isVideo = true;
+        }
+        catch { }
+
+    if (isVideo)
+        {
+            var videoHost = this.FindControl<Grid>("VideoHost");
+            if (videoHost != null)
+            {
+                videoHost.IsVisible = true;
+                img.IsVisible = false;
+                videoHost.Children.Clear();
+                try
+                {
+                    videoHost.Children.Add(new TextBlock
+                    {
+                        Text = "Initializing video...",
+                        Foreground = Brushes.LightGray,
+                        HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                        VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                        Margin = new Thickness(8)
+                    });
+                    var targetUrl = url;
+                    _ = AttemptCreateVideoViewAsync(videoHost, targetUrl);
+                }
+                catch (Exception vlex)
+                {
+                    LogViewerDiag("video-libvlc-error-schedule " + vlex.Message);
+                    videoHost.Children.Clear();
+                    videoHost.Children.Add(new TextBlock
+                    {
+                        Text = "Video playback failed to schedule (LibVLC)",
+                        Foreground = Brushes.OrangeRed,
+                        FontSize = 16,
+                        HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                        VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center
+                    });
+                }
+                return;
+            }
+        }
+
+        // Not a video: ensure any previous video playback is stopped and video host hidden
+        try
+        {
+            // LibVLC disabled: skip media player disposal
+            var priorVideoHost = this.FindControl<Grid>("VideoHost");
+            if (priorVideoHost != null)
+            {
+                priorVideoHost.IsVisible = false;
+                priorVideoHost.Children.Clear();
+            }
+            img.IsVisible = true;
         }
         catch { }
 
@@ -562,5 +646,345 @@ public partial class ViewerWindow : Window
         if (scaledW <= host.Bounds.Width) _translateX = 0;
         if (scaledH <= host.Bounds.Height) _translateY = 0;
     }
+
+    private static void LogViewerDiag(string line)
+    {
+        try
+        {
+            var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
+            Directory.CreateDirectory(logsRoot);
+            File.AppendAllText(Path.Combine(logsRoot, "viewer.log"), $"[{DateTime.Now:O}] {line}\n");
+        }
+        catch { }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        #if HAS_LIBVLC
+        SafeDisposePlayer();
+        #endif
+    }
+
+#if HAS_LIBVLC
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        _isClosing = true;
+        SafeDisposePlayer();
+        base.OnClosing(e);
+    }
+
+    private void SafeDisposePlayer()
+    {
+        try
+        {
+            var mp = _activeMediaPlayer;
+            if (mp != null)
+            {
+                try { DetachVlcPlayerEvents(mp); } catch { }
+                try { mp.Stop(); } catch { }
+                // Clear HWND (best-effort) before dispose so libvlc no longer targets destroyed child window.
+                try { mp.Hwnd = IntPtr.Zero; } catch { }
+                try { mp.Dispose(); } catch { }
+            }
+        }
+        catch { }
+        finally
+        {
+            _activeMediaPlayer = null;
+            _activeVlcHost = null;
+        }
+    }
+#endif
+
+    private bool HasPlatformHandle()
+    {
+        try
+        {
+            return GetNativeWindowHandle() != IntPtr.Zero;
+        }
+        catch { return false; }
+    }
+
+    private IntPtr GetNativeWindowHandle()
+    {
+        try
+        {
+            var ph = this.TryGetPlatformHandle();
+            if (ph != null)
+                return ph.Handle;
+        }
+        catch { }
+        return IntPtr.Zero;
+    }
+
+    private async Task AttemptCreateVideoViewAsync(Grid host, string url)
+    {
+        // Retry waiting for native window handle to avoid native control host crash (unable to create child window)
+        const int maxAttempts = 15; // ~750ms
+        int attempt;
+        var start = DateTime.UtcNow;
+        for (attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            if (HasPlatformHandle()) break;
+            await Task.Delay(50);
+        }
+        if (!HasPlatformHandle())
+        {
+            var elapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
+            LogViewerDiag("video-libvlc-handle-timeout attempts=" + attempt + " elapsedMs=" + elapsedMs);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                host.Children.Clear();
+                host.Children.Add(new TextBlock
+                {
+                    Text = "Video unavailable (window handle not ready)",
+                    Foreground = Brushes.OrangeRed,
+                    FontSize = 14,
+                    HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(12)
+                });
+            }, DispatcherPriority.Render);
+            return;
+        }
+
+    #if HAS_LIBVLC
+    // Ensure LibVLC is initialized before creating VideoView
+    if (!TryInitLibVlc())
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                host.Children.Clear();
+                host.Children.Add(new TextBlock
+                {
+                    Text = "Video playback unavailable (LibVLC init failed)",
+                    Foreground = Brushes.OrangeRed,
+                    FontSize = 14,
+                    HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(12)
+                });
+            }, DispatcherPriority.Render);
+            return;
+        }
+
+    await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            try
+            {
+                var elapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
+                LogViewerDiag($"video-libvlc-create attempt={attempt} elapsedMs={elapsedMs} url={url}");
+                host.Children.Clear();
+
+                // Dispose any previous player
+                try
+                {
+                    _activeMediaPlayer?.Stop();
+                    DetachVlcPlayerEvents(_activeMediaPlayer);
+                    _activeMediaPlayer?.Dispose();
+                }
+                catch { }
+
+                if (_sharedLibVlc == null)
+                {
+                    host.Children.Add(new TextBlock
+                    {
+                        Text = "LibVLC not available (null instance)",
+                        Foreground = Brushes.OrangeRed,
+                        HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                        VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                        Margin = new Thickness(12)
+                    });
+                    return;
+                }
+
+                _activeMediaPlayer = new MediaPlayer(_sharedLibVlc);
+                AttachVlcPlayerEvents(_activeMediaPlayer);
+
+                // Custom native host (Windows) to embed LibVLC directly.
+                Control renderSurface;
+                IntPtr pendingHwnd = IntPtr.Zero;
+                bool hwndAssigned = false;
+                if (OperatingSystem.IsWindows())
+                {
+                    var vlcHost = new Furchive.Avalonia.Controls.VlcNativeHost
+                    {
+                        HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch,
+                        VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch
+                    };
+                    vlcHost.HandleCreated += h =>
+                    {
+                        pendingHwnd = h;
+                        TryAssignAndStart();
+                    };
+                    _activeVlcHost = vlcHost;
+                    renderSurface = vlcHost;
+                }
+                else
+                {
+                    // For non-Windows platforms (placeholder until implemented with other surfaces)
+                    renderSurface = new Border
+                    {
+                        Background = Brushes.Black,
+                        Child = new TextBlock
+                        {
+                            Text = "Video playback not yet implemented on this OS",
+                            Foreground = Brushes.Gray,
+                            HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                            TextWrapping = TextWrapping.Wrap,
+                            Margin = new Thickness(8)
+                        }
+                    };
+                }
+
+                host.Children.Add(renderSurface);
+
+                void TryAssignAndStart()
+                {
+                    if (_isClosing) return; // don't start if window is closing
+                    if (_activeMediaPlayer == null || _sharedLibVlc == null) return;
+                    if (hwndAssigned) return;
+                    if (OperatingSystem.IsWindows())
+                    {
+                        if (pendingHwnd == IntPtr.Zero) return; // wait
+                        try
+                        {
+                            _activeMediaPlayer.Hwnd = pendingHwnd;
+                            hwndAssigned = true;
+                        }
+                        catch (Exception setEx)
+                        {
+                            LogViewerDiag("video-libvlc-assign-hwnd-failed " + setEx.Message);
+                            return;
+                        }
+                    }
+                    // Start playback
+                    try
+                    {
+                        using var media = new Media(_sharedLibVlc, new Uri(url));
+                        var ok = _activeMediaPlayer.Play(media);
+                        LogViewerDiag(ok ? "video-libvlc-play-started" : "video-libvlc-play-did-not-start");
+                    }
+                    catch (Exception playEx)
+                    {
+                        LogViewerDiag("video-libvlc-play-error " + playEx.Message);
+                        host.Children.Clear();
+                        host.Children.Add(new TextBlock
+                        {
+                            Text = "Video playback failed to start",
+                            Foreground = Brushes.OrangeRed,
+                            HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                            Margin = new Thickness(12)
+                        });
+                    }
+                }
+
+                // Safety: timeout fallback if handle never arrives (non-Windows path or failure)
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    var start = DateTime.UtcNow;
+                    while (!hwndAssigned && OperatingSystem.IsWindows() && (DateTime.UtcNow - start).TotalMilliseconds < 1500)
+                    {
+                        await Task.Delay(50);
+                        TryAssignAndStart();
+                    }
+                    if (!hwndAssigned && !OperatingSystem.IsWindows())
+                    {
+                        // non-windows: attempt playback anyway (may rely on software callbacks later)
+                        TryAssignAndStart();
+                    }
+                }, DispatcherPriority.Background);
+            }
+            catch (Exception ex)
+            {
+                LogViewerDiag("video-libvlc-error-final " + ex.Message);
+                host.Children.Clear();
+                host.Children.Add(new TextBlock
+                {
+                    Text = "Video playback failed (native host)",
+                    Foreground = Brushes.OrangeRed,
+                    FontSize = 16,
+                    HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(12)
+                });
+            }
+        }, DispatcherPriority.Render);
+        #else
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            host.Children.Clear();
+            host.Children.Add(new TextBlock
+            {
+                Text = "Video playback disabled (LibVLC not built)",
+                Foreground = Brushes.Gray,
+                HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Thickness(12)
+            });
+        });
+        #endif
+    }
+
+    #if HAS_LIBVLC
+    private bool TryInitLibVlc()
+    {
+        if (_sharedLibVlc != null) return true;
+        if (_libVlcInitAttempted) return _sharedLibVlc != null;
+        _libVlcInitAttempted = true;
+        try
+        {
+            // Avoid name collision with Furchive.Core by fully qualifying
+            LibVLCSharp.Shared.Core.Initialize();
+            // Basic options; add more if needed (e.g., hardware accel flags per platform)
+            _sharedLibVlc = new LibVLC();
+            LogViewerDiag("video-libvlc-core-initialized");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogViewerDiag("video-libvlc-init-failed " + ex.Message);
+            return false;
+        }
+    }
+
+    private void AttachVlcPlayerEvents(MediaPlayer? mp)
+    {
+        if (mp == null) return;
+        try
+        {
+            mp.Opening += OnVlcOpening;
+            mp.Playing += OnVlcPlaying;
+            mp.EndReached += OnVlcEndReached;
+            mp.EncounteredError += OnVlcError;
+        }
+        catch { }
+    }
+
+    private void DetachVlcPlayerEvents(MediaPlayer? mp)
+    {
+        if (mp == null) return;
+        try
+        {
+            mp.Opening -= OnVlcOpening;
+            mp.Playing -= OnVlcPlaying;
+            mp.EndReached -= OnVlcEndReached;
+            mp.EncounteredError -= OnVlcError;
+        }
+        catch { }
+    }
+
+    private void OnVlcOpening(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event opening");
+    private void OnVlcPlaying(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event playing");
+    private void OnVlcEndReached(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event end-reached");
+    private void OnVlcError(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event error");
+    #endif
 }
+// LibVLC singleton removed temporarily while resolving package restore instability
 

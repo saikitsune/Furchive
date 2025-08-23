@@ -28,6 +28,7 @@
             <!-- Plain host (no scrollbars). We handle zoom + translation manually. -->
             <Grid x:Name="ViewportHost" PointerWheelChanged="OnViewportWheel" PointerPressed="OnViewportPointerPressed" PointerReleased="OnViewportPointerReleased" PointerMoved="OnViewportPointerMoved" Background="#101010">
                 <Image x:Name="ImageElement" Stretch="Uniform" beh:RemoteImage.SourceUri="" RenderTransformOrigin="0,0" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Grid x:Name="VideoHost" IsVisible="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#101010" />
                 <!-- Debug overlay rectangle (toggle IsVisible in code if needed) -->
                 <Border x:Name="ViewportDebugBorder" BorderBrush="#55FF0000" BorderThickness="1" IsHitTestVisible="False" IsVisible="False" />
             </Grid>

@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Furchive</AssemblyName>
+  <RootNamespace>Furchive.Avalonia</RootNamespace>
   <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   <!-- Disable XAML compilation to avoid phantom AVLN:0004 errors referencing non-existent event attributes -->
   <AvaloniaXamlDisableCompile>true</AvaloniaXamlDisableCompile>
@@ -12,11 +13,12 @@
     <FileVersion>1.1.0.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <DefineConstants>$(DefineConstants);HAS_WEBVIEW_AVALONIA</DefineConstants>
+  <!-- Removed HAS_WEBVIEW_AVALONIA: WebView video path deprecated in favor of LibVLC -->
+  <DefineConstants>$(DefineConstants);HAS_LIBVLC</DefineConstants>
   <!-- Self-contained publish defaults -->
   <SelfContained>true</SelfContained>
   <!-- Enable single-file publish -->
-  <PublishSingleFile>true</PublishSingleFile>
+  <PublishSingleFile>false</PublishSingleFile>
   <PublishTrimmed>false</PublishTrimmed>
   <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
@@ -30,11 +32,16 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.11" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
-    <PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
-  <!-- Add base WebView package (contains WebView.Core assembly) to satisfy runtime load -->
-  <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
+  <!-- WebView packages removed (legacy video playback path deprecated) -->
     <PackageReference Include="AnimatedImage.Avalonia" Version="2.0.0" />
+  <!-- LibVLCSharp for video playback (initial integration). Add platform native VLC binaries later (e.g., VideoLAN.LibVLC.*) -->
+  <PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
+  <PackageReference Include="LibVLCSharp" Version="3.8.2" />
+  <!-- Native LibVLC binaries (Windows). For Linux/macOS rely on system-installed libvlc or package later. -->
+  <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
   </ItemGroup>
+
+
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -50,5 +57,6 @@
     </None>
     <!-- Make shared app icon available as an Avalonia resource -->
     <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
+    
   </ItemGroup>
 </Project>

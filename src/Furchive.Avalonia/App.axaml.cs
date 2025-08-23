@@ -13,10 +13,12 @@ using Furchive.Core.Services;
 using Furchive.Core.Platforms;
 using Furchive.Avalonia.Views;
 using Furchive.Avalonia.ViewModels;
-using Furchive.Avalonia.Infrastructure;
+// Removed WebView infrastructure usage (migrated to LibVLC for video)
 using Furchive.Avalonia.Services;
+using Furchive.Avalonia.Infrastructure; // for FileLoggerProvider
 using System.Net.Http;
 using Avalonia.Styling;
+// (WebView explicit builder namespace not present in current package build)
 
 namespace Furchive.Avalonia;
 
@@ -45,6 +47,8 @@ public partial class App : Application
             File.WriteAllText(traceFile, $"[{DateTime.Now:O}] Enter OnFrameworkInitializationCompleted\n");
         }
         catch { }
+
+    // WebView initialization path removed.
 
     var builder = Host.CreateDefaultBuilder();
         builder.ConfigureServices((context, services) =>
@@ -166,7 +170,7 @@ public partial class App : Application
         }
         catch { }
 
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+    if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             try
             {
