@@ -117,6 +117,68 @@ public class E621Api : IPlatformApi
     public void ClearPostDetailsCache() { _postDetailsCache.Clear(); try { _dbCache?.ClearAsync("post_details"); } catch { } }
     public void ClearPoolDetailsCache() { _poolCache.Clear(); try { _dbCache?.ClearAsync("pool_details"); } catch { } }
 
+    // Lightweight helper used by UI to prune pools whose posts have all been deleted.
+    // Returns the current count of visible (non-deleted) posts for a given pool, or null on failure.
+    public async Task<int?> TryGetPoolVisiblePostCountAsync(int poolId, CancellationToken ct = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            // Ask posts endpoint for 1 visible post; use header total if present
+            var url = $"https://e621.net/posts.json?limit=1&tags=pool:{poolId}";
+            url = AppendAuth(url);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await _httpClient.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            int? total = null;
+            if (resp.Headers.TryGetValues("X-Total-Count", out var tv))
+            {
+                var s = tv.FirstOrDefault();
+                if (int.TryParse(s, out var t)) total = t;
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            // minimal parse: check for "posts":[
+            if (total.HasValue) return total.Value;
+            if (json.Contains("\"posts\":["))
+            {
+                // If posts array is empty it will be "posts":[]
+                if (json.Contains("\"posts\":[]")) return 0;
+                return 1; // some content (we asked for limit=1)
+            }
+            return null;
+        }
+        catch { return null; }
+    }
+
+    // Stronger content validation: checks first N posts of pool for any non-empty file/sample/preview URL.
+    public async Task<bool?> TryPoolHasRenderableContentAsync(int poolId, int sample = 10, CancellationToken ct = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            var limit = Math.Clamp(sample, 1, 20);
+            var url = $"https://e621.net/posts.json?limit={limit}&tags=pool:{poolId}";
+            url = AppendAuth(url);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await _httpClient.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var parsed = JsonSerializer.Deserialize<E621PostsResponse>(json, opts);
+            if (parsed == null) return null;
+            if (parsed.Posts == null || parsed.Posts.Count == 0) return false; // no visible posts
+            foreach (var p in parsed.Posts)
+            {
+                if (!string.IsNullOrWhiteSpace(p?.File?.Url) || !string.IsNullOrWhiteSpace(p?.Sample?.Url) || !string.IsNullOrWhiteSpace(p?.Preview?.Url))
+                    return true; // has some media reference
+            }
+            return false; // all posts lack media URLs
+        }
+        catch { return null; }
+    }
+
     public async Task<PlatformHealth> GetHealthAsync()
     {
         try

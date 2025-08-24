@@ -71,11 +71,21 @@
                 </StackPanel>
             </StackPanel>
             <!-- Middle column: centered pagination -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Top" IsVisible="{Binding IsPoolMode, Converter={StaticResource InverseBoolean}}">
-                <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
-                <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
-                <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
-            </StackPanel>
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <!-- Normal pagination (non-pool mode) -->
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Top" IsVisible="{Binding IsPoolMode, Converter={StaticResource InverseBoolean}}">
+                    <Button Content="Prev" Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanGoPrev}"/>
+                    <TextBlock VerticalAlignment="Center" Text="{Binding PageInfo}"/>
+                    <Button Content="Next" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}"/>
+                </StackPanel>
+                <!-- Pool mode: show Open Pool Page button centered -->
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Top" IsVisible="{Binding IsPoolMode}">
+                    <Button Content="Open Pool Page" Command="{Binding OpenPoolPageCommand}" IsEnabled="{Binding CanOpenPoolPage}"/>
+                </StackPanel>
+            </Grid>
             <!-- Right column: favorites + settings buttons aligned right -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Top">
                 <Button Content="Favorites" Command="{Binding FavoritesCommand}" IsVisible="{Binding ShowFavoritesButton}"/>

@@ -86,8 +86,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private PoolInfo? _selectedPool;
     partial void OnSelectedPoolChanged(PoolInfo? value) { OnPropertyChanged(nameof(ShowPinPoolButton)); }
     [ObservableProperty] private bool _isPoolMode = false;
-    partial void OnIsPoolModeChanged(bool value) { OnPropertyChanged(nameof(DownloadAllLabel)); OnPropertyChanged(nameof(ShowPinPoolButton)); }
+    partial void OnIsPoolModeChanged(bool value) { OnPropertyChanged(nameof(DownloadAllLabel)); OnPropertyChanged(nameof(ShowPinPoolButton)); OnPropertyChanged(nameof(CanOpenPoolPage)); try { OpenPoolPageCommand?.NotifyCanExecuteChanged(); } catch { } }
     [ObservableProperty] private int? _currentPoolId = null;
+    partial void OnCurrentPoolIdChanged(int? value) { OnPropertyChanged(nameof(CanOpenPoolPage)); try { OpenPoolPageCommand?.NotifyCanExecuteChanged(); } catch { } }
     [ObservableProperty] private string _previewPoolName = string.Empty;
     public string PreviewPoolDisplayName => !string.IsNullOrWhiteSpace(PreviewPoolName) ? PreviewPoolName : (SelectedPool?.Name ?? string.Empty);
     public bool PreviewPoolVisible => IsPoolMode || !string.IsNullOrWhiteSpace(PreviewPoolName);
@@ -476,6 +477,8 @@ public partial class MainViewModel : ObservableObject
                     ApplyPoolsFilter();
                     PoolsStatusText = $"{Pools.Count} pools";
                 });
+                // Background prune pools whose posts are all deleted
+                _ = Task.Run(PruneZeroVisiblePoolsAsync);
                 var saved = await _cacheStore.GetPoolsSavedAtAsync();
                 _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow.AddDays(-7);
                 return true;
@@ -505,6 +508,7 @@ public partial class MainViewModel : ObservableObject
             list = list.Where(p => !p.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && p.PostCount > 0).ToList();
             var snapshot = list.ToList();
             Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in snapshot) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; });
+            _ = Task.Run(PruneZeroVisiblePoolsAsync);
             try { await _cacheStore.UpsertPoolsAsync(snapshot, CancellationToken.None); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow; } catch { }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to refresh pools"); }
@@ -535,6 +539,7 @@ public partial class MainViewModel : ObservableObject
                 ApplyPoolsFilter();
                 PoolsStatusText = $"{Pools.Count} pools";
             });
+            _ = Task.Run(PruneZeroVisiblePoolsAsync);
             try { await _cacheStore.UpsertPoolsAsync(updated, CancellationToken.None); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? DateTime.UtcNow; } catch { }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Incremental pool update failed"); }
@@ -544,6 +549,76 @@ public partial class MainViewModel : ObservableObject
     private async Task StartOrKickIncrementalAsync() { try { var file = GetPoolsCacheFilePath(); if (!File.Exists(file) || !Pools.Any()) { await RefreshPoolsIfStaleAsync(); return; } } catch { } /* Startup no longer auto-runs incremental. This method retained for compatibility if invoked elsewhere. */ }
     [RelayCommand] private void CancelPoolsUpdate() { try { _poolsCts?.Cancel(); } catch { } }
     [RelayCommand] private void RunPoolsFilter() => ApplyPoolsFilter();
+
+    // Background validation: remove pools whose post list is now empty (all posts deleted)
+    private async Task PruneZeroVisiblePoolsAsync()
+    {
+        List<PoolInfo> toCheck;
+        try { toCheck = Pools.ToList(); } catch { return; }
+        if (toCheck.Count == 0 || _e621Platform == null) return;
+        var method = _e621Platform.GetType().GetMethod("TryGetPoolVisiblePostCountAsync");
+    var contentMethod = _e621Platform.GetType().GetMethod("TryPoolHasRenderableContentAsync");
+        if (method == null) return; // not supported
+        var removedIds = new List<int>();
+        var semaphore = new SemaphoreSlim(4);
+        var tasks = new List<Task>();
+        foreach (var pool in toCheck)
+        {
+            await semaphore.WaitAsync();
+            tasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    var taskObj = method.Invoke(_e621Platform, new object?[] { pool.Id, CancellationToken.None }) as Task<int?>;
+                    if (taskObj == null) return;
+                    var count = await taskObj;
+                    if (count.HasValue)
+                    {
+                        if (count.Value == 0)
+                        {
+                            lock (removedIds) removedIds.Add(pool.Id);
+                        }
+                        else if (count.Value > 0 && contentMethod != null)
+                        {
+                            try
+                            {
+                                var contentTaskObj = contentMethod.Invoke(_e621Platform, new object?[] { pool.Id, 10, CancellationToken.None }) as Task<bool?>;
+                                if (contentTaskObj != null)
+                                {
+                                    var hasContent = await contentTaskObj;
+                                    if (hasContent == false)
+                                    {
+                                        lock (removedIds) removedIds.Add(pool.Id);
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+                finally { semaphore.Release(); }
+            }));
+        }
+        try { await Task.WhenAll(tasks); } catch { }
+        if (removedIds.Count == 0) return;
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                for (int i = Pools.Count - 1; i >= 0; i--)
+                {
+                    if (removedIds.Contains(Pools[i].Id)) Pools.RemoveAt(i);
+                }
+                ApplyPoolsFilter();
+                PoolsStatusText = $"{Pools.Count} pools";
+            });
+            // Persist pruned list
+            try { await _cacheStore.UpsertPoolsAsync(Pools.ToList(), CancellationToken.None); } catch { }
+        }
+        catch { }
+    }
+
     [RelayCommand] private async Task LoadSelectedPoolAsync(PoolInfo? fromPinned = null)
     {
         var pool = fromPinned ?? SelectedPool; if (pool == null || IsSearching) return;
@@ -930,6 +1005,7 @@ public partial class MainViewModel : ObservableObject
     public bool CanOpenDownloadsFolder => true; // always enabled; path existence checked in command
     public bool CanOpenSelectedInBrowser => SelectedMedia != null && (!string.IsNullOrWhiteSpace(SelectedMedia.SourceUrl) || !string.IsNullOrWhiteSpace(SelectedMedia.FullImageUrl) || !string.IsNullOrWhiteSpace(SelectedMedia.PreviewUrl));
     public bool CanOpenViewer => SelectedMedia != null; // future: additional checks
+    public bool CanOpenPoolPage => IsPoolMode && CurrentPoolId.HasValue;
 
     [RelayCommand]
     private void OpenDownloadsFolder()
@@ -970,6 +1046,20 @@ public partial class MainViewModel : ObservableObject
                 int? poolId = (IsPoolMode && CurrentPoolId.HasValue) ? CurrentPoolId : null;
                 WeakReferenceMessenger.Default.Send(new OpenViewerRequestMessage(new OpenViewerRequest(list, idx, poolId)));
             }
+        }
+        catch { }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanOpenPoolPage))]
+    private void OpenPoolPage()
+    {
+        try
+        {
+            if (!CanOpenPoolPage) return;
+            var id = CurrentPoolId!.Value;
+            // e621 pool URL format
+            var url = $"https://e621.net/pools/{id}";
+            _shell?.OpenUrl(url);
         }
         catch { }
     }
