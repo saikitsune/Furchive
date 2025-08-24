@@ -135,14 +135,7 @@
                         <StackPanel Spacing="10" Margin="0,8,0,0">
                 <Separator/>
                 <TextBlock Text="Appearance" FontWeight="SemiBold"/>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="Theme" Width="160" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="ThemeMode" Width="160" SelectionChanged="OnThemeSelectionChanged">
-                        <ComboBoxItem Content="System"/>
-                        <ComboBoxItem Content="Light"/>
-                        <ComboBoxItem Content="Dark"/>
-                    </ComboBox>
-                </StackPanel>
+                <!-- Theme selection removed: dark theme is now enforced globally -->
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <TextBlock Text="Gallery item scale" Width="160" VerticalAlignment="Center"/>
                     <Slider x:Name="GalleryScale" Minimum="0.5" Maximum="2.0" TickFrequency="0.05" Width="220"/>

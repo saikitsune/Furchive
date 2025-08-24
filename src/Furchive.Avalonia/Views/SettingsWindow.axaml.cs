@@ -70,13 +70,7 @@ public partial class SettingsWindow : Window
     try { E621PersistentCacheMaxEntries_PostDetails.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PostDetails", 800) ?? 800; } catch { E621PersistentCacheMaxEntries_PostDetails.Value = 800; }
     try { E621PersistentCacheMaxEntries_PoolDetails.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PoolDetails", 400) ?? 400; } catch { E621PersistentCacheMaxEntries_PoolDetails.Value = 400; }
 
-        // Theme
-        try
-        {
-            var mode = _settings?.GetSetting<string>("ThemeMode", "system") ?? "system";
-            ThemeMode.SelectedIndex = mode == "light" ? 1 : mode == "dark" ? 2 : 0;
-        }
-        catch { ThemeMode.SelectedIndex = 0; }
+    // Theme selection removed (dark-only); no action needed
 
         // Gallery scale
     try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
@@ -132,9 +126,7 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("CpuWorkerDegree", Math.Max(1, (int)(CpuWorkerDegree.Value ?? Math.Max(1, Environment.ProcessorCount / 2))));
             await _settings.SetSettingAsync("ThumbnailPrewarmEnabled", ThumbnailPrewarmEnabled.IsChecked == true);
             await _settings.SetSettingAsync("PoolsUpdateIntervalMinutes", Math.Clamp((int)(PoolsUpdateIntervalMinutes.Value ?? 360), 5, 1440));
-            // Theme + UI
-            var mode = ThemeMode.SelectedIndex == 1 ? "light" : ThemeMode.SelectedIndex == 2 ? "dark" : "system";
-            await _settings.SetSettingAsync("ThemeMode", mode);
+            // Theme removed – always dark; omit ThemeMode persistence
             await _settings.SetSettingAsync("GalleryScale", GalleryScale.Value);
             try { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } catch { }
             // Posts per page maps to MaxResultsPerSource
@@ -224,33 +216,7 @@ public partial class SettingsWindow : Window
         try { WeakReferenceMessenger.Default.Send(new PoolsCacheRebuildRequestedMessage(true)); } catch { }
     }
 
-    private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        try
-        {
-            var mode = ThemeMode.SelectedIndex == 1 ? "light" : ThemeMode.SelectedIndex == 2 ? "dark" : "system";
-            _ = _settings?.SetSettingAsync("ThemeMode", mode);
-            // Apply immediately
-            try
-            {
-                if (Application.Current is App app)
-                {
-                    // App listens to SettingChanged, but apply directly for snappier UX
-                    var variant = mode == "light" ? global::Avalonia.Styling.ThemeVariant.Light : mode == "dark" ? global::Avalonia.Styling.ThemeVariant.Dark : global::Avalonia.Styling.ThemeVariant.Default;
-                    app.RequestedThemeVariant = variant;
-                    if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-                    {
-                        foreach (var w in desktop.Windows)
-                        {
-                            try { w.RequestedThemeVariant = variant; } catch { }
-                        }
-                    }
-                }
-            }
-            catch { }
-        }
-        catch { }
-    }
+    // Theme selection handler removed (dark-only)
 
     private void OnOpenDownloadsFolder(object? sender, RoutedEventArgs e)
     {

@@ -173,7 +173,7 @@ public class SettingsService : ISettingsService
             // Authentication (empty by default)
             ["E621Username"] = "",
             ["E621ApiKey"] = "",
-            ["ThemeMode"] = "system",
+            // ThemeMode removed (dark-only UI)
             
             // Content Filtering
             ["TagBlacklist"] = new List<string>()

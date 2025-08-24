@@ -85,6 +85,8 @@ public class DownloadJob : System.ComponentModel.INotifyPropertyChanged
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public MediaItem MediaItem { get; set; } = new();
+    // Stable queue order (monotonically increasing). Not persisted yet; reconstructed from load order.
+    public long Sequence { get; set; }
     // Aggregate/group download support
     public bool IsAggregate { get; set; } = false; // true for a synthetic job aggregating child jobs
     public string? ParentId { get; set; } // if set, this is a child of an aggregate job

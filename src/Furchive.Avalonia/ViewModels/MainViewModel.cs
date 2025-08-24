@@ -134,7 +134,9 @@ public partial class MainViewModel : ObservableObject
     {
         _apiService = apiService; _downloadService = downloadService; _settingsService = settingsService; _logger = logger; _thumbCache = thumbCache; _cpuQueue = cpuQueue; _cacheStore = cacheStore; _shell = shell;
         foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
-        _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
+    _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
+    // Populate downloads panel with any persisted jobs on startup
+    _ = Task.Run(RefreshDownloadQueueAsync);
     LoadSettings();
     GalleryScale = _settingsService.GetSetting<double>("GalleryScale", 1.0);
         UpdateFavoritesVisibility();
@@ -843,9 +845,73 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand] private async Task ResumeJobAsync(DownloadJob? job) { if (job == null) return; try { await _downloadService.ResumeDownloadAsync(job.Id); } catch (Exception ex) { _logger.LogWarning(ex, "Resume failed"); } }
     [RelayCommand] private async Task CancelJobAsync(DownloadJob? job) { if (job == null) return; try { await _downloadService.CancelDownloadAsync(job.Id); } catch (Exception ex) { _logger.LogWarning(ex, "Cancel failed"); } }
     [RelayCommand] private async Task RetryJobAsync(DownloadJob? job) { if (job == null) return; try { await _downloadService.RetryDownloadAsync(job.Id); } catch (Exception ex) { _logger.LogWarning(ex, "Retry failed"); } }
+    [RelayCommand] private void OpenDownloadFile(DownloadJob? job) { try { if (job == null) return; var path = job.DestinationPath; if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return; _shell?.OpenPath(path); } catch { } }
+    [RelayCommand] private void OpenDownloadFolder(DownloadJob? job) { try { if (job == null) return; var path = job.DestinationPath; if (string.IsNullOrWhiteSpace(path)) return; var folder = Path.GetDirectoryName(path); if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) return; _shell?.OpenFolder(folder); } catch { } }
+    [RelayCommand] private async Task RemoveDownload(DownloadJob? job) { if (job == null) return; try { await _downloadService.RemoveJobAsync(job.Id, deleteFile: false); DownloadQueue.Remove(job); } catch { } }
+    [RelayCommand] private async Task DeleteDownload(DownloadJob? job) { if (job == null) return; try { await _downloadService.RemoveJobAsync(job.Id, deleteFile: true); DownloadQueue.Remove(job); } catch { } }
+    [RelayCommand] private async Task ClearDownloadsAsync() {
+        try {
+            // Snapshot to avoid modification during iteration
+            var jobs = DownloadQueue.ToList();
+            foreach (var j in jobs) {
+                try {
+                    if (j.Status == DownloadStatus.Downloading || j.Status == DownloadStatus.Queued || j.Status == DownloadStatus.Paused) {
+                        try { await _downloadService.CancelDownloadAsync(j.Id); } catch { }
+                    }
+                    await _downloadService.RemoveJobAsync(j.Id, deleteFile: false);
+                } catch { }
+            }
+            DownloadQueue.Clear();
+        } catch { }
+    }
     private static string GetTempPathFor(MediaItem item) { var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp"); var ext = string.IsNullOrWhiteSpace(item.FileExtension) ? TryGetExtensionFromUrl(item.FullImageUrl) ?? "bin" : item.FileExtension; var safeArtist = new string((item.Artist ?? string.Empty).Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Replace(" ", "_"); var safeTitle = new string((item.Title ?? string.Empty).Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Replace(" ", "_"); var file = $"{item.Source}_{item.Id}_{safeArtist}_{safeTitle}.{ext}"; return Path.Combine(tempDir, file); }
     private string GenerateFinalPath(MediaItem mediaItem, string basePath) { var hasPoolContext = mediaItem.TagCategories != null && (mediaItem.TagCategories.ContainsKey("page_number") || mediaItem.TagCategories.ContainsKey("pool_name")); var template = hasPoolContext ? (_settingsService.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") : (_settingsService.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}"); var extFinal = string.IsNullOrWhiteSpace(mediaItem.FileExtension) ? TryGetExtensionFromUrl(mediaItem.FullImageUrl) ?? "bin" : mediaItem.FileExtension; string Sanitize(string s) { var invalid = Path.GetInvalidFileNameChars(); var clean = new string((s ?? string.Empty).Where(c => !invalid.Contains(c)).ToArray()); return clean.Replace(" ", "_"); } var filenameRel = template.Replace("{source}", mediaItem.Source).Replace("{artist}", Sanitize(mediaItem.Artist)).Replace("{id}", mediaItem.Id).Replace("{safeTitle}", Sanitize(mediaItem.Title)).Replace("{ext}", extFinal).Replace("{pool_name}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("pool_name", out var poolNameList) && poolNameList.Count > 0 ? poolNameList[0] : (SelectedPool?.Name ?? string.Empty))).Replace("{page_number}", Sanitize(mediaItem.TagCategories != null && mediaItem.TagCategories.TryGetValue("page_number", out var pageList) && pageList.Count > 0 ? pageList[0] : string.Empty)); return Path.Combine(basePath, filenameRel); }
-    [RelayCommand] private async Task RefreshDownloadQueueAsync() { try { var jobs = await _downloadService.GetDownloadJobsAsync(); jobs = jobs.Where(j => string.IsNullOrEmpty(j.ParentId)).ToList(); var map = DownloadQueue.ToDictionary(j => j.Id); var incomingIds = new HashSet<string>(jobs.Select(j => j.Id)); foreach (var job in jobs) { if (map.TryGetValue(job.Id, out var existing)) { existing.Status = job.Status; existing.DestinationPath = job.DestinationPath; existing.CompletedAt = job.CompletedAt; existing.ErrorMessage = job.ErrorMessage; existing.TotalBytes = job.TotalBytes; existing.BytesDownloaded = job.BytesDownloaded; } else { DownloadQueue.Add(job); } } for (int i = DownloadQueue.Count - 1; i >= 0; i--) { if (!incomingIds.Contains(DownloadQueue[i].Id)) DownloadQueue.RemoveAt(i); } } catch (Exception ex) { _logger.LogError(ex, "Failed to refresh download queue"); } }
+    [RelayCommand] private async Task RefreshDownloadQueueAsync()
+    {
+        try
+        {
+            var jobs = await _downloadService.GetDownloadJobsAsync();
+            jobs = jobs.Where(j => string.IsNullOrEmpty(j.ParentId)).ToList();
+
+            // All collection mutations must occur on UI thread
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                try
+                {
+                    var map = DownloadQueue.ToDictionary(j => j.Id);
+                    var incomingIds = new HashSet<string>(jobs.Select(j => j.Id));
+                    foreach (var job in jobs)
+                    {
+                        if (map.TryGetValue(job.Id, out var existing))
+                        {
+                            existing.Status = job.Status;
+                            existing.DestinationPath = job.DestinationPath;
+                            existing.CompletedAt = job.CompletedAt;
+                            existing.ErrorMessage = job.ErrorMessage;
+                            existing.TotalBytes = job.TotalBytes;
+                            existing.BytesDownloaded = job.BytesDownloaded;
+                        }
+                        else
+                        {
+                            DownloadQueue.Add(job);
+                        }
+                    }
+                    for (int i = DownloadQueue.Count - 1; i >= 0; i--)
+                    {
+                        if (!incomingIds.Contains(DownloadQueue[i].Id)) DownloadQueue.RemoveAt(i);
+                    }
+                }
+                catch (Exception exUi)
+                {
+                    _logger.LogError(exUi, "Failed applying download queue refresh on UI thread");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to refresh download queue");
+        }
+    }
     private async Task CheckPlatformHealthAsync() { try { PlatformHealth = await _apiService.GetAllPlatformHealthAsync(); OnPropertyChanged(nameof(PlatformHealth)); IsE621Enabled = IsE621Enabled && PlatformHealth.GetValueOrDefault("e621")?.IsAvailable == true; } catch (Exception ex) { _logger.LogError(ex, "Failed to check platform health"); } }
     private void OnDownloadStatusChanged(object? sender, DownloadJob job) { Dispatcher.UIThread.Post(() => { if (!string.IsNullOrEmpty(job.ParentId)) { return; } var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id); if (existing != null) { existing.Status = job.Status; existing.DestinationPath = job.DestinationPath; existing.CompletedAt = job.CompletedAt; existing.ErrorMessage = job.ErrorMessage; existing.TotalBytes = job.TotalBytes; existing.BytesDownloaded = job.BytesDownloaded; } else { DownloadQueue.Add(job); } if (job.Status == DownloadStatus.Completed) { try { var match = SearchResults.FirstOrDefault(m => m.Id == job.MediaItem.Id); if (match != null) { OnPropertyChanged(nameof(SearchResults)); } } catch { } if (SelectedMedia?.Id == job.MediaItem.Id) { OnPropertyChanged(nameof(IsSelectedDownloaded)); } } }); }
     private void OnDownloadProgressUpdated(object? sender, DownloadJob job) { Dispatcher.UIThread.Post(() => { if (!string.IsNullOrEmpty(job.ParentId)) return; var existing = DownloadQueue.FirstOrDefault(j => j.Id == job.Id); if (existing != null) { existing.BytesDownloaded = job.BytesDownloaded; existing.TotalBytes = job.TotalBytes; } }); }

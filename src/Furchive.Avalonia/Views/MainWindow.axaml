@@ -17,6 +17,17 @@
         <cvt:DownloadStatusToBoolConverter x:Key="StatusIsPaused" Target="Paused"/>
         <cvt:DownloadStatusToBoolConverter x:Key="StatusIsActive" Targets="Downloading,Queued"/>
         <cvt:DownloadStatusToBoolConverter x:Key="StatusIsFailed" Target="Failed"/>
+    <cvt:DownloadStatusToBoolConverter x:Key="StatusIsCompleted" Target="Completed"/>
+    <cvt:BytesToHumanConverter x:Key="BytesHuman"/>
+    <cvt:BytesToHumanMinMbConverter x:Key="BytesHumanMinMb"/>
+    <cvt:PathToFileNameConverter x:Key="PathToFileName"/>
+        <!-- Style for download DataGrid headers (applies only when added via Classes) -->
+        <Style x:Key="DownloadsHeaderStyle" Selector="DataGridColumnHeader.downloads-header">
+            <Setter Property="Padding" Value="6,4,6,4"/>
+            <Setter Property="BorderBrush" Value="#555"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
     </Window.Resources>
     <Design.DataContext>
         <vm:MainViewModel />
@@ -73,15 +84,11 @@
         </Grid>
 
     <Grid x:Name="MainColumnsGrid" Grid.Row="1" Margin="8,0,8,0">
-            <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="260"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="360"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="360"/>
+        </Grid.ColumnDefinitions>
             <!-- Left Side Panel (stretches full height) -->
             <StackPanel Grid.Row="0">
                 <!-- Rating + Search moved to top -->
@@ -238,48 +245,137 @@
                 </ListBox>
             </StackPanel>
 
-            <Grid Grid.Column="1">
-                <ScrollViewer>
-                    <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <!-- Double-tap handler can be wired in code-behind if needed. -->
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" MinHeight="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
-                                    <Grid RowDefinitions="Auto,Auto">
-                                        <Image Stretch="UniformToFill"
-                             Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                             Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                             beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
-                                        <TextBlock FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">▶</TextBlock>
-                                        <StackPanel Grid.Row="1" Margin="2,4,2,0" Spacing="2">
-                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="{Binding Artist}" Foreground="Gray" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                                <TextBlock Text="·" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                                <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                            </StackPanel>
-                                            <!-- Downloaded indicator only -->
-                                            <TextBlock Text="✔ Downloaded" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+        <!-- Center column: gallery + downloads isolated so downloads height change doesn't shrink preview column -->
+        <Grid Grid.Column="1" RowDefinitions="*,Auto">
+            <ScrollViewer Grid.Row="0">
+                <ListBox x:Name="GalleryList" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedMedia}" KeyDown="OnGalleryKeyDown" PointerPressed="OnGalleryPointerPressed">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="6" Width="{Binding DataContext.GalleryTileWidth, RelativeSource={RelativeSource AncestorType=Window}}" MinHeight="{Binding DataContext.GalleryTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <Grid RowDefinitions="Auto,Auto">
+                                    <Image Stretch="UniformToFill"
+                                           Width="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           Height="{Binding DataContext.GalleryImageSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           beh:RemoteImage.SourceUri="{Binding PreviewUrl}" />
+                                    <TextBlock FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding FileExtension, Converter={StaticResource FileTypeIsPlayable}}">▶</TextBlock>
+                                    <StackPanel Grid.Row="1" Margin="2,4,2,0" Spacing="2">
+                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding Artist}" Foreground="Gray" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                            <TextBlock Text="·" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                            <TextBlock Text="{Binding FileExtension, Converter={StaticResource Uppercase}}" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
-            </Grid>
+                                        <TextBlock Text="✔ Downloaded" Foreground="Lime" FontWeight="Bold" IsVisible="{Binding ., Converter={StaticResource IsMediaDownloaded}}" FontSize="{Binding DataContext.GalleryFontSize, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </ScrollViewer>
+            <!-- Downloads panel moved into inner grid row 1 -->
+            <Border x:Name="DownloadsPanel" Grid.Row="1" Margin="0,8,0,0" Padding="6" BorderBrush="#333" BorderThickness="1" VerticalAlignment="Bottom" ClipToBounds="True" Background="Transparent">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                            <TextBlock Text="Downloads" FontWeight="Bold"/>
+                            <Button Content="Download Selected" Command="{Binding DownloadSelectedCommand}" IsEnabled="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}"/>
+                            <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
+                            <Button Content="Open Folder" Command="{Binding OpenDownloadsFolderCommand}"/>
+                            <Button Content="Clear" Command="{Binding ClearDownloadsCommand}" ToolTip.Tip="Clear all entries"/>
+                        </StackPanel>
+                        <Button x:Name="DownloadsToggleButton" Content="^" HorizontalAlignment="Center" Click="OnToggleDownloadsPanelClick"/>
+                        <Border x:Name="DownloadsHeaderResizeHandle" Height="4" Background="Transparent" Margin="0,0,0,-2"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Cursor="SizeNorthSouth"
+                                PointerPressed="OnDownloadsResizeHandlePressed" PointerReleased="OnDownloadsResizeHandleReleased" PointerMoved="OnDownloadsResizeHandleMoved"/>
+                    </Grid>
+                    <Border x:Name="DownloadsBody" Grid.Row="1" Margin="0,6,0,0" Height="0" ClipToBounds="True">
+                        <Border.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="Height" Duration="0:0:0.18" Easing="CircularEaseOut"/>
+                            </Transitions>
+                        </Border.Transitions>
+                        <Grid RowDefinitions="*">
+                            <Border x:Name="DownloadsResizeHandle" Height="6" Margin="0,0,0,6" Background="Transparent" Cursor="SizeNorthSouth"
+                                    PointerPressed="OnDownloadsResizeHandlePressed" PointerReleased="OnDownloadsResizeHandleReleased" PointerMoved="OnDownloadsResizeHandleMoved" Grid.Row="0"/>
+                            <DataGrid x:Name="DownloadsDataGrid"
+                                      ItemsSource="{Binding DownloadQueue}"
+                                      AutoGenerateColumns="False"
+                                      HeadersVisibility="Column"
+                                      CanUserReorderColumns="False"
+                                      CanUserSortColumns="True"
+                                      CanUserResizeColumns="True"
+                                      IsReadOnly="True"
+                                      GridLinesVisibility="Vertical"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      ColumnHeaderHeight="38">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="#" Binding="{Binding Sequence}" Width="60" MinWidth="50" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="File" Binding="{Binding DestinationPath, Converter={StaticResource PathToFileName}}" Width="170" MinWidth="160"/>
+                                    <DataGridTextColumn Header="Title" Binding="{Binding MediaItem.Title}" Width="240" MinWidth="200"/>
+                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="95" MinWidth="90"/>
+                                    <DataGridTemplateColumn Header="Progress" Width="180" MinWidth="170" SortMemberPath="ProgressPercent">
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <ProgressBar Width="60" Height="10" Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
+                                                <TextBlock>
+                                                    <Run Text="{Binding ProgressPercent}"/>
+                                                    <Run Text="%"/>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding ., Converter={StaticResource DownloadEta}}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Size" Width="130" MinWidth="120" SortMemberPath="TotalBytes">
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <TextBlock Text="{Binding BytesDownloaded, Converter={StaticResource BytesHumanMinMb}}"/>
+                                                <TextBlock Text="/"/>
+                                                <TextBlock Text="{Binding TotalBytes, Converter={StaticResource BytesHumanMinMb}}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Location" Binding="{Binding DestinationPath}" Width="340" MinWidth="300"/>
+                                    <DataGridTemplateColumn Header="Actions" Width="380" MinWidth="340">
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Button Content="Open" Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsEnabled="{Binding Status, Converter={StaticResource StatusIsCompleted}}"/>
+                                                <Button Content="Folder" Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsEnabled="{Binding DestinationPath, Converter={StaticResource StringNotEmpty}}"/>
+                                                <Button Content="Pause" Command="{Binding DataContext.PauseJobCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsDownloading}}"/>
+                                                <Button Content="Resume" Command="{Binding DataContext.ResumeJobCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsPaused}}"/>
+                                                <Button Content="Cancel" Command="{Binding DataContext.CancelJobCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsActive}}"/>
+                                                <Button Content="Retry" Command="{Binding DataContext.RetryJobCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsFailed}}"/>
+                                                <Button Content="Remove" Command="{Binding DataContext.RemoveDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                                                <Button Content="Delete" Command="{Binding DataContext.DeleteDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
 
             <!-- Splitter between left and center (invisible, still draggable) -->
             <GridSplitter Grid.Column="0" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns" DragCompleted="OnColumnSplitterDragCompleted"/>
             <!-- Splitter between center and right (invisible, still draggable) -->
             <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="2" Background="Transparent" ResizeDirection="Columns" DragCompleted="OnColumnSplitterDragCompleted"/>
 
-            <!-- Preview Pane (right panel stretches full height) -->
+            <!-- Move preview pane AFTER downloads in visual tree so it renders on top when overlapping -->
             <Border Grid.Column="2" Padding="8" IsVisible="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}">
                 <ScrollViewer DataContext="{Binding SelectedMedia}">
                     <StackPanel>
@@ -288,12 +384,9 @@
                             <Button Content="Open Viewer" Command="{Binding DataContext.OpenViewerCommand, RelativeSource={RelativeSource AncestorType=Window}}" IsEnabled="{Binding DataContext.CanOpenViewer, RelativeSource={RelativeSource AncestorType=Window}}"/>
                         </StackPanel>
                         <Image Stretch="Uniform" MaxHeight="300" beh:RemoteImage.SourceUri="{Binding PreviewUrl}" Cursor="Hand" PointerReleased="OnPreviewImagePointerReleased"/>
-                        <!-- Basic metadata -->
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding Artist}"/>
                         <TextBlock Text="{Binding Source}"/>
-
-                        <!-- Pool name surfaced earlier with explicit label and clickable buttons (hide if empty) -->
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Spacing="4" IsVisible="{Binding TagCategories[pool_name], Converter={StaticResource EnumerableHasItems}}">
                             <TextBlock Text="Pool:" FontWeight="SemiBold" Margin="0,0,4,0"/>
                             <ItemsControl ItemsSource="{Binding TagCategories[pool_name]}">
@@ -311,115 +404,38 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
-
-                        <!-- Description (hide if empty) -->
                         <StackPanel IsVisible="{Binding Description, Converter={StaticResource StringNotEmpty}}">
                             <TextBlock Text="Description" FontWeight="SemiBold" Margin="0,8,0,0"/>
                             <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxHeight="200"/>
                         </StackPanel>
-
-                        <!-- Categorized tag chips (hide block if no visible categories besides pool_name) -->
                         <StackPanel IsVisible="{Binding TagCategories, Converter={StaticResource TagCategoriesAnyVisible}}">
-                        <TextBlock Text="Tags" FontWeight="SemiBold" Margin="0,8,0,4"/>
-                        <ItemsControl ItemsSource="{Binding TagCategories}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <!-- Hide category block if no tags OR if it's pool_name (converter enforces) -->
-                                    <StackPanel Margin="0,4,0,8" IsVisible="{Binding ., Converter={StaticResource TagCategoryGroupVisible}}">
-                                        <TextBlock Text="{Binding Key, Converter={StaticResource TagCategoryKeyDisplay}}" FontWeight="SemiBold"/>
-                                        <ItemsControl ItemsSource="{Binding Value}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                            <Border CornerRadius="12"
-                                Padding="6,2"
-                                Margin="0,4,4,0"
-                                Cursor="Hand"
-                                ToolTip.Tip="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryTooltip}}"
-                                Background="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryBrush}}"
-                                PointerReleased="OnTagChipPointerReleased">
-                                                        <TextBlock Text="{Binding .}"/>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            <TextBlock Text="Tags" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                            <ItemsControl ItemsSource="{Binding TagCategories}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,4,0,8" IsVisible="{Binding ., Converter={StaticResource TagCategoryGroupVisible}}">
+                                            <TextBlock Text="{Binding Key, Converter={StaticResource TagCategoryKeyDisplay}}" FontWeight="SemiBold"/>
+                                            <ItemsControl ItemsSource="{Binding Value}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border CornerRadius="12" Padding="6,2" Margin="0,4,4,0" Cursor="Hand" ToolTip.Tip="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryTooltip}}" Background="{Binding DataContext.Key, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource TagCategoryBrush}}" PointerReleased="OnTagChipPointerReleased">
+                                                            <TextBlock Text="{Binding .}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
-            </Border>
-            <!-- Downloads panel now only under gallery (center column) -->
-            <Border x:Name="DownloadsPanel" Grid.Column="1" Grid.Row="1" Margin="0,8,0,0" Padding="6" BorderBrush="#333" BorderThickness="1" VerticalAlignment="Bottom" ClipToBounds="True">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <!-- Header / collapsed bar -->
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
-                            <TextBlock Text="Downloads" FontWeight="Bold"/>
-                            <Button Content="Download Selected" Command="{Binding DownloadSelectedCommand}" IsEnabled="{Binding SelectedMedia, Converter={StaticResource NullToBoolVisible}}"/>
-                            <Button Content="{Binding DownloadAllLabel}" Command="{Binding DownloadAllCommand}"/>
-                            <Button Content="Open Folder" Command="{Binding OpenDownloadsFolderCommand}"/>
-                        </StackPanel>
-                        <Button x:Name="DownloadsToggleButton" Content="^" HorizontalAlignment="Center" Click="OnToggleDownloadsPanelClick"/>
-            <!-- Header resize grip (always visible; allows drag even when body collapsed) -->
-            <Border x:Name="DownloadsHeaderResizeHandle" Height="6" Background="#404040" CornerRadius="2" Margin="0,0,0,-3"
-                HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Cursor="SizeNorthSouth"
-                PointerPressed="OnDownloadsResizeHandlePressed" PointerReleased="OnDownloadsResizeHandleReleased" PointerMoved="OnDownloadsResizeHandleMoved"/>
-                    </Grid>
-                    <!-- Expanding body -->
-                    <Border x:Name="DownloadsBody" Grid.Row="1" Margin="0,6,0,0" Height="0" ClipToBounds="True">
-                        <Border.Transitions>
-                            <Transitions>
-                                <DoubleTransition Property="Height" Duration="0:0:0.18" Easing="CircularEaseOut"/>
-                            </Transitions>
-                        </Border.Transitions>
-                        <StackPanel>
-                            <!-- Drag handle for resizing -->
-                            <Border x:Name="DownloadsResizeHandle" Height="12" Margin="0,0,0,6" Background="#303030" CornerRadius="2" Cursor="SizeNorthSouth"
-                                    PointerPressed="OnDownloadsResizeHandlePressed" PointerReleased="OnDownloadsResizeHandleReleased" PointerMoved="OnDownloadsResizeHandleMoved"/>
-                            <DataGrid ItemsSource="{Binding DownloadQueue}" AutoGenerateColumns="False" HeadersVisibility="Column">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Title" Binding="{Binding MediaItem.Title}" Width="2*"/>
-                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
-                                <DataGridTemplateColumn Header="Progress" Width="*">
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <ProgressBar Width="120" Height="14" Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"/>
-                                            <TextBlock Text="{Binding . , Converter={StaticResource DownloadEta}}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Actions" Width="240">
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <Button Content="Open" IsEnabled="False"/>
-                                            <Button Content="Folder" IsEnabled="False"/>
-                                            <Button Content="Pause" Command="{Binding DataContext.PauseDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsDownloading}}"/>
-                                            <Button Content="Resume" Command="{Binding DataContext.ResumeDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsPaused}}"/>
-                                            <Button Content="Cancel" Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsActive}}"/>
-                                            <Button Content="Retry" Command="{Binding DataContext.RetryDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding .}" IsVisible="{Binding Status, Converter={StaticResource StatusIsFailed}}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Path" Binding="{Binding DestinationPath}" Width="2*"/>
-                            </DataGrid.Columns>
-                            </DataGrid>
-                        </StackPanel>
-                    </Border>
-                </Grid>
             </Border>
         </Grid>
     </Grid>

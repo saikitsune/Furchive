@@ -2,6 +2,8 @@
              xmlns:cvt="using:Furchive.Avalonia.Converters">
   <Application.Styles>
     <FluentTheme />
+  <!-- Include DataGrid Fluent styles so DataGrid renders (headers, rows) -->
+  <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
   </Application.Styles>
   <Application.Resources>
     <cvt:InverseBooleanConverter x:Key="InverseBoolean" />

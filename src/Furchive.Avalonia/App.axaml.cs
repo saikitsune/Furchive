@@ -82,6 +82,7 @@ public partial class App : Application
             services.AddHttpClient();
             services.AddSingleton<ISettingsService, SettingsService>();
             services.AddSingleton<IUnifiedApiService, UnifiedApiService>();
+            services.AddSingleton<IDownloadsStore, SqliteDownloadsStore>();
             services.AddSingleton<IDownloadService, DownloadService>();
             // Local media proxy to serve HTML5 player and proxy video with headers
             services.AddSingleton<ILocalMediaProxy, LocalMediaProxyService>();

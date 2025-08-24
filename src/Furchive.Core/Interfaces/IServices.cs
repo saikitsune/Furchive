@@ -212,6 +212,21 @@ public interface IDownloadService
     /// Event fired when download status changes
     /// </summary>
     event EventHandler<DownloadJob>? DownloadStatusChanged;
+
+    /// <summary>Remove a job from tracking (optionally delete file).</summary>
+    Task<bool> RemoveJobAsync(string jobId, bool deleteFile = false);
+}
+
+/// <summary>
+/// Persistent store for download jobs so they survive app restarts.
+/// </summary>
+public interface IDownloadsStore
+{
+    Task InitializeAsync(CancellationToken ct = default);
+    Task UpsertAsync(DownloadJob job, CancellationToken ct = default);
+    Task<List<DownloadJob>> GetAllAsync(CancellationToken ct = default);
+    Task DeleteAsync(string id, CancellationToken ct = default);
+    Task VacuumAsync(CancellationToken ct = default);
 }
 
 /// <summary>

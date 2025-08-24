@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -27,6 +28,82 @@ public partial class MainWindow : Window
             InitializeComponent();
             var services = App.Services ?? throw new InvalidOperationException("Service provider not initialized");
             DataContext = services.GetRequiredService<MainViewModel>();
+            // Defer auto-expand of downloads until after initial restored queue population finishes.
+            _autoExpandDownloadsArmed = false;
+            // Initialize downloads panel collapsed by default (will auto-expand on first job or user toggle)
+            try
+            {
+                var body = this.FindControl<Border>("DownloadsBody");
+                var toggle = this.FindControl<Button>("DownloadsToggleButton");
+                if (body != null && toggle != null)
+                {
+                    // Load previously saved expanded height (don't expand yet)
+                    try
+                    {
+                        var settings = App.Services?.GetService<ISettingsService>();
+                        if (settings != null)
+                        {
+                            var saved = settings.GetSetting<double>("Ui.DownloadsPanelHeight", _downloadsExpandedHeight);
+                            if (saved > 40 && saved < 1200) _downloadsExpandedHeight = saved;
+                        }
+                    }
+                    catch { }
+                    body.Height = 0; // collapsed
+                    toggle.Content = "^"; // up arrow indicates can expand
+                    _downloadsExpanded = false;
+                }
+            }
+            catch { }
+            // Auto-expand on first job arrival if user has collapsed previously
+            try
+            {
+                if (DataContext is MainViewModel vm)
+                {
+                    vm.DownloadQueue.CollectionChanged += (s, e) =>
+                    {
+                        try
+                        {
+                            if (!_autoExpandDownloadsArmed) return; // ignore initial restoration
+                            if (vm.DownloadQueue.Count > 0)
+                            {
+                                var body2 = this.FindControl<Border>("DownloadsBody");
+                                var toggle2 = this.FindControl<Button>("DownloadsToggleButton");
+                                if (body2 != null && toggle2 != null && body2.Height <= 0)
+                                {
+                                    body2.Height = Math.Max(100, _downloadsExpandedHeight > 0 ? _downloadsExpandedHeight : 220);
+                                    toggle2.Content = "v";
+                                    _downloadsExpanded = true;
+                                }
+                            }
+                        }
+                        catch { }
+                    };
+                }
+            }
+            catch { }
+            // Arm auto-expand shortly AFTER window opens so restored jobs don't trigger expansion.
+            Opened += async (_, __) =>
+            {
+                try
+                {
+                    await Task.Delay(400); // allow initial queue restoration events
+                    if (!_userManuallyExpandedDownloads)
+                    {
+                        var body = this.FindControl<Border>("DownloadsBody");
+                        var toggle = this.FindControl<Button>("DownloadsToggleButton");
+                        if (body != null && toggle != null && body.Height > 0 && _downloadsExpanded)
+                        {
+                            // Force collapse if it got expanded by early logic
+                            _downloadsExpandedHeight = body.Height;
+                            body.Height = 0;
+                            toggle.Content = "^";
+                            _downloadsExpanded = false;
+                        }
+                    }
+                    _autoExpandDownloadsArmed = true; // future new jobs can auto-expand
+                }
+                catch { }
+            };
             // Subscribe to viewer open messages (MVVM: window creation in view layer)
             try
             {
@@ -79,6 +156,19 @@ public partial class MainWindow : Window
                     _leftCol = grid.ColumnDefinitions[0];
                     _rightCol = grid.ColumnDefinitions[2];
                 }
+                // Hook downloads datagrid loaded to finalize min widths based on rendered content
+                try
+                {
+                    var dg = this.FindControl<DataGrid>("DownloadsDataGrid");
+                    if (dg != null)
+                    {
+                        dg.Loaded += (_, __) =>
+                        {
+                            try { LockDownloadColumnMinimums(dg); } catch { }
+                        };
+                    }
+                }
+                catch { }
                 var top = this.FindControl<Grid>("TopBarGrid");
                 if (top?.ColumnDefinitions?.Count >= 3)
                 {
@@ -104,6 +194,100 @@ public partial class MainWindow : Window
             // Propagate so App startup can catch and display a fallback error window instead of silently exiting
             throw new InvalidOperationException("Failed to construct MainWindow", ex);
         }
+    }
+    private void LockDownloadColumnMinimums(DataGrid dg)
+    {
+        try
+        {
+            // Attempt to restore saved widths first (only on initial lock)
+            try
+            {
+                var settings = App.Services?.GetService<ISettingsService>();
+                if (settings != null)
+                {
+                    var raw = settings.GetSetting<string>("Ui.DownloadsColWidths", string.Empty);
+                    if (!string.IsNullOrWhiteSpace(raw))
+                    {
+                        var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        if (parts.Length == dg.Columns.Count)
+                        {
+                            for (int i = 0; i < parts.Length; i++)
+                            {
+                                if (double.TryParse(parts[i], out var w) && w > 24)
+                                {
+                                    try { dg.Columns[i].Width = new DataGridLength(w, DataGridLengthUnitType.Pixel); } catch { }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // After layout, use actual width as minimum to avoid shrinking below baseline and cache widths for future changes.
+            _lastDownloadColWidths = new double[dg.Columns.Count];
+            for (int i = 0; i < dg.Columns.Count; i++)
+            {
+                var col = dg.Columns[i];
+                var actual = col.ActualWidth;
+                if (actual > 10 && col.MinWidth < actual)
+                {
+                    col.MinWidth = actual; // Lock initial min to fully visible content
+                }
+                _lastDownloadColWidths[i] = actual;
+            }
+
+            // Subscribe to layout updates to detect user resize and persist (debounced)
+            dg.LayoutUpdated += (_, __) =>
+            {
+                try { MaybePersistDownloadColumnWidths(dg); } catch { }
+            };
+        }
+        catch { }
+    }
+
+    private double[]? _lastDownloadColWidths;
+    private DateTime _lastDownloadColPersistRequest = DateTime.MinValue;
+    private bool _pendingPersist;
+    private async void MaybePersistDownloadColumnWidths(DataGrid dg)
+    {
+        if (dg.Columns.Count == 0) return;
+        if (_lastDownloadColWidths == null || _lastDownloadColWidths.Length != dg.Columns.Count)
+        {
+            _lastDownloadColWidths = new double[dg.Columns.Count];
+            for (int i = 0; i < dg.Columns.Count; i++) _lastDownloadColWidths[i] = dg.Columns[i].ActualWidth;
+            return;
+        }
+        bool changed = false;
+        for (int i = 0; i < dg.Columns.Count; i++)
+        {
+            var w = dg.Columns[i].ActualWidth;
+            if (Math.Abs(w - _lastDownloadColWidths[i]) > 0.9) { changed = true; _lastDownloadColWidths[i] = w; }
+        }
+        if (!changed) return;
+        _lastDownloadColPersistRequest = DateTime.UtcNow;
+        if (_pendingPersist) return; // debounce in flight
+        _pendingPersist = true;
+        // debounce 600ms
+        await Task.Delay(600);
+        try
+        {
+            // If another resize happened recently keep waiting until quiet period
+            if ((DateTime.UtcNow - _lastDownloadColPersistRequest).TotalMilliseconds < 550)
+            {
+                _pendingPersist = false;
+                MaybePersistDownloadColumnWidths(dg); // re-evaluate
+                return;
+            }
+            var settings = App.Services?.GetService<ISettingsService>();
+            if (settings != null && _lastDownloadColWidths != null)
+            {
+                var serialized = string.Join(',', _lastDownloadColWidths.Select(v => Math.Round(v, 0).ToString()));
+                _ = settings.SetSettingAsync("Ui.DownloadsColWidths", serialized);
+            }
+        }
+        catch { }
+        finally { _pendingPersist = false; }
     }
 
     private async void OnPoolsSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -390,6 +574,8 @@ public partial class MainWindow : Window
 
     private bool _downloadsExpanded = false;
     private double _downloadsExpandedHeight = 220; // default full height (will be overridden by saved setting)
+    private bool _autoExpandDownloadsArmed = false; // armed only after startup restoration
+    private bool _userManuallyExpandedDownloads = false; // track manual user expansion to avoid forced collapse
     private bool _isResizingDownloads = false;
     private global::Avalonia.Point _resizeStartPoint;
     private double _initialDownloadsHeight;
@@ -418,6 +604,7 @@ public partial class MainWindow : Window
                 body.Height = _downloadsExpandedHeight;
                 toggle.Content = "v"; // arrow down to collapse
                 _downloadsExpanded = true;
+                _userManuallyExpandedDownloads = true; // mark manual action
             }
             else
             {
