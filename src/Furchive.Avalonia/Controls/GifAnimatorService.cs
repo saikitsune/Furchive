@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Bmp;
 using SharpImage = SixLabors.ImageSharp.Image;
 using AvImage = global::Avalonia.Controls.Image;
 
@@ -19,7 +19,9 @@ public static class GifAnimatorService
     private sealed class AnimationState
     {
         public CancellationTokenSource Cts { get; } = new();
-        public List<(Bitmap frame, int delayMs)> Frames { get; } = new();
+    public List<(Bitmap frame, int delayMs)> Frames { get; } = new();
+    public ManualResetEventSlim ReadyForAnimation { get; } = new(false);
+    public Task? AnimatorTask { get; set; }
     }
 
     private static readonly ConcurrentDictionary<AvImage, AnimationState> _states = new();
@@ -28,9 +30,18 @@ public static class GifAnimatorService
     {
         Stop(target);
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return;
-        var state = new AnimationState();
-        _states[target] = state;
-        _ = Task.Run(() => DecodeAndAnimateAsync(target, filePath, state));
+        // Basic guard: only handle .gif (case-insensitive)
+        try
+        {
+            if (!filePath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)) return;
+        }
+        catch { }
+    var state = new AnimationState();
+    _states[target] = state;
+    LogGif($"gif-start path={filePath}");
+    // Kick off decoder and animator separately so we can animate while decoding remaining frames
+    state.AnimatorTask = Task.Run(() => AnimationLoopAsync(target, state));
+    _ = Task.Run(() => DecodeFramesAsync(target, filePath, state));
     }
 
     public static void Stop(AvImage target)
@@ -46,7 +57,7 @@ public static class GifAnimatorService
         }
     }
 
-    private static async Task DecodeAndAnimateAsync(AvImage target, string path, AnimationState state)
+    private static async Task DecodeFramesAsync(AvImage target, string path, AnimationState state)
     {
         var ct = state.Cts.Token;
         try
@@ -55,6 +66,7 @@ public static class GifAnimatorService
             // Extract frames + delays
             int frameCount = image.Frames.Count;
             if (frameCount == 0) return;
+            LogGif($"gif-decode path={path} frames={frameCount}");
             for (int i = 0; i < frameCount; i++)
             {
                 if (ct.IsCancellationRequested) return;
@@ -74,47 +86,78 @@ public static class GifAnimatorService
                     }
                 }
                 catch { }
-                // Convert frame to Bitmap (PNG encoding for simplicity)
+                // Convert frame to Bitmap using fast BMP (no heavy compression) to reduce startup latency
                 try
                 {
                     using var ms = new MemoryStream();
-                    await frame.SaveAsync(ms, new PngEncoder());
+                    await frame.SaveAsync(ms, new BmpEncoder { BitsPerPixel = BmpBitsPerPixel.Pixel32 });
                     ms.Position = 0;
                     var bmp = new Bitmap(ms);
                     state.Frames.Add((bmp, Math.Max(20, delayCs * 10))); // clamp to >=20ms
                 }
                 catch { }
                 finally { frame.Dispose(); }
-            }
 
-            // Show first frame immediately (UI thread)
-            if (state.Frames.Count > 0)
-            {
-                await Dispatcher.UIThread.InvokeAsync(() =>
+                // Display first frame immediately
+                if (state.Frames.Count == 1)
                 {
-                    if (ct.IsCancellationRequested) return;
-                    try { target.Source = state.Frames[0].frame; } catch { }
-                });
-            }
-
-            // Animation loop (respect GIF global repeat count; 0=infinite)
-            int repeat = 0; // Unknown repeat -> treat as infinite
-            int loops = 0;
-            while (!ct.IsCancellationRequested && (repeat == 0 || loops <= repeat))
-            {
-                for (int i = 0; i < state.Frames.Count; i++)
-                {
-                    if (ct.IsCancellationRequested) break;
-                    var (bmp, delayMs) = state.Frames[i];
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         if (ct.IsCancellationRequested) return;
-                        try { target.Source = bmp; } catch { }
+                        try { target.Source = state.Frames[0].frame; } catch { }
                     });
-                    try { await Task.Delay(delayMs, ct); } catch { }
                 }
-                loops++;
+                // Signal animation readiness after second frame available
+                if (state.Frames.Count == 2 && !state.ReadyForAnimation.IsSet)
+                {
+                    state.ReadyForAnimation.Set();
+                }
             }
+            // If only one frame ultimately, ensure animation loop doesn't wait forever
+            if (state.Frames.Count == 1 && !state.ReadyForAnimation.IsSet)
+                state.ReadyForAnimation.Set();
+        }
+        catch (Exception ex)
+        {
+            LogGif($"gif-error path={path} msg={ex.Message}");
+        }
+    }
+
+    private static async Task AnimationLoopAsync(AvImage target, AnimationState state)
+    {
+        var ct = state.Cts.Token;
+        try
+        {
+            // Wait until at least 2 frames (or single-frame GIF) ready or cancellation
+            state.ReadyForAnimation.Wait(ct);
+        }
+        catch { }
+        // Loop only if more than one frame; single frame already displayed
+        if (ct.IsCancellationRequested || state.Frames.Count <= 1) return;
+        int idx = 0;
+        int loops = 0;
+        while (!ct.IsCancellationRequested)
+        {
+            if (state.Frames.Count == 0) break;
+            var frameTuple = state.Frames[Math.Min(idx, state.Frames.Count - 1)];
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (ct.IsCancellationRequested) return;
+                try { target.Source = frameTuple.frame; } catch { }
+            });
+            try { await Task.Delay(frameTuple.delayMs, ct); } catch { }
+            idx++;
+            if (idx >= state.Frames.Count) { idx = 0; loops++; if (loops % 10 == 0) LogGif($"gif-loop loops={loops}"); }
+        }
+    }
+
+    private static void LogGif(string line)
+    {
+        try
+        {
+            var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
+            Directory.CreateDirectory(logsRoot);
+            File.AppendAllText(Path.Combine(logsRoot, "viewer.log"), $"[{DateTime.Now:O}] {line}\n");
         }
         catch { }
     }
