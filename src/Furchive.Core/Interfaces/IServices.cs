@@ -82,6 +82,23 @@ public interface IPlatformApi
 }
 
 /// <summary>
+/// Optional interface implemented by platforms (currently e621) that expose cache maintenance
+/// and lightweight metrics / persistence hooks. Eliminates reflection-based invocation.
+/// </summary>
+public interface IE621CacheMaintenance
+{
+    void ClearSearchCache();
+    void ClearTagSuggestCache();
+    void ClearPoolPostsCache();
+    void ClearFullPoolCache();
+    void ClearPostDetailsCache();
+    void ClearPoolDetailsCache();
+    object? GetCacheMetrics();
+    void LoadPersistentCacheIfEnabled();
+    void SavePersistentCacheIfEnabled();
+}
+
+/// <summary>
 /// Unified API service that aggregates multiple platforms
 /// </summary>
 public interface IUnifiedApiService
@@ -150,6 +167,9 @@ public interface IUnifiedApiService
     void ClearE621FullPoolCache();
     void ClearE621PostDetailsCache();
     void ClearE621PoolDetailsCache();
+    object? GetE621CacheMetrics();
+    void LoadE621PersistentCacheIfEnabled();
+    void SaveE621PersistentCacheIfEnabled();
 }
 
 /// <summary>

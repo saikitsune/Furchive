@@ -11,7 +11,7 @@ namespace Furchive.Core.Platforms;
 /// <summary>
 /// e621 API implementation
 /// </summary>
-public class E621Api : IPlatformApi
+public class E621Api : IPlatformApi, IE621CacheMaintenance
 {
     public string PlatformName => "e621";
     
