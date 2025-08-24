@@ -42,7 +42,7 @@ public partial class MainViewModel : ObservableObject
     public int BackgroundCachingPercent => BackgroundCachingTotal <= 0 ? 0 : (int)Math.Round(100.0 * BackgroundCachingCurrent / (double)BackgroundCachingTotal);
     [ObservableProperty] private int _backgroundCachingItemsFetched = 0;
     [ObservableProperty] private int _ratingFilterIndex = 0;
-    partial void OnRatingFilterIndexChanged(int value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
+    partial void OnRatingFilterIndexChanged(int value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch (Exception ex) { _logger.LogDebug(ex, "Persist last session after rating filter change failed"); } }
 
     public ObservableCollection<MediaItem> SearchResults { get; } = new();
     public ObservableCollection<string> IncludeTags { get; } = new();
@@ -87,9 +87,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private PoolInfo? _selectedPool;
     partial void OnSelectedPoolChanged(PoolInfo? value) { OnPropertyChanged(nameof(ShowPinPoolButton)); }
     [ObservableProperty] private bool _isPoolMode = false;
-    partial void OnIsPoolModeChanged(bool value) { OnPropertyChanged(nameof(DownloadAllLabel)); OnPropertyChanged(nameof(ShowPinPoolButton)); OnPropertyChanged(nameof(CanOpenPoolPage)); try { OpenPoolPageCommand?.NotifyCanExecuteChanged(); } catch { } }
+    partial void OnIsPoolModeChanged(bool value) { OnPropertyChanged(nameof(DownloadAllLabel)); OnPropertyChanged(nameof(ShowPinPoolButton)); OnPropertyChanged(nameof(CanOpenPoolPage)); try { OpenPoolPageCommand?.NotifyCanExecuteChanged(); } catch (Exception ex) { _logger.LogDebug(ex, "NotifyCanExecuteChanged failed (IsPoolMode)"); } }
     [ObservableProperty] private int? _currentPoolId = null;
-    partial void OnCurrentPoolIdChanged(int? value) { OnPropertyChanged(nameof(CanOpenPoolPage)); try { OpenPoolPageCommand?.NotifyCanExecuteChanged(); } catch { } }
+    partial void OnCurrentPoolIdChanged(int? value) { OnPropertyChanged(nameof(CanOpenPoolPage)); try { OpenPoolPageCommand?.NotifyCanExecuteChanged(); } catch (Exception ex) { _logger.LogDebug(ex, "NotifyCanExecuteChanged failed (CurrentPoolId)"); } }
     [ObservableProperty] private string _previewPoolName = string.Empty;
     public string PreviewPoolDisplayName => !string.IsNullOrWhiteSpace(PreviewPoolName) ? PreviewPoolName : (SelectedPool?.Name ?? string.Empty);
     public bool PreviewPoolVisible => IsPoolMode || !string.IsNullOrWhiteSpace(PreviewPoolName);
@@ -125,7 +125,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<SavedSearch> SavedSearches { get; } = new();
     public Dictionary<string, PlatformHealth> PlatformHealth { get; private set; } = new();
     [ObservableProperty] private int _currentPage = 1;
-    partial void OnCurrentPageChanged(int value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch { } }
+    partial void OnCurrentPageChanged(int value) { try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) _ = PersistLastSessionAsync(); } catch (Exception ex) { _logger.LogDebug(ex, "Persist last session after page change failed"); } }
     [ObservableProperty] private bool _hasNextPage = false;
     [ObservableProperty] private int _totalCount = 0;
     public bool CanGoPrev => CurrentPage > 1;
@@ -155,7 +155,7 @@ public partial class MainViewModel : ObservableObject
         _ = Task.Run(CheckPlatformHealthAsync);
         // Pools: load from SQLite cache on startup; refresh only if empty
         // Synchronously load from SQLite so the list appears instantly; background work only if needed
-        try { _cacheStore.InitializeAsync().GetAwaiter().GetResult(); } catch { }
+    try { _cacheStore.InitializeAsync().GetAwaiter().GetResult(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools cache store initialization failed (continuing)"); }
         // Migration guard: if DB has meta timestamp but zero pools, force a rebuild
         try
         {
@@ -168,14 +168,14 @@ public partial class MainViewModel : ObservableObject
                     _logger.LogInformation("Pools cache meta present but no pool rows found; auto-rebuilding cache");
                     _poolsCacheLastSavedUtc = DateTime.MinValue; // ensure full refresh path
                     _rebuildScheduled = true;
-                    try { Dispatcher.UIThread.Post(() => PoolsStatusText = "pools cache invalid — rebuilding…"); } catch { }
+                    try { Dispatcher.UIThread.Post(() => PoolsStatusText = "pools cache invalid — rebuilding…"); } catch (Exception ex) { _logger.LogDebug(ex, "Failed posting pools cache invalid status"); }
                     _ = Task.Run(RefreshPoolsIfStaleAsync);
                 }
             }
         }
         catch { }
         // Load pinned pools from SQLite
-        try { var pinned = _cacheStore.GetPinnedPoolsAsync().GetAwaiter().GetResult() ?? new(); PinnedPools.Clear(); foreach (var p in pinned) PinnedPools.Add(p); } catch { }
+    try { var pinned = _cacheStore.GetPinnedPoolsAsync().GetAwaiter().GetResult() ?? new(); PinnedPools.Clear(); foreach (var p in pinned) PinnedPools.Add(p); } catch (Exception ex) { _logger.LogDebug(ex, "Load pinned pools failed"); }
         bool hadCachedStartup = false;
         try { hadCachedStartup = LoadPoolsFromDbAsync().GetAwaiter().GetResult(); }
         catch { }
@@ -193,8 +193,8 @@ public partial class MainViewModel : ObservableObject
     try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) { _ = RestoreLastSessionAsync(); } } catch { _ = RestoreLastSessionAsync(); }
     WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
         WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
-    WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = _settingsService.GetSetting<double>("GalleryScale", GalleryScale); } catch { } });
-        WeakReferenceMessenger.Default.Register<PoolsSoftRefreshRequestedMessage>(this, async (_, __) => { try { await SoftRefreshPoolsAsync(); } catch { } });
+    WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = _settingsService.GetSetting<double>("GalleryScale", GalleryScale); } catch (Exception ex) { _logger.LogDebug(ex, "SettingsSavedMessage handling failed"); } });
+    WeakReferenceMessenger.Default.Register<PoolsSoftRefreshRequestedMessage>(this, async (_, __) => { try { await SoftRefreshPoolsAsync(); } catch (Exception ex) { _logger.LogDebug(ex, "PoolsSoftRefreshRequested handling failed"); } });
     }
 
     private void LoadSettings()
