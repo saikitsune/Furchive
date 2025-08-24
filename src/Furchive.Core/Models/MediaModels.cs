@@ -14,6 +14,8 @@ public class MediaItem
     public string Artist { get; set; } = string.Empty;
     public string PreviewUrl { get; set; } = string.Empty;
     public string FullImageUrl { get; set; } = string.Empty;
+    // When downloaded, absolute local filesystem path to the media (preferred for viewing/animation)
+    public string? LocalFilePath { get; set; }
     public string SourceUrl { get; set; } = string.Empty;
     public List<string> Tags { get; set; } = new();
     public Dictionary<string, List<string>> TagCategories { get; set; } = new();

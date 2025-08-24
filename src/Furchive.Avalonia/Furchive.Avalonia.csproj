@@ -33,7 +33,8 @@
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   <!-- WebView packages removed (legacy video playback path deprecated) -->
-    <PackageReference Include="AnimatedImage.Avalonia" Version="2.0.0" />
+  <!-- Removed AnimatedImage.Avalonia (replaced by custom GifAnimatorService) -->
+  <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
   <!-- LibVLCSharp for video playback (initial integration). Add platform native VLC binaries later (e.g., VideoLAN.LibVLC.*) -->
   <PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
   <PackageReference Include="LibVLCSharp" Version="3.8.2" />

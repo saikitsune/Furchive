@@ -347,6 +347,7 @@ public class DownloadService : IDownloadService
             {
                 job.Status = DownloadStatus.Completed;
                 job.CompletedAt = DateTime.UtcNow;
+                try { if (File.Exists(job.DestinationPath)) job.MediaItem.LocalFilePath = job.DestinationPath; } catch { }
                 
                 // Save metadata if enabled
                 var saveMetadata = _settingsService.GetSetting<bool>("SaveMetadataJson", false);
@@ -371,6 +372,21 @@ public class DownloadService : IDownloadService
         {
             _downloadSemaphore.Release();
         }
+    }
+
+    private void MarkJobCompleted(DownloadJob job)
+    {
+        job.Status = DownloadStatus.Completed;
+        job.CompletedAt = DateTime.UtcNow;
+        try
+        {
+            if (File.Exists(job.DestinationPath))
+            {
+                job.MediaItem.LocalFilePath = job.DestinationPath;
+            }
+        }
+        catch { }
+        DownloadStatusChanged?.Invoke(this, job);
     }
 
     private string GenerateFilePath(MediaItem mediaItem, string basePath)

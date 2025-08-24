@@ -13,6 +13,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Furchive.Avalonia.Behaviors;
+using Furchive.Avalonia.Controls; // includes GifAnimatorService
 using Furchive.Core.Models;
 // Removed conditional compilation (HAS_LIBVLC) due to intermittent unmatched #endif build errors.
 // LibVLC packages are referenced unconditionally, so we always include these usings.
@@ -21,11 +22,14 @@ using LibVLCSharp.Avalonia; // VideoView control
 using Avalonia.Platform; // For TryGetPlatformHandle / IPlatformHandle and AssetLoader
 using Microsoft.Extensions.DependencyInjection;
 using Furchive.Core.Interfaces;
+using Avalonia.Markup.Xaml; // for AvaloniaXamlLoader when XAML compilation disabled
 
 namespace Furchive.Avalonia.Views;
 
 public partial class ViewerWindow : Window
 {
+    // XAML compilation disabled; runtime loader stub suppressed (already handled elsewhere)
+    private void InitializeComponent() { }
     // Zoom & pan state
     private double _zoom = 1.0;
     private double _translateX;
@@ -63,6 +67,9 @@ public partial class ViewerWindow : Window
     // Logging synchronization for viewer.log writes
     private static readonly object _viewerLogLock = new();
     private static readonly System.Net.Http.HttpClient _httpClient = new();
+    // Cache for remote GIF temp files so we don't redownload repeatedly during a session
+    private readonly Dictionary<string, string> _remoteGifTempCache = new(StringComparer.OrdinalIgnoreCase);
+    private CancellationTokenSource? _currentGifDownloadCts;
     // LibVLC shared state
     // (Removed redundant nested #if HAS_LIBVLC) 
     private static LibVLC? _sharedLibVlc;
@@ -93,7 +100,8 @@ public partial class ViewerWindow : Window
 
     public ViewerWindow()
     {
-        InitializeComponent();
+    // Runtime load of XAML (XAML compilation disabled)
+    try { AvaloniaXamlLoader.Load(this); } catch { }
     // (Removed redundant nested #if HAS_LIBVLC)
     // LibVLC one-time initialization (ignore failures so image viewing still works)
     TryInitLibVlc();
@@ -133,6 +141,27 @@ public partial class ViewerWindow : Window
             var sp = Furchive.Avalonia.App.Services;
             _downloadService = sp?.GetService<IDownloadService>();
             _settingsService = sp?.GetService<ISettingsService>();
+            // Hook download completion to refresh currently displayed item when its file arrives
+            if (_downloadService != null)
+            {
+                try
+                {
+                    _downloadService.DownloadStatusChanged += (s, job) =>
+                    {
+                        try
+                        {
+                            if (job.Status == Furchive.Core.Models.DownloadStatus.Completed && DataContext is MediaItem dc && job.MediaItem.Id == dc.Id && string.IsNullOrWhiteSpace(dc.LocalFilePath))
+                            {
+                                // Propagate local path then reload to use local + animation
+                                dc.LocalFilePath = job.DestinationPath;
+                                Dispatcher.UIThread.Post(() => LoadMedia());
+                            }
+                        }
+                        catch { }
+                    };
+                }
+                catch { }
+            }
         }
         catch { }
     }
@@ -175,6 +204,9 @@ public partial class ViewerWindow : Window
     var img = this.FindControl<Image>("ImageElement");
         if (img == null) return;
 
+        // Stop any prior GIF animation tied to this Image control
+        try { GifAnimatorService.Stop(img); } catch { }
+
         // Detach previous source handler to avoid multiple subscriptions
         if (_imageSourceHandler != null)
         {
@@ -182,7 +214,108 @@ public partial class ViewerWindow : Window
         }
 
         _initialFitApplied = false;
-        var url = string.IsNullOrWhiteSpace(item.FullImageUrl) ? item.PreviewUrl : item.FullImageUrl;
+        // Prefer local downloaded file path if available
+    // Resolve local file using configured templates (download then pool) if not already set
+    var haveLocal = !string.IsNullOrWhiteSpace(item.LocalFilePath) && File.Exists(item.LocalFilePath);
+    if (!haveLocal)
+    {
+        try
+        {
+            var baseDir = _settingsService?.GetSetting<string>("DefaultDownloadDirectory", System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"))
+                         ?? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
+            string Sanitize(string s)
+            {
+                var invalid = System.IO.Path.GetInvalidFileNameChars();
+                var clean = new string((s ?? string.Empty).Where(c => !invalid.Contains(c)).ToArray());
+                return clean.Replace(" ", "_");
+            }
+            string? ExtFromUrl(string? u)
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(u)) return null;
+                    var clean = u.Split('?', '#')[0];
+                    var ext = System.IO.Path.GetExtension(clean).Trim('.').ToLowerInvariant();
+                    return string.IsNullOrEmpty(ext) ? null : ext;
+                }
+                catch { return null; }
+            }
+            var extFinal = string.IsNullOrWhiteSpace(item.FileExtension) ? (ExtFromUrl(item.FullImageUrl) ?? ExtFromUrl(item.PreviewUrl) ?? "bin") : item.FileExtension;
+            bool hasPoolContext = (item.TagCategories != null && (item.TagCategories.ContainsKey("page_number") || item.TagCategories.ContainsKey("pool_name")));
+            var poolTemplate = _settingsService?.GetSetting<string>("PoolFilenameTemplate", "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}") ?? "{source}/pools/{artist}/{pool_name}/{page_number}_{id}.{ext}";
+            var fileTemplate = _settingsService?.GetSetting<string>("FilenameTemplate", "{source}/{artist}/{id}.{ext}") ?? "{source}/{artist}/{id}.{ext}";
+            string Expand(string template)
+            {
+                string poolName = string.Empty; string pageNumber = string.Empty;
+                try
+                {
+                    if (item.TagCategories != null)
+                    {
+                        if (item.TagCategories.TryGetValue("pool_name", out var p) && p.Count > 0) poolName = p[0];
+                        if (item.TagCategories.TryGetValue("page_number", out var pn) && pn.Count > 0) pageNumber = pn[0];
+                    }
+                }
+                catch { }
+                return template
+                    .Replace("{source}", Sanitize(item.Source))
+                    .Replace("{artist}", Sanitize(item.Artist))
+                    .Replace("{id}", Sanitize(item.Id))
+                    .Replace("{ext}", Sanitize(extFinal))
+                    .Replace("{pool_name}", Sanitize(poolName))
+                    .Replace("{page_number}", Sanitize(pageNumber));
+            }
+            // Try non-pool path first
+            var candidate1 = System.IO.Path.Combine(baseDir, Expand(fileTemplate));
+            if (File.Exists(candidate1)) { item.LocalFilePath = candidate1; haveLocal = true; }
+            // If pool context or first missing, try pool template
+            if (!haveLocal)
+            {
+                var candidate2 = System.IO.Path.Combine(baseDir, Expand(poolTemplate));
+                if (File.Exists(candidate2)) { item.LocalFilePath = candidate2; haveLocal = true; }
+            }
+                // Final fallback: template mismatch (user may have changed template since download). Search by ID.
+                if (!haveLocal)
+                {
+                    try
+                    {
+                        // Use targeted enumerator with pattern *{id}.* to reduce traversal volume.
+                        // Break after first plausible image match.
+                        foreach (var f in Directory.EnumerateFiles(baseDir, "*" + item.Id + ".*", SearchOption.AllDirectories))
+                        {
+                            try
+                            {
+                                var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(f);
+                                // Accept exact id or suffix _id (e.g., pageNumber_id)
+                                if (nameNoExt.Equals(item.Id, StringComparison.OrdinalIgnoreCase) || nameNoExt.EndsWith("_" + item.Id, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    item.LocalFilePath = f;
+                                    haveLocal = true;
+                                    try
+                                    {
+                                        var logsRoot2 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
+                                        Directory.CreateDirectory(logsRoot2);
+                                        File.AppendAllText(Path.Combine(logsRoot2, "viewer.log"), $"[{DateTime.Now:O}] viewer-local-fallback-scan id={item.Id} found={f}\n");
+                                    }
+                                    catch { }
+                                    break;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+        }
+        catch { }
+    }
+    var url = haveLocal ? item.LocalFilePath! : (string.IsNullOrWhiteSpace(item.FullImageUrl) ? item.PreviewUrl : item.FullImageUrl);
+        try
+        {
+            var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
+            Directory.CreateDirectory(logsRoot);
+            File.AppendAllText(Path.Combine(logsRoot, "viewer.log"), $"[{DateTime.Now:O}] viewer-load-path-chosen id={item.Id} local={(item.LocalFilePath ?? "")} final={url}\n");
+        }
+        catch { }
         if (string.IsNullOrWhiteSpace(url)) return;
 
         // Log each attempted load (one line per navigation / data context change)
@@ -220,49 +353,74 @@ public partial class ViewerWindow : Window
         catch { }
 
     if (isVideo)
+    {
+        var videoHost = this.FindControl<Grid>("VideoHost");
+        if (videoHost == null)
         {
-            var videoHost = this.FindControl<Grid>("VideoHost");
-            if (videoHost != null)
+            LogViewerDiag("video-host-missing-abort");
+            return; // cannot proceed (should not happen unless removed)
+        }
+        // Clear any prior native surface
+        try
+        {
+            var surfaceLayer = videoHost.FindControl<Grid>("VideoSurfaceLayer");
+            surfaceLayer?.Children.Clear();
+            if (_activeVlcHost != null)
             {
-                videoHost.IsVisible = true;
-                img.IsVisible = false;
-                _isVideoMode = true;
-                SetImageInteractionEnabled(false);
-                // Hide zoom + size UI when video mode
-                TrySetVisibility("ZoomButton", false);
-                TrySetVisibility("SizeLabel", false);
-                TrySetVisibility("SizeModeCombo", false);
-                var surfaceLayer = videoHost.FindControl<Grid>("VideoSurfaceLayer");
-                surfaceLayer?.Children.Clear();
-                try
-                {
-                    (surfaceLayer ?? videoHost).Children.Add(new TextBlock
-                    {
-                        Text = "Initializing video...",
-                        Foreground = Brushes.LightGray,
-                        HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
-                        VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
-                        Margin = new Thickness(8)
-                    });
-                    var targetUrl = url;
-                    _ = AttemptCreateVideoViewAsync(videoHost, targetUrl);
-                }
-                catch (Exception vlex)
-                {
-                    LogViewerDiag("video-libvlc-error-schedule " + vlex.Message);
-                    surfaceLayer?.Children.Clear();
-                    (surfaceLayer ?? videoHost).Children.Add(new TextBlock
-                    {
-                        Text = "Video playback failed to schedule (LibVLC)",
-                        Foreground = Brushes.OrangeRed,
-                        FontSize = 16,
-                        HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
-                        VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center
-                    });
-                }
-                return;
+                try { surfaceLayer?.Children.Remove(_activeVlcHost); } catch { }
+                try { _activeVlcHost.ForceDestroy(); } catch { }
+                _activeVlcHost = null;
+                LogViewerDiag("viewer-native-host-force-destroyed-pre-video");
             }
         }
+        catch { }
+
+        // Enter video mode UI adjustments
+        img.IsVisible = false;
+        if (!_isVideoMode)
+        {
+            _isVideoMode = true;
+            SetImageInteractionEnabled(false);
+            TrySetVisibility("ZoomButton", false);
+            TrySetVisibility("SizeLabel", false);
+            TrySetVisibility("SizeModeCombo", false);
+            try { this.FindControl<Button>("ShowShortcutsButton")!.IsVisible = true; } catch { }
+        }
+        videoHost.IsVisible = true;
+        try
+        {
+            var surfaceLayer = videoHost.FindControl<Grid>("VideoSurfaceLayer");
+            (surfaceLayer ?? videoHost).Children.Add(new TextBlock
+            {
+                Text = "Loading video...",
+                Foreground = Brushes.LightGray,
+                HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Thickness(8)
+            });
+            var targetUrl = url;
+            _ = AttemptCreateVideoViewAsync(videoHost, targetUrl);
+        }
+        catch (Exception vlex)
+        {
+            try
+            {
+                var surfaceLayer = videoHost.FindControl<Grid>("VideoSurfaceLayer");
+                surfaceLayer?.Children.Clear();
+                (surfaceLayer ?? videoHost).Children.Add(new TextBlock
+                {
+                    Text = "Video playback failed to schedule (LibVLC)",
+                    Foreground = Brushes.OrangeRed,
+                    FontSize = 16,
+                    HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center
+                });
+            }
+            catch { }
+            LogViewerDiag("video-libvlc-error-schedule " + vlex.Message);
+        }
+        return;
+    }
 
         // Not a video: ensure any previous video playback is stopped and video host hidden
         try
@@ -272,11 +430,26 @@ public partial class ViewerWindow : Window
             if (priorVideoHost != null)
             {
                 priorVideoHost.IsVisible = false;
-                // Only clear video surface layer so controls bar persists
                 var surfaceLayer = priorVideoHost.FindControl<Grid>("VideoSurfaceLayer");
                 surfaceLayer?.Children.Clear();
+                // Dispose/remove native VLC host to avoid hidden HWND overlaying images
+                if (_activeVlcHost != null)
+                {
+                    try
+                    {
+                        try { surfaceLayer?.Children.Remove(_activeVlcHost); } catch { }
+                        try { priorVideoHost.Children.Remove(_activeVlcHost); } catch { }
+                        try { _activeVlcHost.ForceDestroy(); } catch { }
+                        _activeVlcHost = null;
+                        LogViewerDiag("viewer-native-host-disposed-on-exit-video");
+                    }
+                    catch { }
+                }
             }
             img.IsVisible = true;
+            // Hide shortcuts overlay in image mode
+            try { var overlay = this.FindControl<Border>("ShortcutsOverlay"); if (overlay != null) overlay.IsVisible = false; } catch { }
+            // (Removed diagnostic magenta marker insertion)
             if (_isVideoMode)
             {
                 _isVideoMode = false;
@@ -285,6 +458,7 @@ public partial class ViewerWindow : Window
                 TrySetVisibility("ZoomButton", true);
                 TrySetVisibility("SizeLabel", true);
                 TrySetVisibility("SizeModeCombo", true);
+                try { this.FindControl<Button>("ShowShortcutsButton")!.IsVisible = false; } catch { }
                 // Dispose previous media player to ensure playback stops
                 try
                 {
@@ -301,44 +475,130 @@ public partial class ViewerWindow : Window
         }
         catch { }
 
-        // Local file?
+    // Local file?
         try
         {
             if (File.Exists(url))
             {
-                using var fs = File.OpenRead(url);
-                if (_bitmapCache.TryGetValue(url, out var cachedBmp))
+                var normalizedPath = url.Replace('/', System.IO.Path.DirectorySeparatorChar);
+                bool isGif = normalizedPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+                try
                 {
-                    img.Source = cachedBmp;
+                    var fi = new FileInfo(normalizedPath);
+                    LogViewerDiag($"viewer-local-attempt id={item.Id} path={normalizedPath} size={fi.Length} exists={fi.Exists}");
                 }
-                else
+                catch { }
+                try
                 {
-                    var bmp = new Bitmap(fs);
-                    _bitmapCache[url] = bmp;
-                    img.Source = bmp;
+                    // Clear any remote behavior URL so it won't overwrite local bitmap
+                    try { Furchive.Avalonia.Behaviors.RemoteImage.SetSourceUri(img, null); } catch { }
+                    using var fs = File.OpenRead(normalizedPath);
+                    if (_bitmapCache.TryGetValue(normalizedPath, out var cachedBmp))
+                    {
+                        try { Dispatcher.UIThread.Post(() => { try { img.Source = cachedBmp; } catch { } }); } catch { }
+                        LogViewerDiag($"viewer-local-cache-hit id={item.Id} path={normalizedPath}");
+                    }
+                    else
+                    {
+                        var bmp = new Bitmap(fs);
+                        _bitmapCache[normalizedPath] = bmp;
+                        try { Dispatcher.UIThread.Post(() => { try { img.Source = bmp; } catch { } }); } catch { }
+                        try { LogViewerDiag($"viewer-local-loaded id={item.Id} w={bmp.PixelSize.Width} h={bmp.PixelSize.Height} dpiX={bmp.Dpi.X} dpiY={bmp.Dpi.Y}"); } catch { }
+                    }
+                    // (Removed extra diagnostic source-null confirmation)
+                    ApplyInitialFit(force: true);
+                    if (_currentSizeMode == SizeMode.Original)
+                        ApplyOriginalSize();
+                    SchedulePrefetch();
+                    if (isGif)
+                    {
+                        try { GifAnimatorService.Start(img, normalizedPath); } catch { }
+                    }
+                    // (Removed verbose state + visual tree diagnostics and layout forcing)
+                    return;
                 }
+                catch (Exception exLocal)
+                {
+                    try { LogViewerDiag($"viewer-local-exception id={item.Id} path={normalizedPath} msg={exLocal.Message}"); } catch { }
+                }
+            }
+        }
+        catch (Exception exOuterLocal)
+        {
+            try { LogViewerDiag($"viewer-local-outer-exception id={item.Id} msg={exOuterLocal.Message}"); } catch { }
+        }
+
+        // Determine if the current URL is truly remote (http/https). Prevent attempting remote loader on local paths.
+        bool isRemoteUrl = url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        if (isRemoteUrl)
+        {
+            // Remote (http/https) handling (still no local file)
+            bool isRemoteGif = url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+            if (isRemoteGif)
+            {
+                _ = EnsureRemoteGifAnimatedAsync(img, url, item);
+                return;
+            }
+
+            // Remote non-GIF: set URI (thumbnail/cached) and rely on RemoteImage behavior
+            if (_bitmapCache.TryGetValue(url, out var remoteCached))
+            {
+                img.Source = remoteCached;
                 ApplyInitialFit(force: true);
                 if (_currentSizeMode == SizeMode.Original)
                     ApplyOriginalSize();
                 SchedulePrefetch();
                 return;
             }
-        }
-        catch { }
 
-        // Remote: set URI and wait for bitmap to arrive
-        // Remote: check cache first (prefetched)
-        if (_bitmapCache.TryGetValue(url, out var remoteCached))
+            try { RemoteImage.SetSourceUri(img, url); } catch { }
+        }
+        else
         {
-            img.Source = remoteCached;
-            ApplyInitialFit(force: true);
-            if (_currentSizeMode == SizeMode.Original)
-                ApplyOriginalSize();
-            SchedulePrefetch();
-            return;
+            // Not remote and not an existing file (perhaps naming mismatch). Try falling back to FullImageUrl/PreviewUrl explicitly once.
+            if (!File.Exists(url))
+            {
+                var remoteFallback = string.IsNullOrWhiteSpace(item.FullImageUrl) ? item.PreviewUrl : item.FullImageUrl;
+                if (!string.IsNullOrWhiteSpace(remoteFallback) && (remoteFallback.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || remoteFallback.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+                {
+                // Log state after exiting video mode
+                try
+                {
+                    var img2 = this.FindControl<Image>("ImageElement");
+                    var vh2 = this.FindControl<Grid>("VideoHost");
+                    LogViewerDiag($"viewer-exit-video id={(DataContext as MediaItem)?.Id} imageVisible={img2?.IsVisible} videoHostVisible={vh2?.IsVisible}");
+                }
+                catch { }
+                    url = remoteFallback;
+                    bool isGifRemote = url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+                    if (isGifRemote)
+                    {
+                        _ = EnsureRemoteGifAnimatedAsync(img, url, item);
+                        return;
+                    }
+                    try { RemoteImage.SetSourceUri(img, url); } catch { }
+                }
+                else
+                {
+                    // Give up: nothing to show
+                    try { img.Source = null; } catch { }
+                    return;
+                }
+            }
+            else
+            {
+                // Existing local but earlier load failed unexpectedly; attempt a second direct load.
+                try
+                {
+                    using var fs2 = File.OpenRead(url);
+                    var bmp2 = new Bitmap(fs2);
+                    img.Source = bmp2;
+                    ApplyInitialFit(force: true);
+                    if (_currentSizeMode == SizeMode.Original) ApplyOriginalSize();
+                }
+                catch { }
+            }
         }
-
-        try { RemoteImage.SetSourceUri(img, url); } catch { }
         _imageSourceHandler = (s, e) =>
         {
             if (e.Property == Image.SourceProperty && img.Source is Bitmap b)
@@ -360,6 +620,78 @@ public partial class ViewerWindow : Window
             }
         };
         try { img.PropertyChanged += _imageSourceHandler; } catch { }
+    }
+
+    private async Task EnsureRemoteGifAnimatedAsync(Image img, string remoteUrl, MediaItem item)
+    {
+        // Cancel any prior in-flight GIF download
+        try { _currentGifDownloadCts?.Cancel(); } catch { }
+        _currentGifDownloadCts = new CancellationTokenSource();
+        var ct = _currentGifDownloadCts.Token;
+        string? localPath = null;
+        try
+        {
+            try
+            {
+                var vh = this.FindControl<Grid>("VideoHost");
+                LogViewerDiag($"viewer-remote-init id={item.Id} imageVisible={img.IsVisible} videoHostVisible={vh?.IsVisible}");
+            }
+            catch { }
+            if (_remoteGifTempCache.TryGetValue(remoteUrl, out var cachedPath) && File.Exists(cachedPath))
+            {
+                localPath = cachedPath;
+            }
+            else
+            {
+                var tmpDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "anim-cache");
+                Directory.CreateDirectory(tmpDir);
+                // Use deterministic hash filename for cache reuse
+                string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(remoteUrl))).Substring(0, 16);
+                var tmpPath = Path.Combine(tmpDir, hash + ".gif");
+                if (!File.Exists(tmpPath))
+                {
+                    using var resp = await _httpClient.GetAsync(remoteUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct);
+                    resp.EnsureSuccessStatusCode();
+                    // Simple size guard (max 40MB)
+                    if (resp.Content.Headers.ContentLength.HasValue && resp.Content.Headers.ContentLength.Value > 40 * 1024 * 1024)
+                        throw new InvalidOperationException("GIF too large");
+                    await using var fs = File.Create(tmpPath);
+                    await resp.Content.CopyToAsync(fs, ct);
+                }
+                localPath = tmpPath;
+                _remoteGifTempCache[remoteUrl] = tmpPath;
+            }
+    }
+    catch { localPath = null; }
+
+        if (ct.IsCancellationRequested) return;
+        // Ensure still viewing same item
+        if (DataContext is not MediaItem current || current.Id != item.Id)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath))
+        {
+            // Show first frame quickly
+            try
+            {
+                await using var fs = File.OpenRead(localPath);
+                var bmp = new Bitmap(fs);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    try { img.Source = bmp; } catch { }
+                    ApplyInitialFit(force: true);
+                    if (_currentSizeMode == SizeMode.Original) ApplyOriginalSize();
+                });
+            }
+            catch { }
+            // Start animation off UI thread
+            try { GifAnimatorService.Start(img, localPath); } catch { }
+        }
+        else
+        {
+            // Fallback to static remote load if download failed
+            try { RemoteImage.SetSourceUri(img, remoteUrl); } catch { }
+        }
     }
 
     private void UpdateNavButtonsVisibility()

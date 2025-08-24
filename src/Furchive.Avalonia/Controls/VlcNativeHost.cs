@@ -19,6 +19,18 @@ public class VlcNativeHost : NativeControlHost
     public IntPtr ChildHandle { get; private set; } = IntPtr.Zero;
     public event Action<IntPtr>? HandleCreated;
 
+    /// <summary>
+    /// Force-destroy the underlying native child window if it still exists. Safe to call multiple times.
+    /// </summary>
+    public void ForceDestroy()
+    {
+        if (ChildHandle != IntPtr.Zero && OperatingSystem.IsWindows())
+        {
+            try { DestroyWindow(ChildHandle); } catch { }
+            ChildHandle = IntPtr.Zero;
+        }
+    }
+
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
         if (!OperatingSystem.IsWindows())
