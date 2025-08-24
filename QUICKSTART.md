@@ -1,7 +1,3 @@
-dotnet restore
-dotnet build -c Release
-dotnet test
-dotnet run --project src/Furchive.Avalonia
 # Furchive – Quick Start
 
 Concise setup & dev reference. For full details see `README.md`.
