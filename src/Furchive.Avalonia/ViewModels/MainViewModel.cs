@@ -106,6 +106,9 @@ public partial class MainViewModel : ObservableObject
     private bool _rebuildScheduled = false;
     // Streaming pool load cancellation source
     private CancellationTokenSource? _poolStreamCts;
+    // Unified gallery context cancellation/versioning
+    private CancellationTokenSource? _currentSearchCts;
+    private int _contextVersion = 0; // increment per new search/pool to ignore stale async results
 
     public partial class SavedSearch { public string Name { get; set; } = string.Empty; public List<string> IncludeTags { get; set; } = new(); public List<string> ExcludeTags { get; set; } = new(); public int RatingFilterIndex { get; set; } }
     [ObservableProperty] private string _saveSearchName = string.Empty;
@@ -240,6 +243,11 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            // Cancel any prior search/pool streaming context
+            _currentSearchCts?.Cancel();
+            _currentSearchCts = new CancellationTokenSource();
+            var token = _currentSearchCts.Token;
+            var localVersion = System.Threading.Interlocked.Increment(ref _contextVersion);
             if (Dispatcher.UIThread.CheckAccess()) { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); } }
             else { await Dispatcher.UIThread.InvokeAsync(() => { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); } }); }
 
@@ -251,8 +259,10 @@ public partial class MainViewModel : ObservableObject
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
+            if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
             var filteredItems = result.Items; // API applied arttags:0 filter
             if (Dispatcher.UIThread.CheckAccess()) {
+                if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
                 foreach (var item in filteredItems)
                 {
                     if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; }
@@ -263,6 +273,7 @@ public partial class MainViewModel : ObservableObject
                 CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
             }
             else { await Dispatcher.UIThread.InvokeAsync(() => {
+                if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
                 foreach (var item in filteredItems)
                 {
                     if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; }
@@ -536,20 +547,25 @@ public partial class MainViewModel : ObservableObject
         var pool = fromPinned ?? SelectedPool; if (pool == null || IsSearching) return;
         try
         {
+            // Cancel any prior search context (search or other pool streaming)
+            _currentSearchCts?.Cancel();
+            _currentSearchCts = new CancellationTokenSource();
+            var token = _currentSearchCts.Token;
+            var localVersion = System.Threading.Interlocked.Increment(ref _contextVersion);
             IsSearching = true; StatusMessage = $"Loading pool {pool.Id} ({pool.Name})..."; SearchResults.Clear(); CurrentPage = 1;
             await EnsureE621AuthAsync(); IsPoolMode = true; CurrentPoolId = pool.Id; SelectedPool = Pools.FirstOrDefault(p => p.Id == pool.Id) ?? pool;
 
             // Cancel any prior streaming (covers cached + fresh phases)
             _poolStreamCts?.Cancel();
             _poolStreamCts = new CancellationTokenSource();
-            var streamToken = _poolStreamCts.Token;
+            var streamToken = CancellationTokenSource.CreateLinkedTokenSource(_poolStreamCts.Token, token).Token;
 
             var cached = await _cacheStore.GetPoolPostsAsync(pool.Id);
             int cachedTotal = cached?.Count ?? 0;
             TotalCount = cachedTotal; OnPropertyChanged(nameof(PageInfo));
 
             // Add first batch immediately so UI shows content fast
-            if (cachedTotal > 0)
+            if (cachedTotal > 0 && !token.IsCancellationRequested && localVersion == _contextVersion)
             {
                 var firstSlice = cached!.Take(5).ToList();
                 var poolNameLocal = pool.Name;
@@ -563,7 +579,8 @@ public partial class MainViewModel : ObservableObject
                     if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
                     SearchResults.Add(m);
                 }
-                StatusMessage = $"Loaded {Math.Min(5, cachedTotal)} / {cachedTotal} cached…";
+                if (!token.IsCancellationRequested && localVersion == _contextVersion)
+                    StatusMessage = $"Loaded {Math.Min(5, cachedTotal)} / {cachedTotal} cached…";
             }
             else
             {
@@ -577,7 +594,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     var poolNameLocal = pool.Name;
                     // Stream remaining cached items
-                    if (cachedTotal > 5)
+                    if (cachedTotal > 5 && !streamToken.IsCancellationRequested && localVersion == _contextVersion)
                     {
                         for (int i = 5; i < cachedTotal; i += 5)
                         {
@@ -585,6 +602,7 @@ public partial class MainViewModel : ObservableObject
                             var slice = cached!.Skip(i).Take(5).ToList();
                             await Dispatcher.UIThread.InvokeAsync(() =>
                             {
+                                if (streamToken.IsCancellationRequested || localVersion != _contextVersion) return; // stale
                                 foreach (var m in slice)
                                 {
                                     var idx = SearchResults.Count + 1;
@@ -595,7 +613,8 @@ public partial class MainViewModel : ObservableObject
                                     if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
                                     SearchResults.Add(m);
                                 }
-                                StatusMessage = $"Loaded {SearchResults.Count} / {cachedTotal} cached…";
+                                if (!streamToken.IsCancellationRequested && localVersion == _contextVersion)
+                                    StatusMessage = $"Loaded {SearchResults.Count} / {cachedTotal} cached…";
                             });
                             await Task.Delay(35, streamToken);
                         }
@@ -605,7 +624,7 @@ public partial class MainViewModel : ObservableObject
                     var fresh = await _apiService.GetAllPoolPostsAsync("e621", pool.Id, streamToken) ?? new List<MediaItem>();
                     if (streamToken.IsCancellationRequested) return;
                     try { await _cacheStore.UpsertPoolPostsAsync(pool.Id, fresh); } catch { }
-                    if (fresh.Count > cachedTotal)
+                    if (fresh.Count > cachedTotal && !streamToken.IsCancellationRequested && localVersion == _contextVersion)
                     {
                         for (int i = cachedTotal; i < fresh.Count; i += 5)
                         {
@@ -613,6 +632,7 @@ public partial class MainViewModel : ObservableObject
                             var slice = fresh.Skip(i).Take(5).ToList();
                             await Dispatcher.UIThread.InvokeAsync(() =>
                             {
+                                if (streamToken.IsCancellationRequested || localVersion != _contextVersion) return; // stale
                                 foreach (var m in slice)
                                 {
                                     var idx = SearchResults.Count + 1;
@@ -623,14 +643,18 @@ public partial class MainViewModel : ObservableObject
                                     if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
                                     SearchResults.Add(m);
                                 }
-                                TotalCount = fresh.Count; OnPropertyChanged(nameof(PageInfo));
-                                StatusMessage = $"Loaded {SearchResults.Count} / {fresh.Count} (updated)";
+                                if (localVersion == _contextVersion && !streamToken.IsCancellationRequested)
+                                {
+                                    TotalCount = fresh.Count; OnPropertyChanged(nameof(PageInfo));
+                                    StatusMessage = $"Loaded {SearchResults.Count} / {fresh.Count} (updated)";
+                                }
                             });
                             await Task.Delay(50, streamToken);
                         }
                     }
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
+                        if (localVersion != _contextVersion || streamToken.IsCancellationRequested) return; // stale
                         HasNextPage = false; OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(CanGoPrev));
                         TotalCount = Math.Max(fresh.Count, cachedTotal); OnPropertyChanged(nameof(PageInfo));
                         StatusMessage = $"Loaded pool {pool.Id}: {SearchResults.Count} items";

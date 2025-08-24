@@ -161,14 +161,10 @@ public partial class App : Application
         }
         catch { }
 
-        // Apply theme before creating main window, and subscribe for live updates
+        // Apply forced dark theme before creating main window. Theme switching removed.
         try
         {
-            ApplyThemeFromSettings();
-            if (_settings != null)
-            {
-                _settings.SettingChanged += OnSettingChanged;
-            }
+            ApplyThemeFromSettings(); // now always dark
             // Load icon resource dictionary once
             try
             {
@@ -263,28 +259,11 @@ public partial class App : Application
         }
     }
 
-    private void OnSettingChanged(object? sender, string key)
-    {
-        if (!string.Equals(key, "ThemeMode", StringComparison.OrdinalIgnoreCase)) return;
-        try { ApplyThemeFromSettings(); } catch { }
-    }
-
     private void ApplyThemeFromSettings()
     {
-        var mode = _settings?.GetSetting<string>("ThemeMode", "system")?.Trim().ToLowerInvariant() ?? "system";
-        // System means follow OS; in Avalonia set RequestedThemeVariant to Default
-        var variant = mode switch
-        {
-            "light" => ThemeVariant.Light,
-            "dark" => ThemeVariant.Dark,
-            _ => ThemeVariant.Default
-        };
-        try
-        {
-            RequestedThemeVariant = variant;
-        }
-        catch { }
-        // Also update all open windows immediately
+        // Always force dark theme; ignore stored ThemeMode setting.
+        var variant = ThemeVariant.Dark;
+        try { RequestedThemeVariant = variant; } catch { }
         try
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.Windows != null)
@@ -296,7 +275,6 @@ public partial class App : Application
             }
         }
         catch { }
-        // Update themed icons after theme change
         try { ApplyIconTheme(); } catch { }
     }
 
