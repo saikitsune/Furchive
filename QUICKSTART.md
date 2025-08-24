@@ -1,122 +1,75 @@
-# Furchive - Quick Start Guide
+dotnet restore
+dotnet build -c Release
+dotnet test
+dotnet run --project src/Furchive.Avalonia
+# Furchive – Quick Start
 
-## 🎯 Overview
-Furchive is a cross‑platform C# Avalonia application for browsing and downloading furry art from e621. The UI runs on Windows, macOS, and Linux, powered by a shared Core library.
+Concise setup & dev reference. For full details see `README.md`.
 
-## ✅ What's Been Implemented
-
-### 🏗️ Architecture
-- **Clean Architecture**: Separation between Core (business logic) and UI layers
-- **MVVM Pattern**: ViewModels handle UI logic, Views are pure presentation
-- **Dependency Injection**: Microsoft.Extensions.DI with proper service lifetimes
-- **Modern Avalonia**: Fluent theme with responsive layouts
-
-### 🔧 Core Services
-- **UnifiedApiService**: Aggregates platform APIs (currently e621)
-- **DownloadService**: Concurrent download management with progress tracking
-- **SettingsService**: JSON-based configuration with automatic persistence
-- **Platform APIs**: Stub implementations ready for e621, FA, InkBunny, Weasyl
-
-### 🎨 UI Components
-- **MainWindow**: Primary interface with toolbar, gallery grid, and preview pane
-- **Tag Management**: Include/exclude tags with visual feedback
-- **Download Queue**: Real-time progress tracking with pause/resume/cancel
-- **Status Bar**: Platform health indicators and operation feedback
-
-## 🚀 Quick Start Commands
+## 🚀 Clone & Run
 
 ```powershell
-# Navigate to project directory
-cd "C:\projects\github\Furchive"
-
-# Restore packages
+git clone https://github.com/saikitsune/Furchive.git
+cd Furchive
 dotnet restore
-
-# Build the solution (WPF project is excluded from default builds)
 dotnet build -c Release
-
-# Run tests
-dotnet test
-
-# Launch the Avalonia application (Windows)
 dotnet run --project src/Furchive.Avalonia
+```
 
-# Publish cross‑platform
+Run tests:
+```powershell
+dotnet test
+```
+
+Publish (multi‑RID helper):
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-avalonia.ps1 -Configuration Release
 ```
 
-## 📋 Development Checklist
+## � First Run
+1. Open Settings → set e621 User‑Agent (and optional username + API key).
+2. Choose download directory & tweak filename templates if desired.
+3. (Optional) Enable Last Session Restore.
 
-### ✅ Completed
-- [x] Solution structure with 4 projects (Core, Avalonia, WPF-legacy, Tests)
-- [x] Core models (MediaItem, SearchParameters, DownloadJob, etc.)
-- [x] Service interfaces and implementations
-- [x] MVVM ViewModels with CommunityToolkit
-- [x] Avalonia XAML with Fluent styling
-- [x] Settings management with JSON persistence
-- [x] Basic unit tests
-- [x] Comprehensive error handling
-- [x] Complete API specification (JSON format)
+## 🧭 Core Concepts
+- Search: include / exclude tags + rating filter.
+- Pools: cached in SQLite; background incremental refresh; can pin favorites.
+- Downloads: queued with progress, pause / resume; filenames generated from templates.
+- Saved Searches: name current include/exclude + rating + page index.
 
-### 🔄 Next Steps (Future Implementation)
-- [ ] Enhance viewer window (video support, zoom, pan)
-- [ ] Tag autocomplete with suggestions
-- [ ] Keyboard shortcuts and accessibility
-- [ ] macOS/Linux packaging beyond raw publish
+## 🛠 Common Scripts
+| Purpose | Command |
+| ------- | ------- |
+| Windows installer | `installer/build-installer.ps1 -Configuration Release -Runtime win-x64` |
+| macOS DMG | `scripts/package-macos-dmg.sh osx-arm64` |
+| Linux AppImage | `scripts/package-linux-appimage.sh linux-x64` |
 
-## 🔍 Key Features
+## 🧩 Extend A Platform
+1. Implement `IPlatformApi` (map to `MediaItem`).
+2. Register in DI (`App.axaml.cs`).
+3. Add authentication properties to settings if required.
 
-### Search
-- Tag management with include/exclude logic
-- Content rating filters (Safe/Questionable/Explicit)
-
-### Download Management
-- Concurrent downloads with progress tracking
-- Configurable filename templates
-- Duplicate handling policies (skip/overwrite/rename)
-- Metadata export to JSON
-
-### User Experience
-- Modern Avalonia interface with dark/light theme support
-- Gallery grid with thumbnail previews
-- Detailed preview pane with metadata
-- Real-time download queue management
-
-## 📁 Project Structure
-
+## � Structure
 ```
-Furchive/
-├── src/
-│   ├── Furchive.Avalonia/     # Avalonia UI (primary app)
-│   ├── Furchive/              # Legacy WPF app (kept for reference; excluded from default builds)
-│   └── Furchive.Core/         # Business Logic
-├── tests/
-│   └── Furchive.Tests/        # Unit Tests
-├── docs/
-│   └── furchive-specifications.json  # Complete API/UI/Settings spec
-└── README.md
+src/
+	Furchive.Avalonia/   UI (Avalonia, MVVM)
+	Furchive.Core/       Logic & services
+	Furchive/            Legacy WPF (reference)
+tests/Furchive.Tests/  Unit tests
+installer/             Inno Setup build script
+docs/                  Specs (JSON)
 ```
 
-## ⚙️ Configuration
+## 🧪 Focus of Tests
+Pure logic: tag parsing, path templating, session persistence, download queue state transitions.
 
-Settings are automatically persisted to:
-- **Windows**: `%LOCALAPPDATA%\Furchive\settings.json`
+## 🔮 Roadmap (High Value)
+- Enhanced viewer: zoom/pan, better video pipeline
+- Rich tag autocomplete & categorization visuals
+- Advanced keyboard shortcuts & accessibility
+- Additional platforms behind feature flags
 
-Key settings include:
-- Download directory and filename templates
-- e621 authentication (User-Agent, optional username/API key)
-- Content rating preferences
-- Download behavior (concurrency, duplicates, etc.)
+## 🆘 Help
+Open a GitHub issue with repro steps + logs (if applicable).
 
-## 🐛 Known Issues
-- None blocking. Please report issues on GitHub.
-
-## 🎨 UI Framework
-Built with:
-- **.NET 8**
-- **Avalonia 11** for cross‑platform UI
-- **CommunityToolkit.Mvvm** for MVVM helpers
-
----
-
-The application is now ready for development and testing. The core architecture is solid and extensible, making it straightforward to implement the remaining platform-specific features.
+Happy hacking.

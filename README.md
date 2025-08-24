@@ -1,200 +1,121 @@
 ![](/assets/icon256.png)
-# Furchive - Furry Art Gallery Browser
+# Furchive
 
-Furchive is a fast, modern gallery viewer, search, and download app focused on e621. The UI is built with Avalonia for cross‑platform support (Windows, macOS, Linux) and uses a shared Core library for services and models.
+Cross‑platform (Windows / macOS / Linux) Avalonia application for browsing, searching, and downloading furry artwork from e621. Fast incremental pool caching, resilient downloads, and flexible filename templating backed by a clean Core + UI separation.
 
-## Features
+## ✨ Highlights
 
-- **e621 Search**: Powerful search with include/exclude tags and rating filters
-- **Advanced Tag Management**: Include/exclude tags with autocomplete
-- **Download Queue**: Batch downloads with progress tracking, pause/resume functionality
-- **Content Rating Filters**: Filter content by Safe, Questionable, and Explicit ratings
-- **e621 Support**: Browse and download directly from e621
-- **Pools Browser**: Browse pools with fast, incremental cache updates
-- **Powerful Search**: Tag includes/excludes with rating filters
-- **Configurable Settings**: Customizable download paths, filename templates, and behavior
-- **Modern UI**: Clean, responsive Avalonia UI with Fluent theme
+- Unified search with include / exclude tags & rating filters (Safe / Questionable / Explicit)
+- Incremental pools browser (SQLite cache + background refresh & pruning)
+- Download queue (concurrent, pause / resume, progress + ETA, persistence across runs)
+- Filename templates with placeholders (e.g. `{source}`, `{artist}`, `{id}`, `{pool_name}`, `{page_number}`, `{ext}`) + automatic sanitization
+- Saved searches & last‑session restoration (optional)
+- Virtual tag helpers (e.g. `no_artist` → internal filter)
+- Pinned pools & quick filtering
+- Dark Fluent UI, responsive gallery scaling, lazy page append while viewing
+- Cross‑platform packaging scripts + Windows installer (Inno Setup)
 
-## Requirements
+## 🛠 Architecture Overview
 
-- Windows 10/11 (x64)
-- Microsoft Edge WebView2 Runtime
-    - Used for in-app video playback. The installer will install it if missing.
-- .NET 8 Desktop Runtime (for source runs)
-    - If you run from source with a framework-dependent build, you need .NET 8 Desktop Runtime. The provided installer publishes self-contained, but will also offer to install .NET 8 if not found for better compatibility.
-- Visual Studio 2022 (for development)
+- Strict MVVM (CommunityToolkit.Mvvm attributes for properties & commands)
+- Dependency Injection via `Microsoft.Extensions.Hosting`
+- `IPlatformApi` abstraction (currently e621 registered; extensible for others)
+- `UnifiedApiService` dispatches searches to registered platforms & aggregates results
+- Pools caching via `SqlitePoolsCacheStore`; incremental updates + pruning service
+- Settings persisted to `%LOCALAPPDATA%/Furchive` (JSON)
+- Download pipeline (`DownloadService`) raises events consumed by `MainViewModel`
+- UI thread safety enforced with `Dispatcher.UIThread`
 
-## Installation
+## 🔐 e621 Etiquette
 
-### From Installer (Windows)
+Set a proper User‑Agent in Settings: it is required by e621. Optional username + API key (for higher rate limits / auth). Furchive dynamically rebuilds the UA string with the current version.
 
-Download the latest `FurchiveSetup-<version>.exe` from Releases and run it. The installer will:
-- Install per-user under `%LOCALAPPDATA%\Programs\Furchive` (no admin required)
-- Install Microsoft Edge WebView2 Runtime if missing
- - Detect .NET 8 Desktop Runtime; if not found, prompt to install a compatible .NET version
+## 🚀 Install & Run
 
-### From Source
+### Windows (Installer)
+Download the latest `FurchiveSetup-<version>.exe` from Releases. The installer:
+1. Publishes a self‑contained x64 build (no .NET install needed)
+2. Ensures Microsoft Edge WebView2 Runtime (bundled offline installer)
+3. Installs per user: `%LOCALAPPDATA%\Programs\Furchive`
 
-1. Clone the repository:
+### From Source (All Platforms)
+
 ```powershell
-git clone https://github.com/yourusername/Furchive.git
+git clone https://github.com/saikitsune/Furchive.git
 cd Furchive
-```
-
-2. Restore dependencies:
-```powershell
 dotnet restore
-```
-
-3. Build the solution:
-```powershell
-dotnet build
-```
-
-4. Run the application:
-```powershell
-# Windows (desktop)
-dotnet run --project src/Furchive.Avalonia
-
-# macOS / Linux
-dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r osx-arm64 --self-contained true -o out/osx-arm64
-./out/osx-arm64/Furchive
-```
-
-## Configuration
-
-### First Run Setup
-
-1. Set your e621 User-Agent string in Settings (required by e621)
-
-### Settings
-
-- **Download Directory**: Default location for downloaded content
-- **Filename Template**: Customize how files are named using variables like `{artist}`, `{title}`, `{id}`
-- **Pools Update Interval (minutes)**: How often to check for pool updates (incremental)
-- **Content Ratings**: Default rating filters for searches
-
-## Usage
-
-### Basic Search
-
-1. Enter search terms or use the tag editor (leave empty to fetch the most recent posts)
-2. Apply rating filters as needed
-3. Click "Search" or press Enter
-
-### Tag Management
-
-- Use the tag editor to add include/exclude tags
-- Green tags are included in search
-- Red tags are excluded from search
-- Autocomplete suggestions available when typing
-
-### Downloads
-
-- Click "Download" for individual items
-- Use "Download All" for batch downloads
-- Monitor progress in the download queue
-- Pause, resume, or cancel downloads as needed
-
-### Pools Cache and Updates
-
-- On first run (or when no cache exists), Furchive builds a full pools cache from e621.
-- After that, it updates the cache incrementally on a schedule (configurable in Settings, default 6 hours).
-- The "Refresh Pools Cache" button in Settings deletes the cache file and triggers a fresh rebuild.
-
-### Keyboard Shortcuts
-
-- **Enter**: Execute search (in search box or tag editor)
-- **Esc**: Clear current selection
-
-## API Documentation References
-
-- [e621 API](https://e621.wiki)
-
-## Architecture
-
-### Core Components
-
-- **Furchive.Core**: Business logic, models, and platform APIs
-- **Furchive**: WPF application with MVVM pattern
-- **Furchive.Tests**: Unit and integration tests
-
-### Key Services
-
-- **UnifiedApiService**: Aggregates multiple platform APIs
-- **DownloadService**: Manages download queue and file operations
-- **SettingsService**: Handles configuration persistence
-
-### Platform APIs
-
-- **E621Api**: e621.net integration
-
-## Development
-
-### Building
-
-```powershell
-# Debug build
-dotnet build
-
-# Release build
 dotnet build -c Release
+dotnet run --project src/Furchive.Avalonia
 ```
 
-## Installer (Windows)
-The repository includes an Inno Setup–based installer built by `installer/build-installer.ps1`. It:
-- Publishes a self-contained x64 build (no .NET runtime required)
-- Bundles the Microsoft Edge WebView2 runtime offline installer
-- Produces a single EXE at `installer/inno/output/FurchiveSetup-<version>.exe`
-
-Build it via VS Code task or by running the PowerShell script:
+### Publishing (CLI)
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build-installer.ps1 -Configuration Release -Runtime win-x64
+# Windows self-contained publish
+dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/win-x64
+
+# macOS (arm64 example)
+dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r osx-arm64 -p:PublishSingleFile=true -o publish/osx-arm64
+
+# Linux (x64)
+dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r linux-x64 -p:PublishSingleFile=true -o publish/linux-x64
 ```
 
-Note: The installer targets 64-bit Windows using the modern `x64os` architecture identifier.
+Packaging helper scripts:
+- `scripts/package-macos-dmg.sh <rid>`
+- `scripts/package-linux-appimage.sh <rid>`
+- `installer/build-installer.ps1` (Windows Inno Setup EXE)
 
-### Running Tests
+## ⚙️ Key Settings
 
-```powershell
-dotnet test
-```
+| Setting | Purpose |
+| ------- | ------- |
+| User-Agent / Username / API Key | e621 identification/auth |
+| DefaultDownloadDirectory | Root for saved media |
+| FilenameTemplate / PoolFilenameTemplate | Per‑item path & name structure |
+| GalleryScale | UI gallery tile scaling |
+| PoolsUpdateIntervalMinutes | Incremental refresh cadence |
+| LoadLastSessionEnabled | Restore search state & page |
+| MaxResultsPerSource | Per‑page fetch size |
 
-### Project Structure
+Templates support: `{source}`, `{artist}`, `{id}`, `{safeTitle}`, `{pool_name}`, `{page_number}`, `{ext}`.
 
-```
-Furchive/
-├── src/
-│   ├── Furchive.Avalonia/     # Avalonia UI (primary app)
-│   ├── Furchive/              # Legacy WPF app (kept for reference; excluded from default builds)
-│   └── Furchive.Core/         # Shared core library
-└── tests/
-    └── Furchive.Tests/        # Unit tests
-```
+## 🔍 Using Furchive
 
-## Contributing
-## Packaging (macOS / Linux)
+1. Enter include tags; prefix excluded tags in the exclude panel (UI chips differentiate color).
+2. Choose rating filter (all / explicit / questionable / safe).
+3. Search. Scroll to trigger lazy append or open viewer to auto-fetch more quietly.
+4. Switch to Pool Mode by selecting a pool; page navigation respects pool context.
+5. Pin frequently used pools for quick access.
+6. Queue downloads (single, selected, or entire pool). Monitor progress & ETA in the Downloads panel.
 
-- macOS DMG: `scripts/package-macos-dmg.sh osx-arm64` or `osx-x64` (run on macOS runners)
-- Linux AppImage: `scripts/package-linux-appimage.sh linux-x64` (requires `appimagetool`)
+Pool Cache Lifecycle:
+- First run: full fetch stored in SQLite.
+- Subsequent runs: incremental delta updates (background) at the configured interval.
+- Manual refresh: Settings → Rebuild / Soft Refresh options.
 
-CI builds these packages (non-PR events) and uploads artifacts under `dist/<rid>/`.
+## 🧩 Extending Platforms
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+1. Implement `IPlatformApi` in Core (new folder under `Platforms/`).
+2. Register in DI (see `App.axaml.cs`).
+3. Ensure authentication flow populates credentials; update UnifiedApiService registration.
+4. Add tagging / rating mapping to match internal `MediaItem` model.
 
-## License
+## 🛠 Development Notes
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+- Avoid blocking the UI thread (wrap I/O heavy tasks with `Task.Run` then marshal back via `Dispatcher.UIThread`).
+- Never replace `ObservableCollection` instances; mutate them to retain bindings.
+- Use `[ObservableProperty]` & `[RelayCommand]` attributes instead of manual boilerplate.
+- On state changes that should persist (page, tags, ratings) call session persistence if enabled.
 
-## Disclaimer
 
-This application is not affiliated with e621. Please respect the terms of service and rate limits when using this application. Provide a valid User-Agent in Settings.
+## 🛑 Disclaimer
 
-## Support
+Not affiliated with e621. Respect their terms, rate limits, and content policies. Always set a meaningful User‑Agent string.
 
-For issues, feature requests, or questions, please open an issue on GitHub.
+## 💬 Support / Issues
+
+Use GitHub Issues for bugs, feature requests, and questions. Please include steps to reproduce and any relevant logs.
+
+---
+See `QUICKSTART.md` for a condensed onboarding reference.
