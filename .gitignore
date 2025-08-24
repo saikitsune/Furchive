@@ -1,7 +1,8 @@
 tests/
-**/installer/inno/output/
+**/installer/inno/output/*
 **/.vscode/*.md
 **/.vscode/*.jpg
+**/installer/output/*
 
 # --- Standard .NET / Visual Studio build artifacts ---
 **/bin/
