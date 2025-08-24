@@ -245,6 +245,11 @@ public interface ISettingsService
     Task SetSettingAsync<T>(string key, T value);
 
     /// <summary>
+    /// Remove a setting key if it exists. Returns true if removed.
+    /// </summary>
+    Task<bool> RemoveSettingAsync(string key);
+
+    /// <summary>
     /// Get all settings
     /// </summary>
     Dictionary<string, object> GetAllSettings();

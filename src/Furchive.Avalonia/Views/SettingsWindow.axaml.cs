@@ -76,7 +76,26 @@ public partial class SettingsWindow : Window
     try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
         try { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } catch { }
     try { LoadLastSessionEnabled.IsChecked = _settings?.GetSetting<bool>("LoadLastSessionEnabled", true) ?? true; } catch { LoadLastSessionEnabled.IsChecked = true; }
-    // (Legacy WebView setting removed; LibVLC used for video playback)
+    // Viewer section removed: schedule legacy key cleanup (fire and forget)
+    try
+    {
+        var svc = _settings;
+        if (svc != null)
+        {
+            // Run asynchronously without awaiting UI thread
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await svc.RemoveSettingAsync("VideoAutoplay");
+                    await svc.RemoveSettingAsync("VideoStartMuted");
+                    await svc.RemoveSettingAsync("ViewerGpuAccelerationEnabled");
+                }
+                catch { }
+            });
+        }
+    }
+    catch { }
         // Computed UA
         try
         {
@@ -132,10 +151,7 @@ public partial class SettingsWindow : Window
             // Posts per page maps to MaxResultsPerSource
             await _settings.SetSettingAsync("MaxResultsPerSource", Math.Clamp((int)(PostsPerPage.Value ?? (MaxResultsPerSource.Value ?? 50)), 10, 320));
             try { MaxResultsPerSource.Value = PostsPerPage.Value; } catch { }
-            // Viewer
-            await _settings.SetSettingAsync("VideoAutoplay", VideoAutoplay.IsChecked == true);
-            await _settings.SetSettingAsync("VideoStartMuted", VideoStartMuted.IsChecked == true);
-            await _settings.SetSettingAsync("ViewerGpuAccelerationEnabled", ViewerGpuAccelerationEnabled.IsChecked == true);
+            // Viewer settings removed: intentionally no persistence (legacy keys ignored)
             // WebViewEnabled removed: always use native LibVLC path
             var loadLast = LoadLastSessionEnabled.IsChecked == true;
             await _settings.SetSettingAsync("LoadLastSessionEnabled", loadLast);

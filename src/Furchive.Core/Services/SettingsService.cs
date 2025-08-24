@@ -67,6 +67,21 @@ public class SettingsService : ISettingsService
         _logger.LogDebug("Setting {Key} updated to {Value}", key, value);
     }
 
+    /// <summary>
+    /// Remove a setting key if it exists (used for legacy cleanup)
+    /// </summary>
+    public async Task<bool> RemoveSettingAsync(string key)
+    {
+        bool removed = _settings.TryRemove(key, out _);
+        if (removed)
+        {
+            await SaveAsync().ConfigureAwait(false);
+            try { SettingChanged?.Invoke(this, key); } catch { }
+            _logger.LogDebug("Setting {Key} removed", key);
+        }
+        return removed;
+    }
+
     public Dictionary<string, object> GetAllSettings()
     {
         return _settings.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);

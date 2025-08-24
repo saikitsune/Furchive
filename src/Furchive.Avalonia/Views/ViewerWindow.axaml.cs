@@ -90,6 +90,8 @@ public partial class ViewerWindow : Window
     private bool _updatingSeekFromPlayer; // guard to avoid feedback loop
     private double _lastVolumeBeforeMute = 1.0;
     private bool _loopEnabled;
+    // Persist last chosen volume across media player instances (0-100)
+    private int _lastVolumeSetting = 80;
     private bool _fullscreen;
     private string? _currentVideoUrl;
     private bool _isVideoMode; // track if current media is video
@@ -863,6 +865,7 @@ public partial class ViewerWindow : Window
         {
             var newVol = Math.Clamp(_activeMediaPlayer.Volume + deltaPercent, 0, 100);
             _activeMediaPlayer.Volume = newVol;
+            _lastVolumeSetting = newVol;
             var volSlider = this.FindControl<Slider>("VolumeSlider"); if (volSlider != null) volSlider.Value = newVol;
         }
         catch { }
@@ -1369,6 +1372,8 @@ public partial class ViewerWindow : Window
 
                 _activeMediaPlayer = new MediaPlayer(_sharedLibVlc);
                 AttachVlcPlayerEvents(_activeMediaPlayer);
+                // Ensure initial volume (avoid default 0 or muted state) and unmute
+                try { _activeMediaPlayer.Volume = Math.Clamp(_lastVolumeSetting, 0, 100); _activeMediaPlayer.Mute = false; } catch { }
                 // Sync initial icons now that player exists
                 try
                 {
@@ -1447,6 +1452,8 @@ public partial class ViewerWindow : Window
                         {
                             _activeMediaPlayer.Hwnd = pendingHwnd;
                             hwndAssigned = true;
+                            // Reassert volume after HWND assignment (defensive)
+                            try { _activeMediaPlayer.Volume = Math.Clamp(_lastVolumeSetting, 0, 100); } catch { }
                         }
                         catch (Exception setEx)
                         {
@@ -1461,7 +1468,24 @@ public partial class ViewerWindow : Window
                         using var media = new Media(_sharedLibVlc, new Uri(url));
                         var ok = _activeMediaPlayer.Play(media);
                         LogViewerDiag(ok ? "video-libvlc-play-started" : "video-libvlc-play-did-not-start");
-                        if (ok) StartVideoUiTimer();
+                        if (ok)
+                        {
+                            StartVideoUiTimer();
+                            // Sync volume UI immediately
+                            try {
+                                var volSliderInit = this.FindControl<Slider>("VolumeSlider");
+                                if (volSliderInit != null && Math.Abs(volSliderInit.Value - _activeMediaPlayer.Volume) > 0.1)
+                                    volSliderInit.Value = _activeMediaPlayer.Volume;
+                                var volPctInit = this.FindControl<TextBlock>("VolumePercentLabel");
+                                if (volPctInit != null) volPctInit.Text = _activeMediaPlayer.Volume + "%";
+                                var vIconInit = this.FindControl<Image>("VolumeIcon");
+                                if (vIconInit != null)
+                                {
+                                    var keyV = _activeMediaPlayer.Volume == 0 ? "Icon.VolumeMute" : "Icon.Volume";
+                                    if (Application.Current!.Resources[keyV] is Bitmap ibmp) vIconInit.Source = ibmp;
+                                }
+                            } catch { }
+                        }
                     }
                     catch (Exception playEx)
                     {
@@ -1892,6 +1916,7 @@ public partial class ViewerWindow : Window
         {
             var volInt = (int)Math.Clamp(slider.Value, 0, 100);
             _activeMediaPlayer.Volume = volInt;
+            _lastVolumeSetting = volInt;
             if (volInt > 0) _lastVolumeBeforeMute = slider.Value / 100.0;
             var vIconImg = this.FindControl<Image>("VolumeIcon"); if (vIconImg != null)
             {
@@ -1916,12 +1941,14 @@ public partial class ViewerWindow : Window
             {
                 _lastVolumeBeforeMute = _activeMediaPlayer.Volume / 100.0;
                 _activeMediaPlayer.Volume = 0;
+                _lastVolumeSetting = 0;
                 var volSlider = this.FindControl<Slider>("VolumeSlider"); if (volSlider != null && Math.Abs(volSlider.Value - 0) > 0.1) volSlider.Value = 0;
             }
             else
             {
                 var restore = _lastVolumeBeforeMute <= 0 ? 0.8 : _lastVolumeBeforeMute;
                 _activeMediaPlayer.Volume = (int)(restore * 100);
+                _lastVolumeSetting = _activeMediaPlayer.Volume;
                 var volSlider = this.FindControl<Slider>("VolumeSlider"); if (volSlider != null && Math.Abs(volSlider.Value - _activeMediaPlayer.Volume) > 0.1) volSlider.Value = _activeMediaPlayer.Volume;
             }
             var vIcon2 = this.FindControl<Image>("VolumeIcon"); if (vIcon2 != null)

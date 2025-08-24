@@ -150,12 +150,7 @@
                     <CheckBox x:Name="LoadLastSessionEnabled" Content="Load last session on startup"/>
                 </StackPanel>
                 <Separator/>
-                <TextBlock Text="Viewer" FontWeight="SemiBold"/>
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <CheckBox x:Name="VideoAutoplay" Content="Autoplay videos"/>
-                    <CheckBox x:Name="VideoStartMuted" Content="Start muted"/>
-                    <CheckBox x:Name="ViewerGpuAccelerationEnabled" Content="Enable GPU acceleration"/>
-                </StackPanel>
+                <!-- Viewer section removed (autoplay, start muted, gpu acceleration) -->
                 </StackPanel>
                     </ScrollViewer>
                 </TabItem>
