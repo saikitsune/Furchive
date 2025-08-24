@@ -119,7 +119,8 @@ public class E621Api : IPlatformApi
 
     // Lightweight helper used by UI to prune pools whose posts have all been deleted.
     // Returns the current count of visible (non-deleted) posts for a given pool, or null on failure.
-    public async Task<int?> TryGetPoolVisiblePostCountAsync(int poolId, CancellationToken ct = default)
+    // IPoolContentIntrospection implementation
+    public async Task<int?> GetPoolVisiblePostCountAsync(int poolId, CancellationToken ct = default)
     {
         try
         {
@@ -152,7 +153,7 @@ public class E621Api : IPlatformApi
     }
 
     // Stronger content validation: checks first N posts of pool for any non-empty file/sample/preview URL.
-    public async Task<bool?> TryPoolHasRenderableContentAsync(int poolId, int sample = 10, CancellationToken ct = default)
+    public async Task<bool?> PoolHasRenderableContentAsync(int poolId, int sample = 10, CancellationToken ct = default)
     {
         try
         {

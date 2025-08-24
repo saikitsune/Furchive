@@ -92,6 +92,7 @@ public partial class App : Application
             services.AddSingleton<IPlatformShellService, PlatformShellService>();
             services.AddSingleton<IPoolsCacheStore, SqlitePoolsCacheStore>();
             services.AddSingleton<IE621CacheStore, E621SqliteCacheStore>();
+            services.AddSingleton<IPoolPruningService, PoolPruningService>();
             services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
             services.AddTransient<IPlatformApi>(sp =>
             {
@@ -99,7 +100,8 @@ public partial class App : Application
                 var logger = sp.GetRequiredService<ILogger<E621Api>>();
                 var settings = sp.GetService<ISettingsService>();
                 var cache = sp.GetService<IE621CacheStore>();
-                return new E621Api(http, logger, settings, cache);
+                var api = new E621Api(http, logger, settings, cache);
+                return api;
             });
             services.AddTransient<Furchive.Avalonia.ViewModels.MainViewModel>();
             services.AddTransient<MainWindow>();

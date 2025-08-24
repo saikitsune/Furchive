@@ -29,6 +29,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IPoolsCacheStore _cacheStore;
     private readonly IPlatformApi? _e621Platform;
     private readonly IPlatformShellService? _shell;
+    private readonly IPoolPruningService _pruningService;
 
     [ObservableProperty] private bool _isE621Enabled = true;
     [ObservableProperty] private bool _isSearching = false;
@@ -131,10 +132,11 @@ public partial class MainViewModel : ObservableObject
     private double _galleryScale = 1.0;
     public double GalleryScale { get => _galleryScale; set { if (Math.Abs(_galleryScale - value) > 0.0001) { _galleryScale = value; OnPropertyChanged(nameof(GalleryScale)); OnPropertyChanged(nameof(GalleryTileWidth)); OnPropertyChanged(nameof(GalleryTileHeight)); OnPropertyChanged(nameof(GalleryImageSize)); OnPropertyChanged(nameof(GalleryFontSize)); } } }
 
-    public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore, IPlatformShellService? shell = null)
+    public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore, IPoolPruningService pruningService, IPlatformShellService? shell = null)
     {
         _apiService = apiService; _downloadService = downloadService; _settingsService = settingsService; _logger = logger; _thumbCache = thumbCache; _cpuQueue = cpuQueue; _cacheStore = cacheStore; _shell = shell;
-        foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
+    _pruningService = pruningService;
+    foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
     _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
     // Populate downloads panel with any persisted jobs on startup
     _ = Task.Run(RefreshDownloadQueueAsync);
@@ -553,55 +555,13 @@ public partial class MainViewModel : ObservableObject
     // Background validation: remove pools whose post list is now empty (all posts deleted)
     private async Task PruneZeroVisiblePoolsAsync()
     {
-        List<PoolInfo> toCheck;
-        try { toCheck = Pools.ToList(); } catch { return; }
-        if (toCheck.Count == 0 || _e621Platform == null) return;
-        var method = _e621Platform.GetType().GetMethod("TryGetPoolVisiblePostCountAsync");
-    var contentMethod = _e621Platform.GetType().GetMethod("TryPoolHasRenderableContentAsync");
-        if (method == null) return; // not supported
-        var removedIds = new List<int>();
-        var semaphore = new SemaphoreSlim(4);
-        var tasks = new List<Task>();
-        foreach (var pool in toCheck)
-        {
-            await semaphore.WaitAsync();
-            tasks.Add(Task.Run(async () =>
-            {
-                try
-                {
-                    var taskObj = method.Invoke(_e621Platform, new object?[] { pool.Id, CancellationToken.None }) as Task<int?>;
-                    if (taskObj == null) return;
-                    var count = await taskObj;
-                    if (count.HasValue)
-                    {
-                        if (count.Value == 0)
-                        {
-                            lock (removedIds) removedIds.Add(pool.Id);
-                        }
-                        else if (count.Value > 0 && contentMethod != null)
-                        {
-                            try
-                            {
-                                var contentTaskObj = contentMethod.Invoke(_e621Platform, new object?[] { pool.Id, 10, CancellationToken.None }) as Task<bool?>;
-                                if (contentTaskObj != null)
-                                {
-                                    var hasContent = await contentTaskObj;
-                                    if (hasContent == false)
-                                    {
-                                        lock (removedIds) removedIds.Add(pool.Id);
-                                    }
-                                }
-                            }
-                            catch { }
-                        }
-                    }
-                }
-                catch { }
-                finally { semaphore.Release(); }
-            }));
-        }
-        try { await Task.WhenAll(tasks); } catch { }
-        if (removedIds.Count == 0) return;
+    if (_e621Platform == null) return;
+    List<PoolInfo> snapshot; try { snapshot = Pools.ToList(); } catch { return; }
+    if (snapshot.Count == 0) return;
+    List<int> removedIds;
+    try { removedIds = await _pruningService.DeterminePoolsToPruneAsync(_e621Platform, snapshot, CancellationToken.None); }
+    catch { return; }
+    if (removedIds == null || removedIds.Count == 0) return;
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
