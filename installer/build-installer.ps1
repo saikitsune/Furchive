@@ -22,21 +22,13 @@ if (-not $InnoCompiler) {
     $InnoCompiler = 'C:\\Program Files (x86)\\Inno Setup 6\\Compil32.exe'
 }
 
-# Evergreen bootstrapper for WebView2 (installs latest)
-$WebView2Url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
 
 Write-Host "Publishing Furchive ($Configuration, $Runtime) to $PublishDir"
 dotnet publish $Project -c $Configuration -r $Runtime --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o $PublishDir | Out-Host
 
 New-Item -ItemType Directory -Force -Path $RedistDir | Out-Null
 
-# Only WebView2 prerequisite is needed when self-contained
-
-$WebView2Installer = Join-Path $RedistDir 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
-if (-not (Test-Path $WebView2Installer)) {
-    Write-Host "Downloading WebView2 Evergreen bootstrapper..."
-    Invoke-WebRequest -Uri $WebView2Url -OutFile $WebView2Installer
-}
+# (WebView2 runtime previously downloaded here; removed because app no longer embeds WebView.)
 
 # Compile Inno Setup
 if (-not (Test-Path $InnoCompiler)) {
