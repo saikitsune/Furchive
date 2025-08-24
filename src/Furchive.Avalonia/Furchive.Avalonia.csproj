@@ -9,8 +9,8 @@
   <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   <!-- Disable XAML compilation to avoid phantom AVLN:0004 errors referencing non-existent event attributes -->
   <AvaloniaXamlDisableCompile>true</AvaloniaXamlDisableCompile>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   <!-- Removed HAS_WEBVIEW_AVALONIA: WebView video path deprecated in favor of LibVLC -->

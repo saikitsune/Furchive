@@ -1,8 +1,8 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    # App installer version (not .NET)
-    [string]$Version = "1.0.0"
+    # App installer version override. Use 'auto' (default) to pull from Furchive.Avalonia.csproj <AssemblyVersion>/<FileVersion>.
+    [string]$Version = "auto"
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,7 +23,27 @@ if (-not $InnoCompiler) {
 }
 
 
-Write-Host "Publishing Furchive ($Configuration, $Runtime) to $PublishDir"
+if (-not (Test-Path $Project)) { throw "Project file not found: $Project" }
+
+# Auto-resolve version if requested
+if (-not $Version -or $Version.ToLower() -eq 'auto') {
+    try {
+        [xml]$projXml = Get-Content -LiteralPath $Project -ErrorAction Stop
+        $assemblyNode = ($projXml.Project.PropertyGroup | Where-Object { $_.AssemblyVersion } | Select-Object -First 1)
+        $fileNode = ($projXml.Project.PropertyGroup | Where-Object { $_.FileVersion } | Select-Object -First 1)
+        $resolved = $null
+        if ($assemblyNode -and $assemblyNode.AssemblyVersion) { $resolved = $assemblyNode.AssemblyVersion.Trim() }
+        if (-not $resolved -and $fileNode -and $fileNode.FileVersion) { $resolved = $fileNode.FileVersion.Trim() }
+        if (-not $resolved) { throw "No <AssemblyVersion> or <FileVersion> element found." }
+        $Version = $resolved
+    }
+    catch {
+        Write-Warning "Failed to auto-detect version from project: $_. Using fallback 1.0.0.0"
+        $Version = '1.0.0.0'
+    }
+}
+
+Write-Host "Publishing Furchive ($Configuration, $Runtime, version $Version) to $PublishDir"
 dotnet publish $Project -c $Configuration -r $Runtime --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o $PublishDir | Out-Host
 
 New-Item -ItemType Directory -Force -Path $RedistDir | Out-Null
