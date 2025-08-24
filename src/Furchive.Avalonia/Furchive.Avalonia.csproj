@@ -1,0 +1,86 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Furchive</AssemblyName>
+  <RootNamespace>Furchive.Avalonia</RootNamespace>
+  <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  <!-- Disable XAML compilation to avoid phantom AVLN:0004 errors referencing non-existent event attributes -->
+  <AvaloniaXamlDisableCompile>true</AvaloniaXamlDisableCompile>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  <!-- Removed HAS_WEBVIEW_AVALONIA: WebView video path deprecated in favor of LibVLC -->
+  <DefineConstants>$(DefineConstants);HAS_LIBVLC</DefineConstants>
+  <!-- Self-contained publish defaults -->
+  <SelfContained>true</SelfContained>
+  <!-- Enable single-file publish -->
+  <PublishSingleFile>false</PublishSingleFile>
+  <PublishTrimmed>false</PublishTrimmed>
+  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  <!-- Target RIDs we support -->
+  <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.11" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.11" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.11" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.11" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+  <!-- WebView packages removed (legacy video playback path deprecated) -->
+  <!-- Removed AnimatedImage.Avalonia (replaced by custom GifAnimatorService) -->
+  <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+  <!-- LibVLCSharp for video playback (initial integration). Add platform native VLC binaries later (e.g., VideoLAN.LibVLC.*) -->
+  <PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.2" />
+  <PackageReference Include="LibVLCSharp" Version="3.8.2" />
+  <!-- Native LibVLC binaries (Windows). For Linux/macOS rely on system-installed libvlc or package later. -->
+  <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+  </ItemGroup>
+
+
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Furchive.Core\Furchive.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Make shared app icon available as an Avalonia resource -->
+    <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
+  <!-- PNG icon resources (ensure corresponding PNG files exist in assets folder) -->
+  <AvaloniaResource Include="..\..\assets\play.png" Link="Assets\play.png" Condition="Exists('..\..\assets\play.png')" />
+  <AvaloniaResource Include="..\..\assets\pause.png" Link="Assets\pause.png" Condition="Exists('..\..\assets\pause.png')" />
+  <AvaloniaResource Include="..\..\assets\loop.png" Link="Assets\loop.png" Condition="Exists('..\..\assets\loop.png')" />
+  <AvaloniaResource Include="..\..\assets\loop-off.png" Link="Assets\loop-off.png" Condition="Exists('..\..\assets\loop-off.png')" />
+  <AvaloniaResource Include="..\..\assets\volume.png" Link="Assets\volume.png" Condition="Exists('..\..\assets\volume.png')" />
+  <AvaloniaResource Include="..\..\assets\volume-mute.png" Link="Assets\volume-mute.png" Condition="Exists('..\..\assets\volume-mute.png')" />
+  <AvaloniaResource Include="..\..\assets\fullscreen.png" Link="Assets\fullscreen.png" Condition="Exists('..\..\assets\fullscreen.png')" />
+    <!-- Themed (Black/White) icon variants -->
+    <AvaloniaResource Include="..\..\assets\Bplay.png" Link="Assets\Bplay.png" Condition="Exists('..\..\assets\Bplay.png')" />
+    <AvaloniaResource Include="..\..\assets\Wplay.png" Link="Assets\Wplay.png" Condition="Exists('..\..\assets\Wplay.png')" />
+    <AvaloniaResource Include="..\..\assets\Bpause.png" Link="Assets\Bpause.png" Condition="Exists('..\..\assets\Bpause.png')" />
+    <AvaloniaResource Include="..\..\assets\Wpause.png" Link="Assets\Wpause.png" Condition="Exists('..\..\assets\Wpause.png')" />
+    <AvaloniaResource Include="..\..\assets\Bloop.png" Link="Assets\Bloop.png" Condition="Exists('..\..\assets\Bloop.png')" />
+    <AvaloniaResource Include="..\..\assets\Wloop.png" Link="Assets\Wloop.png" Condition="Exists('..\..\assets\Wloop.png')" />
+    <AvaloniaResource Include="..\..\assets\Bloop-off.png" Link="Assets\Bloop-off.png" Condition="Exists('..\..\assets\Bloop-off.png')" />
+    <AvaloniaResource Include="..\..\assets\Wloop-off.png" Link="Assets\Wloop-off.png" Condition="Exists('..\..\assets\Wloop-off.png')" />
+    <AvaloniaResource Include="..\..\assets\Bvolume.png" Link="Assets\Bvolume.png" Condition="Exists('..\..\assets\Bvolume.png')" />
+    <AvaloniaResource Include="..\..\assets\Wvolume.png" Link="Assets\Wvolume.png" Condition="Exists('..\..\assets\Wvolume.png')" />
+    <AvaloniaResource Include="..\..\assets\Bvolume-mute.png" Link="Assets\Bvolume-mute.png" Condition="Exists('..\..\assets\Bvolume-mute.png')" />
+    <AvaloniaResource Include="..\..\assets\Wvolume-mute.png" Link="Assets\Wvolume-mute.png" Condition="Exists('..\..\assets\Wvolume-mute.png')" />
+    <AvaloniaResource Include="..\..\assets\Bfullscreen.png" Link="Assets\Bfullscreen.png" Condition="Exists('..\..\assets\Bfullscreen.png')" />
+    <AvaloniaResource Include="..\..\assets\Wfullscreen.png" Link="Assets\Wfullscreen.png" Condition="Exists('..\..\assets\Wfullscreen.png')" />
+    
+  </ItemGroup>
+</Project>

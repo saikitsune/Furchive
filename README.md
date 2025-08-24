@@ -1,7 +1,7 @@
 ![](/assets/icon256.png)
 # Furchive - Furry Art Gallery Browser
 
-Furchive is a fast, modern gallery viewer, search, and download application focused on e621. Built with C# and WPF, it provides an intuitive interface for browsing, previewing, and downloading content from e621.
+Furchive is a fast, modern gallery viewer, search, and download app focused on e621. The UI is built with Avalonia for cross‑platform support (Windows, macOS, Linux) and uses a shared Core library for services and models.
 
 ## Features
 
@@ -13,7 +13,7 @@ Furchive is a fast, modern gallery viewer, search, and download application focu
 - **Pools Browser**: Browse pools with fast, incremental cache updates
 - **Powerful Search**: Tag includes/excludes with rating filters
 - **Configurable Settings**: Customizable download paths, filename templates, and behavior
-- **Modern UI**: Clean, responsive WPF interface using ModernWPF
+- **Modern UI**: Clean, responsive Avalonia UI with Fluent theme
 
 ## Requirements
 
@@ -28,7 +28,7 @@ Furchive is a fast, modern gallery viewer, search, and download application focu
 
 ### From Installer (Windows)
 
-Download the latest `FurchiveSetup-<version>.exe` from [Releases](https://github.com/saikitsune/Furchive/releases) and run it. The installer will:
+Download the latest `FurchiveSetup-<version>.exe` from Releases and run it. The installer will:
 - Install per-user under `%LOCALAPPDATA%\Programs\Furchive` (no admin required)
 - Install Microsoft Edge WebView2 Runtime if missing
  - Detect .NET 8 Desktop Runtime; if not found, prompt to install a compatible .NET version
@@ -53,7 +53,12 @@ dotnet build
 
 4. Run the application:
 ```powershell
-dotnet run --project src/Furchive
+# Windows (desktop)
+dotnet run --project src/Furchive.Avalonia
+
+# macOS / Linux
+dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r osx-arm64 --self-contained true -o out/osx-arm64
+./out/osx-arm64/Furchive
 ```
 
 ## Configuration
@@ -161,20 +166,20 @@ dotnet test
 ```
 Furchive/
 ├── src/
-│   ├── Furchive/              # WPF Application
-│   │   ├── Views/             # XAML views
-│   │   ├── ViewModels/        # View models
-│   │   └── Converters/        # Value converters
-│   └── Furchive.Core/         # Core library
-│       ├── Models/            # Data models
-│       ├── Services/          # Business services
-│       ├── Interfaces/        # Service contracts
-│       └── Platforms/         # Platform API implementations
+│   ├── Furchive.Avalonia/     # Avalonia UI (primary app)
+│   ├── Furchive/              # Legacy WPF app (kept for reference; excluded from default builds)
+│   └── Furchive.Core/         # Shared core library
 └── tests/
     └── Furchive.Tests/        # Unit tests
 ```
 
 ## Contributing
+## Packaging (macOS / Linux)
+
+- macOS DMG: `scripts/package-macos-dmg.sh osx-arm64` or `osx-x64` (run on macOS runners)
+- Linux AppImage: `scripts/package-linux-appimage.sh linux-x64` (requires `appimagetool`)
+
+CI builds these packages (non-PR events) and uploads artifacts under `dist/<rid>/`.
 
 1. Fork the repository
 2. Create a feature branch

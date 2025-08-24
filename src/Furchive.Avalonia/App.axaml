@@ -1,0 +1,29 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Furchive.Avalonia.App" RequestedThemeVariant="Default"
+             xmlns:cvt="using:Furchive.Avalonia.Converters">
+  <Application.Styles>
+    <FluentTheme />
+  <!-- Include DataGrid Fluent styles so DataGrid renders (headers, rows) -->
+  <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+  </Application.Styles>
+  <Application.Resources>
+    <cvt:InverseBooleanConverter x:Key="InverseBoolean" />
+    <cvt:NullToBooleanConverter x:Key="NullToBool" />
+    <cvt:BytesToStringConverter x:Key="BytesToString" />
+    <cvt:UppercaseConverter x:Key="Uppercase" />
+    <cvt:StringEqualsConverter x:Key="StringEquals" />
+    <cvt:NullToBoolVisibleConverter x:Key="NullToBoolVisible" />
+    <cvt:FileTypeIsPlayableConverter x:Key="FileTypeIsPlayable" />
+    <cvt:NullToGridLengthConverter x:Key="NullToGridLength" />
+  <cvt:ImageCacheConverter x:Key="ImageCache" />
+  <cvt:IsMediaDownloadedConverter x:Key="IsMediaDownloaded" />
+  <cvt:TagCategoryToBrushConverter x:Key="TagCategoryBrush" />
+  <cvt:TagStringToCategoryBrushConverter x:Key="TagStringCategoryBrush" />
+  <cvt:TagCategoryToTooltipConverter x:Key="TagCategoryTooltip" />
+  <cvt:TagCategoryKeyToDisplayConverter x:Key="TagCategoryKeyDisplay" />
+  <cvt:TagCategoryIsNotPoolNameConverter x:Key="TagCategoryIsNotPoolName" />
+  <cvt:StringNotEmptyConverter x:Key="StringNotEmpty" />
+  <cvt:EnumerableHasItemsConverter x:Key="EnumerableHasItems" />
+  <cvt:TagCategoryGroupVisibleConverter x:Key="TagCategoryGroupVisible" />
+  <cvt:TagCategoriesAnyVisibleConverter x:Key="TagCategoriesAnyVisible" />
+  </Application.Resources>
+</Application>

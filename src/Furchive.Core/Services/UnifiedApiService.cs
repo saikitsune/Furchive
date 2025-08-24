@@ -46,20 +46,11 @@ public class UnifiedApiService : IUnifiedApiService
         if (!_platforms.TryGetValue(source, out var api)) return new List<PoolInfo>();
         try
         {
-            // If platform implements the progress overload, use it; otherwise call without progress and report final
-            var supports = api.GetType().GetMethod("GetPoolsAsync", new[] { typeof(IProgress<(int current, int? total)>), typeof(CancellationToken) }) != null;
-            if (supports)
-            {
-                var task = (Task<List<PoolInfo>>)api.GetType().GetMethod("GetPoolsAsync", new[] { typeof(IProgress<(int current, int? total)>), typeof(CancellationToken) })!
-                    .Invoke(api, new object?[] { progress, cancellationToken })!;
-                return await task;
-            }
-            else
-            {
-                var list = await api.GetPoolsAsync(cancellationToken);
-                progress?.Report((list.Count, list.Count));
-                return list;
-            }
+            // Use the interface method directly; platform must implement both overloads (no reflection)
+            var list = await api.GetPoolsAsync(progress, cancellationToken);
+            // If platform provided no progress ticks itself (e.g., reports only at end), ensure final state
+            progress?.Report((list.Count, list.Count));
+            return list;
         }
         catch (Exception ex)
         {
@@ -258,82 +249,51 @@ public class UnifiedApiService : IUnifiedApiService
         return allSuggestions;
     }
 
-    // Cache maintenance passthroughs for E621 (no-op for others)
-    public void ClearE621SearchCache()
+    /// <summary>
+    /// Resolve category for a single tag using the first platform that returns a value.
+    /// Currently primarily e621. Platforms that don't implement the call return null.
+    /// </summary>
+    public async Task<string?> GetTagCategoryAsync(string tag, List<string> sources)
     {
-        if (_platforms.TryGetValue("e621", out var api))
+        try
         {
-            var m = api.GetType().GetMethod("ClearSearchCache");
-            m?.Invoke(api, null);
+            var enabledPlatforms = sources.Any()
+                ? _platforms.Where(p => sources.Contains(p.Key))
+                : _platforms;
+            foreach (var p in enabledPlatforms)
+            {
+                try
+                {
+                    var cat = await p.Value.GetTagCategoryAsync(tag);
+                    if (!string.IsNullOrWhiteSpace(cat)) return cat;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Tag category lookup failed on {Platform} for {Tag}", p.Key, tag);
+                }
+            }
         }
-    }
-    public void ClearE621TagSuggestCache()
-    {
-        if (_platforms.TryGetValue("e621", out var api))
+        catch (Exception ex)
         {
-            var m = api.GetType().GetMethod("ClearTagSuggestCache");
-            m?.Invoke(api, null);
-        }
-    }
-    public void ClearE621PoolPostsCache()
-    {
-        if (_platforms.TryGetValue("e621", out var api))
-        {
-            var m = api.GetType().GetMethod("ClearPoolPostsCache");
-            m?.Invoke(api, null);
-        }
-    }
-    public void ClearE621FullPoolCache()
-    {
-        if (_platforms.TryGetValue("e621", out var api))
-        {
-            var m = api.GetType().GetMethod("ClearFullPoolCache");
-            m?.Invoke(api, null);
-        }
-    }
-    public void ClearE621PostDetailsCache()
-    {
-        if (_platforms.TryGetValue("e621", out var api))
-        {
-            var m = api.GetType().GetMethod("ClearPostDetailsCache");
-            m?.Invoke(api, null);
-        }
-    }
-    public void ClearE621PoolDetailsCache()
-    {
-    if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
-        {
-            var m = api.GetType().GetMethod("ClearPoolDetailsCache");
-            m?.Invoke(api, null);
-        }
-    }
-
-    // Lightweight metrics passthrough (used by Settings Admin view)
-    public object? GetE621CacheMetrics()
-    {
-    if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
-        {
-            var m = api.GetType().GetMethod("GetCacheMetrics");
-            return m?.Invoke(api, null);
+            _logger.LogDebug(ex, "Unified tag category lookup failed for {Tag}", tag);
         }
         return null;
     }
 
-    // Persistent cache passthroughs
-    public void LoadE621PersistentCacheIfEnabled()
+    // Cache maintenance passthroughs for E621 (no-op for others) via interface instead of reflection
+    private IE621CacheMaintenance? TryGetE621()
     {
         if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
-        {
-            var m = api.GetType().GetMethod("LoadPersistentCacheIfEnabled");
-            m?.Invoke(api, null);
-        }
+            return api as IE621CacheMaintenance;
+        return null;
     }
-    public void SaveE621PersistentCacheIfEnabled()
-    {
-        if (_platforms.TryGetValue("e621", out var api) || s_platforms.TryGetValue("e621", out api))
-        {
-            var m = api.GetType().GetMethod("SavePersistentCacheIfEnabled");
-            m?.Invoke(api, null);
-        }
-    }
+    public void ClearE621SearchCache() => TryGetE621()?.ClearSearchCache();
+    public void ClearE621TagSuggestCache() => TryGetE621()?.ClearTagSuggestCache();
+    public void ClearE621PoolPostsCache() => TryGetE621()?.ClearPoolPostsCache();
+    public void ClearE621FullPoolCache() => TryGetE621()?.ClearFullPoolCache();
+    public void ClearE621PostDetailsCache() => TryGetE621()?.ClearPostDetailsCache();
+    public void ClearE621PoolDetailsCache() => TryGetE621()?.ClearPoolDetailsCache();
+    public object? GetE621CacheMetrics() => TryGetE621()?.GetCacheMetrics();
+    public void LoadE621PersistentCacheIfEnabled() => TryGetE621()?.LoadPersistentCacheIfEnabled();
+    public void SaveE621PersistentCacheIfEnabled() => TryGetE621()?.SavePersistentCacheIfEnabled();
 }

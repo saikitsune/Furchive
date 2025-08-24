@@ -18,7 +18,9 @@ public class DownloadService : IDownloadService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DownloadService> _logger;
     private readonly SemaphoreSlim _downloadSemaphore;
+    private readonly IDownloadsStore? _store;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private long _sequenceCounter = 0; // monotonic sequence assignment
 
     public event EventHandler<DownloadJob>? DownloadProgressUpdated;
     public event EventHandler<DownloadJob>? DownloadStatusChanged;
@@ -27,16 +29,36 @@ public class DownloadService : IDownloadService
         IUnifiedApiService apiService,
         ISettingsService settingsService,
         IHttpClientFactory httpClientFactory,
-        ILogger<DownloadService> logger)
+        ILogger<DownloadService> logger,
+        IDownloadsStore? store = null)
     {
         _apiService = apiService;
         _settingsService = settingsService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _store = store;
 
         // Initialize semaphore with concurrent download limit from settings
     var concurrentDownloads = Math.Clamp(_settingsService.GetSetting<int>("ConcurrentDownloads", 3), 1, 4);
     _downloadSemaphore = new SemaphoreSlim(concurrentDownloads, concurrentDownloads);
+
+        // Initialize persistence & load existing jobs
+        if (_store != null)
+        {
+            try
+            {
+                _store.InitializeAsync().GetAwaiter().GetResult();
+                var persisted = _store.GetAllAsync().GetAwaiter().GetResult();
+                foreach (var j in persisted.OrderBy(j => j.QueuedAt))
+                {
+                    // Skip active states (treat as incomplete -> requeue) except completed/failed which we keep
+                    if (j.Status == DownloadStatus.Downloading) j.Status = DownloadStatus.Queued;
+                    j.Sequence = Interlocked.Increment(ref _sequenceCounter);
+                    _downloadJobs[j.Id] = j;
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to load persisted downloads"); }
+        }
 
         // Start processing downloads
         _ = Task.Run(ProcessDownloadQueueAsync);
@@ -54,8 +76,10 @@ public class DownloadService : IDownloadService
             DestinationPath = System.IO.Path.Combine(destinationPath),
             Status = DownloadStatus.Queued
         };
-        _downloadJobs[aggregate.Id] = aggregate;
+    aggregate.Sequence = Interlocked.Increment(ref _sequenceCounter);
+    _downloadJobs[aggregate.Id] = aggregate;
         DownloadStatusChanged?.Invoke(this, aggregate);
+    _ = PersistAsync(aggregate);
 
         foreach (var item in mediaItems)
         {
@@ -125,18 +149,21 @@ public class DownloadService : IDownloadService
             DestinationPath = GenerateFilePath(mediaItem, destinationPath),
             Status = DownloadStatus.Queued
         };
+    job.Sequence = Interlocked.Increment(ref _sequenceCounter);
 
-        // Check for duplicates based on policy
-        var duplicatePolicy = _settingsService.GetSetting<string>("DownloadDuplicatesPolicy", "skip");
-        if (duplicatePolicy == "skip" && File.Exists(job.DestinationPath))
+        // Duplicate handling: always overwrite existing file (redownload)
+        try
         {
-            job.Status = DownloadStatus.Completed;
-            job.CompletedAt = DateTime.UtcNow;
-            _logger.LogInformation("Skipping duplicate download: {Path}", job.DestinationPath);
+            if (File.Exists(job.DestinationPath))
+            {
+                try { File.Delete(job.DestinationPath); } catch (Exception exDel) { _logger.LogWarning(exDel, "Failed deleting existing file before overwrite: {Path}", job.DestinationPath); }
+            }
         }
+        catch { }
 
-        _downloadJobs[job.Id] = job;
+    _downloadJobs[job.Id] = job;
         DownloadStatusChanged?.Invoke(this, job);
+    _ = PersistAsync(job);
 
     _logger.LogInformation("Queued download: {Title} to {Path}", mediaItem.Title, job.DestinationPath);
     return Task.FromResult(job.Id);
@@ -157,7 +184,7 @@ public class DownloadService : IDownloadService
 
     public Task<List<DownloadJob>> GetDownloadJobsAsync()
     {
-        return Task.FromResult(_downloadJobs.Values.OrderByDescending(j => j.QueuedAt).ToList());
+    return Task.FromResult(_downloadJobs.Values.OrderBy(j => j.Sequence).ToList());
     }
 
     public Task<DownloadJob?> GetDownloadJobAsync(string jobId)
@@ -172,6 +199,7 @@ public class DownloadService : IDownloadService
         {
             job.Status = DownloadStatus.Paused;
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
@@ -183,6 +211,7 @@ public class DownloadService : IDownloadService
         {
             job.Status = DownloadStatus.Queued;
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
@@ -194,6 +223,7 @@ public class DownloadService : IDownloadService
         {
             job.Status = DownloadStatus.Cancelled;
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
@@ -208,6 +238,7 @@ public class DownloadService : IDownloadService
             job.ErrorMessage = null;
             job.BytesDownloaded = 0;
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
@@ -273,6 +304,7 @@ public class DownloadService : IDownloadService
             job.Status = DownloadStatus.Downloading;
             job.StartedAt = DateTime.UtcNow;
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
 
             // Get download URL and latest details
             var details = await _apiService.GetMediaDetailsAsync(job.MediaItem.Source, job.MediaItem.Id);
@@ -347,22 +379,26 @@ public class DownloadService : IDownloadService
             {
                 job.Status = DownloadStatus.Completed;
                 job.CompletedAt = DateTime.UtcNow;
+                try { if (File.Exists(job.DestinationPath)) job.MediaItem.LocalFilePath = job.DestinationPath; } catch { }
                 
                 // Save metadata if enabled
                 var saveMetadata = _settingsService.GetSetting<bool>("SaveMetadataJson", false);
-                if (saveMetadata)
+                var savePostJson = _settingsService.GetSetting<bool>("SavePostJson", false);
+                if (saveMetadata || savePostJson)
                 {
-                    await SaveMetadataAsync(job);
+                    await SaveMetadataAsync(job, savePostJson);
                 }
             }
 
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
         }
         catch (Exception ex)
         {
             job.Status = DownloadStatus.Failed;
             job.ErrorMessage = ex.Message;
             DownloadStatusChanged?.Invoke(this, job);
+            _ = PersistAsync(job);
             
             _logger.LogError(ex, "Download failed for {Title}", job.MediaItem.Title);
         }
@@ -370,6 +406,43 @@ public class DownloadService : IDownloadService
         {
             _downloadSemaphore.Release();
         }
+    }
+
+    private void MarkJobCompleted(DownloadJob job)
+    {
+        job.Status = DownloadStatus.Completed;
+        job.CompletedAt = DateTime.UtcNow;
+        try
+        {
+            if (File.Exists(job.DestinationPath))
+            {
+                job.MediaItem.LocalFilePath = job.DestinationPath;
+            }
+        }
+        catch { }
+        DownloadStatusChanged?.Invoke(this, job);
+        _ = PersistAsync(job);
+    }
+
+    public Task<bool> RemoveJobAsync(string jobId, bool deleteFile = false)
+    {
+        if (!_downloadJobs.TryRemove(jobId, out var job)) return Task.FromResult(false);
+        try
+        {
+            if (deleteFile && !string.IsNullOrWhiteSpace(job.DestinationPath) && File.Exists(job.DestinationPath))
+            {
+                try { File.Delete(job.DestinationPath); } catch { }
+            }
+            _ = _store?.DeleteAsync(jobId);
+        }
+        catch { }
+        return Task.FromResult(true);
+    }
+
+    private Task PersistAsync(DownloadJob job)
+    {
+        if (_store == null) return Task.CompletedTask;
+        return _store.UpsertAsync(job);
     }
 
     private string GenerateFilePath(MediaItem mediaItem, string basePath)
@@ -422,13 +495,21 @@ public class DownloadService : IDownloadService
         catch { return null; }
     }
 
-    private async Task SaveMetadataAsync(DownloadJob job)
+    private async Task SaveMetadataAsync(DownloadJob job, bool savePostJson)
     {
         try
         {
-            var metadataPath = Path.ChangeExtension(job.DestinationPath, "json");
+            var basePath = Path.ChangeExtension(job.DestinationPath, "json");
+            string path = basePath;
+            if (savePostJson)
+            {
+                // Write post JSON under a distinct name (e.g., originalname.post.json) to avoid collision with legacy metadata
+                var dir = Path.GetDirectoryName(job.DestinationPath) ?? string.Empty;
+                var nameNoExt = Path.GetFileNameWithoutExtension(job.DestinationPath);
+                path = Path.Combine(dir, nameNoExt + ".post.json");
+            }
             var metadata = System.Text.Json.JsonSerializer.Serialize(job.MediaItem, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(metadataPath, metadata);
+            await File.WriteAllTextAsync(path, metadata);
         }
         catch (Exception ex)
         {

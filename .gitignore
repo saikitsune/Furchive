@@ -1,14 +1,16 @@
-ai/
-.vscode/
-docs/
 tests/
 **/installer/inno/output/
+**/.vscode/*.md
+**/.vscode/*.jpg
 
 # --- Standard .NET / Visual Studio build artifacts ---
 **/bin/
 **/obj/
 **/out/
-**/publish/
+**/publish/win-x64/
+**/publish/osx-x64/
+**/publish/osx-arm64/
+**/publish/linux-x64/
 **/artifacts/
 **/TestResults/
 

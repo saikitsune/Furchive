@@ -1,7 +1,7 @@
 # Furchive - Quick Start Guide
 
 ## 🎯 Overview
-Furchive is a C# WPF application for browsing and downloading furry art from e621.
+Furchive is a cross‑platform C# Avalonia application for browsing and downloading furry art from e621. The UI runs on Windows, macOS, and Linux, powered by a shared Core library.
 
 ## ✅ What's Been Implemented
 
@@ -9,7 +9,7 @@ Furchive is a C# WPF application for browsing and downloading furry art from e62
 - **Clean Architecture**: Separation between Core (business logic) and UI layers
 - **MVVM Pattern**: ViewModels handle UI logic, Views are pure presentation
 - **Dependency Injection**: Microsoft.Extensions.DI with proper service lifetimes
-- **Modern WPF**: Using ModernWpfUI for contemporary styling
+- **Modern Avalonia**: Fluent theme with responsive layouts
 
 ### 🔧 Core Services
 - **UnifiedApiService**: Aggregates platform APIs (currently e621)
@@ -27,29 +27,32 @@ Furchive is a C# WPF application for browsing and downloading furry art from e62
 
 ```powershell
 # Navigate to project directory
-cd "C:\projects\vscode git\Furchive"
+cd "C:\projects\github\Furchive"
 
 # Restore packages
 dotnet restore
 
-# Build the solution
-dotnet build
+# Build the solution (WPF project is excluded from default builds)
+dotnet build -c Release
 
 # Run tests
 dotnet test
 
-# Launch the application
-dotnet run --project src/Furchive
+# Launch the Avalonia application (Windows)
+dotnet run --project src/Furchive.Avalonia
+
+# Publish cross‑platform
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-avalonia.ps1 -Configuration Release
 ```
 
 ## 📋 Development Checklist
 
 ### ✅ Completed
-- [x] Solution structure with 3 projects (Core, WPF, Tests)
+- [x] Solution structure with 4 projects (Core, Avalonia, WPF-legacy, Tests)
 - [x] Core models (MediaItem, SearchParameters, DownloadJob, etc.)
 - [x] Service interfaces and implementations
 - [x] MVVM ViewModels with CommunityToolkit
-- [x] WPF XAML with modern styling
+- [x] Avalonia XAML with Fluent styling
 - [x] Settings management with JSON persistence
 - [x] Basic unit tests
 - [x] Comprehensive error handling
@@ -59,7 +62,7 @@ dotnet run --project src/Furchive
 - [ ] Enhance viewer window (video support, zoom, pan)
 - [ ] Tag autocomplete with suggestions
 - [ ] Keyboard shortcuts and accessibility
-- [ ] Installer/packaging setup
+- [ ] macOS/Linux packaging beyond raw publish
 
 ## 🔍 Key Features
 
@@ -74,7 +77,7 @@ dotnet run --project src/Furchive
 - Metadata export to JSON
 
 ### User Experience
-- Modern WPF interface with dark/light theme support
+- Modern Avalonia interface with dark/light theme support
 - Gallery grid with thumbnail previews
 - Detailed preview pane with metadata
 - Real-time download queue management
@@ -84,15 +87,9 @@ dotnet run --project src/Furchive
 ```
 Furchive/
 ├── src/
-│   ├── Furchive/              # WPF Application
-│   │   ├── Views/             # XAML Windows/UserControls
-│   │   ├── ViewModels/        # MVVM ViewModels
-│   │   └── Converters/        # WPF Value Converters
+│   ├── Furchive.Avalonia/     # Avalonia UI (primary app)
+│   ├── Furchive/              # Legacy WPF app (kept for reference; excluded from default builds)
 │   └── Furchive.Core/         # Business Logic
-│       ├── Models/            # Data Models
-│       ├── Services/          # Core Services
-│       ├── Interfaces/        # Service Contracts
-│       └── Platforms/         # Platform API Implementations
 ├── tests/
 │   └── Furchive.Tests/        # Unit Tests
 ├── docs/
@@ -116,9 +113,8 @@ Key settings include:
 
 ## 🎨 UI Framework
 Built with:
-- **.NET 8** with Windows-specific features
-- **WPF** for native Windows UI
-- **ModernWpfUI** for contemporary styling
+- **.NET 8**
+- **Avalonia 11** for cross‑platform UI
 - **CommunityToolkit.Mvvm** for MVVM helpers
 
 ---

@@ -11,12 +11,13 @@ namespace Furchive.Core.Platforms;
 /// <summary>
 /// e621 API implementation
 /// </summary>
-public class E621Api : IPlatformApi
+public class E621Api : IPlatformApi, IE621CacheMaintenance
 {
     public string PlatformName => "e621";
     
     private readonly HttpClient _httpClient;
     private readonly ILogger<E621Api> _logger;
+    private readonly IE621CacheStore? _dbCache; // optional SQLite cache
     private readonly ISettingsService? _settings;
     private string? _userAgent;
     private string? _username;
@@ -62,11 +63,12 @@ public class E621Api : IPlatformApi
     private readonly CacheMetrics _metricsPostDetails = new();
     private readonly CacheMetrics _metricsPoolDetails = new();
 
-    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null)
+    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null, IE621CacheStore? dbCache = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settings = settings;
+        _dbCache = dbCache;
 
         // Configure concurrency and TTLs from settings with sane defaults
         int GetInt(string key, int fallback)
@@ -108,12 +110,75 @@ public class E621Api : IPlatformApi
     }
 
     // Cache maintenance helpers (invoked from Settings)
-    public void ClearSearchCache() => _searchCache.Clear();
-    public void ClearTagSuggestCache() => _tagSuggestCache.Clear();
-    public void ClearPoolPostsCache() => _poolPostsCache.Clear();
-    public void ClearFullPoolCache() => _poolAllCache.Clear();
-    public void ClearPostDetailsCache() => _postDetailsCache.Clear();
-    public void ClearPoolDetailsCache() => _poolCache.Clear();
+    public void ClearSearchCache() { _searchCache.Clear(); try { _dbCache?.ClearAsync("search"); } catch { } }
+    public void ClearTagSuggestCache() { _tagSuggestCache.Clear(); try { _dbCache?.ClearAsync("tag_suggest"); } catch { } }
+    public void ClearPoolPostsCache() { _poolPostsCache.Clear(); try { _dbCache?.ClearAsync("pool_posts"); } catch { } }
+    public void ClearFullPoolCache() { _poolAllCache.Clear(); try { _dbCache?.ClearAsync("full_pool"); } catch { } }
+    public void ClearPostDetailsCache() { _postDetailsCache.Clear(); try { _dbCache?.ClearAsync("post_details"); } catch { } }
+    public void ClearPoolDetailsCache() { _poolCache.Clear(); try { _dbCache?.ClearAsync("pool_details"); } catch { } }
+
+    // Lightweight helper used by UI to prune pools whose posts have all been deleted.
+    // Returns the current count of visible (non-deleted) posts for a given pool, or null on failure.
+    // IPoolContentIntrospection implementation
+    public async Task<int?> GetPoolVisiblePostCountAsync(int poolId, CancellationToken ct = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            // Ask posts endpoint for 1 visible post; use header total if present
+            var url = $"https://e621.net/posts.json?limit=1&tags=pool:{poolId}";
+            url = AppendAuth(url);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await _httpClient.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            int? total = null;
+            if (resp.Headers.TryGetValues("X-Total-Count", out var tv))
+            {
+                var s = tv.FirstOrDefault();
+                if (int.TryParse(s, out var t)) total = t;
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            // minimal parse: check for "posts":[
+            if (total.HasValue) return total.Value;
+            if (json.Contains("\"posts\":["))
+            {
+                // If posts array is empty it will be "posts":[]
+                if (json.Contains("\"posts\":[]")) return 0;
+                return 1; // some content (we asked for limit=1)
+            }
+            return null;
+        }
+        catch { return null; }
+    }
+
+    // Stronger content validation: checks first N posts of pool for any non-empty file/sample/preview URL.
+    public async Task<bool?> PoolHasRenderableContentAsync(int poolId, int sample = 10, CancellationToken ct = default)
+    {
+        try
+        {
+            EnsureUserAgent();
+            var limit = Math.Clamp(sample, 1, 20);
+            var url = $"https://e621.net/posts.json?limit={limit}&tags=pool:{poolId}";
+            url = AppendAuth(url);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var resp = await _httpClient.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var parsed = JsonSerializer.Deserialize<E621PostsResponse>(json, opts);
+            if (parsed == null) return null;
+            if (parsed.Posts == null || parsed.Posts.Count == 0) return false; // no visible posts
+            foreach (var p in parsed.Posts)
+            {
+                if (!string.IsNullOrWhiteSpace(p?.File?.Url) || !string.IsNullOrWhiteSpace(p?.Sample?.Url) || !string.IsNullOrWhiteSpace(p?.Preview?.Url))
+                    return true; // has some media reference
+            }
+            return false; // all posts lack media URLs
+        }
+        catch { return null; }
+    }
 
     public async Task<PlatformHealth> GetHealthAsync()
     {
@@ -121,15 +186,16 @@ public class E621Api : IPlatformApi
         {
             // Test basic connectivity
             // e621 requires a valid User-Agent; ensure one is present even if not yet authenticated
-        if (string.IsNullOrWhiteSpace(_userAgent))
+            if (string.IsNullOrWhiteSpace(_userAgent))
             {
                 try
                 {
-            _httpClient.DefaultRequestHeaders.UserAgent.Clear();
-            var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-            var username = Environment.UserName;
-            var defaultUa = $"Furchive/{version} (by {username})";
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
+                    _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                    var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                    var nameFromSettings = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact = string.IsNullOrWhiteSpace(nameFromSettings) ? (Environment.UserName ?? "Anon") : nameFromSettings.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact})";
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { /* ignore */ }
             }
@@ -214,7 +280,9 @@ public class E621Api : IPlatformApi
                 {
                     _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    var nameFromSettings = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact = string.IsNullOrWhiteSpace(nameFromSettings) ? (Environment.UserName ?? "Anon") : nameFromSettings.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact})";
                     _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { }
@@ -253,8 +321,23 @@ public class E621Api : IPlatformApi
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={parameters.Page}";
             url = AppendAuthAndFilter(url, isPostsList: true);
 
-            // Try cache before hitting network
+            // Try cache before hitting network (DB first, then in-memory)
             var cacheKey = $"{tagQuery}||p={parameters.Page}||l={limit}||authed={!string.IsNullOrWhiteSpace(_apiKey)}";
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var fromDb = await _dbCache.GetAsync<SearchResult>("search", cacheKey);
+                    if (fromDb != null && (fromDb.Items?.Count ?? 0) > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsSearch.Hits);
+                        // backfill in-memory with a short TTL to avoid duplicate DB reads during session
+                        _searchCache[cacheKey] = (fromDb, DateTime.UtcNow.AddMinutes(2));
+                        return fromDb;
+                    }
+                }
+                catch { }
+            }
             if (_searchCache.TryGetValue(cacheKey, out var cached))
             {
                 if (DateTime.UtcNow < cached.expires)
@@ -387,6 +470,7 @@ public class E621Api : IPlatformApi
                 TotalCount = 0
             };
             _searchCache[cacheKey] = (resultObj, DateTime.UtcNow.Add(_searchTtl));
+            try { if (_dbCache != null) await _dbCache.SetAsync("search", cacheKey, resultObj, DateTime.UtcNow.Add(_searchTtl)); } catch { }
             return resultObj;
         }
         catch (Exception ex)
@@ -396,6 +480,74 @@ public class E621Api : IPlatformApi
             {
                 Errors = { [PlatformName] = ex.Message }
             };
+        }
+    }
+
+    // --- Tag category lookup (used for pre-search tag chip coloring) ---
+    private readonly Dictionary<string, string> _tagCategoryCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _tagLookupLock = new(8, 8); // modest parallelism
+    /// <summary>
+    /// Returns the e621 tag category name for a tag (artist/character/species/general/meta/copyright/lore) or null if unknown.
+    /// Caches results in-memory for the session.
+    /// </summary>
+    public async Task<string?> GetTagCategoryAsync(string tag)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return null;
+            if (_tagCategoryCache.TryGetValue(tag, out var cachedCat)) return cachedCat;
+            await _tagLookupLock.WaitAsync();
+            try
+            {
+                if (_tagCategoryCache.TryGetValue(tag, out cachedCat)) return cachedCat; // double check after lock
+                // Ensure UA present
+                if (string.IsNullOrWhiteSpace(_userAgent))
+                {
+                    try
+                    {
+                        _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
+                        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"Furchive/{version} (tag-lookup)");
+                    }
+                    catch { }
+                }
+                var url = AppendAuth($"https://e621.net/tags.json?search[name]={Uri.EscapeDataString(tag)}&limit=1");
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                using var resp = await _httpClient.SendAsync(req);
+                if (!resp.IsSuccessStatusCode) return null;
+                var json = await resp.Content.ReadAsStringAsync();
+                // Minimal parse: expecting array of objects with name & category (int)
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                {
+                    var el = doc.RootElement[0];
+                    if (el.TryGetProperty("category", out var catProp))
+                    {
+                        var catId = catProp.GetInt32();
+                        var name = catId switch
+                        {
+                            0 => "general",
+                            1 => "artist",
+                            3 => "copyright",
+                            4 => "character",
+                            5 => "species",
+                            7 => "meta",
+                            8 => "lore",
+                            _ => "general"
+                        };
+                        _tagCategoryCache[tag] = name;
+                        return name;
+                    }
+                }
+                return null;
+            }
+            finally { _tagLookupLock.Release(); }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Tag category lookup failed for {Tag}", tag);
+            return null;
         }
     }
 
@@ -495,6 +647,20 @@ public class E621Api : IPlatformApi
         try
         {
             System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Lookups);
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var db = await _dbCache.GetAsync<E621PoolDetail>("pool_details", poolId.ToString());
+                    if (db != null)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
+                        _poolCache[poolId] = (db, DateTime.UtcNow.AddMinutes(2));
+                        return db;
+                    }
+                }
+                catch { }
+            }
             if (_poolCache.TryGetValue(poolId, out var entry))
             {
                 if (DateTime.UtcNow < entry.expires)
@@ -522,6 +688,7 @@ public class E621Api : IPlatformApi
                             {
                                 System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Evictions);
                                 _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
+                                try { if (_dbCache != null) await _dbCache.SetAsync("pool_details", poolId.ToString(), det, DateTime.UtcNow.Add(_poolTtl)); } catch { }
                             }
                         }
                         catch (Exception ex) { _logger.LogDebug(ex, "SWR refresh for pool detail failed"); }
@@ -553,6 +720,7 @@ public class E621Api : IPlatformApi
                 if (det != null)
                 {
                     _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
+                    try { if (_dbCache != null) await _dbCache.SetAsync("pool_details", poolId.ToString(), det, DateTime.UtcNow.Add(_poolTtl)); } catch { }
                 }
                 return det;
             }
@@ -572,7 +740,20 @@ public class E621Api : IPlatformApi
     {
         try
         {
-            // Cache check for post details
+            // Cache check for post details (DB first)
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var dbItem = await _dbCache.GetAsync<MediaItem>("post_details", id);
+                    if (dbItem != null)
+                    {
+                        return dbItem;
+                    }
+                }
+                catch { }
+            }
+            // In-memory cache check for post details
             var hasPostId = int.TryParse(id, out var postIdInt);
             if (hasPostId)
             {
@@ -616,7 +797,9 @@ public class E621Api : IPlatformApi
                 {
                     _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    var nameFromSettings2 = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact2 = string.IsNullOrWhiteSpace(nameFromSettings2) ? (Environment.UserName ?? "Anon") : nameFromSettings2.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact2})";
                     _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { }
@@ -667,6 +850,7 @@ public class E621Api : IPlatformApi
             if (hasPostId && item != null)
             {
                 _postDetailsCache[postIdInt] = (item, DateTime.UtcNow.Add(_postDetailsTtl));
+                try { if (_dbCache != null) await _dbCache.SetAsync("post_details", id, item, DateTime.UtcNow.Add(_postDetailsTtl)); } catch { }
             }
             return item;
         }
@@ -724,6 +908,20 @@ public class E621Api : IPlatformApi
         {
             System.Threading.Interlocked.Increment(ref _metricsTagSuggest.Lookups);
             var key = $"{query}|{limit}";
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var fromDb = await _dbCache.GetAsync<List<TagSuggestion>>("tag_suggest", key);
+                    if (fromDb != null && fromDb.Count > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsTagSuggest.Hits);
+                        _tagSuggestCache[key] = (fromDb, DateTime.UtcNow.AddMinutes(2));
+                        return fromDb;
+                    }
+                }
+                catch { }
+            }
             if (_tagSuggestCache.TryGetValue(key, out var cached))
             {
                 if (DateTime.UtcNow < cached.expires)
@@ -759,7 +957,9 @@ public class E621Api : IPlatformApi
                 {
                     _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                     var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                    var defaultUa = $"Furchive/{version} (by USERNAME)";
+                    var nameFromSettings3 = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                    var contact3 = string.IsNullOrWhiteSpace(nameFromSettings3) ? (Environment.UserName ?? "Anon") : nameFromSettings3.Trim();
+                    var defaultUa = $"Furchive/{version} (by {contact3})";
                     _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
                 }
                 catch { }
@@ -782,6 +982,7 @@ public class E621Api : IPlatformApi
                 Category = MapE621TagCategory(t.Category)
             }).ToList();
             _tagSuggestCache[key] = (list, DateTime.UtcNow.Add(_tagSuggestTtl));
+            try { if (_dbCache != null) await _dbCache.SetAsync("tag_suggest", key, list, DateTime.UtcNow.Add(_tagSuggestTtl)); } catch { }
             return list;
         }
         catch (Exception ex)
@@ -969,6 +1170,20 @@ public class E621Api : IPlatformApi
             EnsureUserAgent();
             var authed = !string.IsNullOrWhiteSpace(_apiKey);
             var key = (poolId, page, Math.Clamp(limit, 1, 100), authed);
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var db = await _dbCache.GetAsync<SearchResult>("pool_posts", $"{poolId}|{page}|{limit}|{authed}");
+                    if (db != null && (db.Items?.Count ?? 0) > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsPoolPosts.Hits);
+                        _poolPostsCache[key] = (db, DateTime.UtcNow.AddMinutes(2));
+                        return db;
+                    }
+                }
+                catch { }
+            }
             System.Threading.Interlocked.Increment(ref _metricsPoolPosts.Lookups);
             if (_poolPostsCache.TryGetValue(key, out var cached))
             {
@@ -1026,6 +1241,7 @@ public class E621Api : IPlatformApi
                 TotalCount = 0
             };
             _poolPostsCache[key] = (sr, DateTime.UtcNow.Add(_poolPostsTtl));
+            try { if (_dbCache != null) await _dbCache.SetAsync("pool_posts", $"{poolId}|{page}|{limit}|{authed}", sr, DateTime.UtcNow.Add(_poolPostsTtl)); } catch { }
             return sr;
         }
         catch (Exception ex)
@@ -1072,6 +1288,20 @@ public class E621Api : IPlatformApi
             EnsureUserAgent();
             var authed = !string.IsNullOrWhiteSpace(_apiKey);
             var key = (poolId, authed);
+            if (_dbCache != null)
+            {
+                try
+                {
+                    var db = await _dbCache.GetAsync<List<MediaItem>>("full_pool", $"{poolId}|{authed}");
+                    if (db != null && db.Count > 0)
+                    {
+                        System.Threading.Interlocked.Increment(ref _metricsFullPool.Hits);
+                        _poolAllCache[key] = (db, DateTime.UtcNow.AddMinutes(2));
+                        return db;
+                    }
+                }
+                catch { }
+            }
             System.Threading.Interlocked.Increment(ref _metricsFullPool.Lookups);
             if (_poolAllCache.TryGetValue(key, out var cached))
             {
@@ -1164,6 +1394,7 @@ public class E621Api : IPlatformApi
                     if (byId.TryGetValue(id, out var item)) ordered.Add(item);
                 }
                 _poolAllCache[key] = (ordered, DateTime.UtcNow.Add(_poolAllTtl));
+                try { if (_dbCache != null) await _dbCache.SetAsync("full_pool", $"{poolId}|{authed}", ordered, DateTime.UtcNow.Add(_poolAllTtl)); } catch { }
                 return ordered;
             }
         }
@@ -1294,7 +1525,9 @@ public class E621Api : IPlatformApi
             {
                 _httpClient.DefaultRequestHeaders.UserAgent.Clear();
                 var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-                var defaultUa = $"Furchive/{version} (by USERNAME)";
+                var nameFromSettings = _settings?.GetSetting<string>("E621Username", "") ?? "";
+                var contact = string.IsNullOrWhiteSpace(nameFromSettings) ? (Environment.UserName ?? "Anon") : nameFromSettings.Trim();
+                var defaultUa = $"Furchive/{version} (by {contact})";
                 _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(defaultUa);
             }
             catch { }
@@ -1443,6 +1676,16 @@ public class E621Api : IPlatformApi
         if (string.IsNullOrWhiteSpace(previewUrl)) previewUrl = NormalizeMediaUrl(p.Sample?.Url);
         if (string.IsNullOrWhiteSpace(previewUrl)) previewUrl = NormalizeMediaUrl(p.File?.Url);
         var fullUrl = NormalizeMediaUrl(p.File?.Url);
+
+        // Fallback: if no artist tags remain, assign a placeholder tag so UI & filename templates have a stable value
+        if (string.IsNullOrWhiteSpace(artist))
+        {
+            artist = "No_Artist";
+            if (categories.TryGetValue("artist", out var artistList) && artistList.Count == 0)
+            {
+                artistList.Add(artist);
+            }
+        }
 
         return new MediaItem
         {
@@ -1617,6 +1860,8 @@ public class E621Api : IPlatformApi
 
     public void LoadPersistentCacheIfEnabled()
     {
+        // No-op when SQLite cache is present; legacy JSON persistence retained for backward compatibility if needed
+        if (_dbCache != null) return;
         if (!_persistEnabled) return;
         try
         {
@@ -1709,6 +1954,7 @@ public class E621Api : IPlatformApi
 
     public void SavePersistentCacheIfEnabled()
     {
+        if (_dbCache != null) return;
         if (!_persistEnabled) return;
         try
         {

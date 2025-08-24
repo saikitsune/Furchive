@@ -56,7 +56,7 @@ public class SettingsService : ISettingsService
         _settings[key] = value!;
         
         // Save to file
-        await SaveAsync();
+        await SaveAsync().ConfigureAwait(false);
         
         // Notify listeners if value changed
         if (!Equals(oldValue, value))
@@ -67,6 +67,21 @@ public class SettingsService : ISettingsService
         _logger.LogDebug("Setting {Key} updated to {Value}", key, value);
     }
 
+    /// <summary>
+    /// Remove a setting key if it exists (used for legacy cleanup)
+    /// </summary>
+    public async Task<bool> RemoveSettingAsync(string key)
+    {
+        bool removed = _settings.TryRemove(key, out _);
+        if (removed)
+        {
+            await SaveAsync().ConfigureAwait(false);
+            try { SettingChanged?.Invoke(this, key); } catch { }
+            _logger.LogDebug("Setting {Key} removed", key);
+        }
+        return removed;
+    }
+
     public Dictionary<string, object> GetAllSettings()
     {
         return _settings.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -74,7 +89,7 @@ public class SettingsService : ISettingsService
 
     public async Task SaveAsync()
     {
-        await _fileLock.WaitAsync();
+        await _fileLock.WaitAsync().ConfigureAwait(false);
         
         try
         {
@@ -84,7 +99,7 @@ public class SettingsService : ISettingsService
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             });
             
-            await File.WriteAllTextAsync(_settingsPath, json);
+            await File.WriteAllTextAsync(_settingsPath, json).ConfigureAwait(false);
             _logger.LogDebug("Settings saved to {Path}", _settingsPath);
         }
         catch (Exception ex)
@@ -100,7 +115,7 @@ public class SettingsService : ISettingsService
 
     public async Task LoadAsync()
     {
-        await _fileLock.WaitAsync();
+        await _fileLock.WaitAsync().ConfigureAwait(false);
         var releasedEarly = false;
 
         try
@@ -110,11 +125,11 @@ public class SettingsService : ISettingsService
                 // Release before initializing defaults to avoid deadlock (SaveAsync waits for this lock)
                 releasedEarly = true;
                 _fileLock.Release();
-                await InitializeDefaultSettingsAsync();
+                await InitializeDefaultSettingsAsync().ConfigureAwait(false);
                 return;
             }
 
-            var json = await File.ReadAllTextAsync(_settingsPath);
+            var json = await File.ReadAllTextAsync(_settingsPath).ConfigureAwait(false);
             var loadedSettings = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
 
             if (loadedSettings != null)
@@ -136,7 +151,7 @@ public class SettingsService : ISettingsService
                 releasedEarly = true;
                 _fileLock.Release();
             }
-            await InitializeDefaultSettingsAsync();
+            await InitializeDefaultSettingsAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -173,7 +188,7 @@ public class SettingsService : ISettingsService
             // Authentication (empty by default)
             ["E621Username"] = "",
             ["E621ApiKey"] = "",
-            ["ThemeMode"] = "system",
+            // ThemeMode removed (dark-only UI)
             
             // Content Filtering
             ["TagBlacklist"] = new List<string>()
@@ -184,7 +199,7 @@ public class SettingsService : ISettingsService
             _settings[setting.Key] = setting.Value;
         }
 
-        await SaveAsync();
+    await SaveAsync().ConfigureAwait(false);
         _logger.LogInformation("Default settings initialized");
     }
 

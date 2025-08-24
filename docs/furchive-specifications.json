@@ -1,0 +1,69 @@
+{
+  "api_changes": [
+    {
+      "endpoint": "/api/sources/health",
+      "method": "GET",
+      "description": "Reports reachability, auth status, and rate-limit headers for e621",
+      "error_handling": [
+        { "error_code": "503", "message": "Source temporarily unavailable" },
+        { "error_code": "429", "message": "Rate limit reached; backoff applied" }
+      ]
+    },
+    {
+      "endpoint": "/api/sources/auth/login",
+      "method": "POST",
+      "description": "Sets required e621 User-Agent and optional credentials",
+      "error_handling": [
+        { "error_code": "400", "message": "Missing or malformed credentials" },
+        { "error_code": "401", "message": "Authentication failed" }
+      ]
+    },
+    {
+      "endpoint": "/api/sources/auth/logout",
+      "method": "DELETE",
+      "description": "Clears stored credentials",
+      "error_handling": [
+        { "error_code": "404", "message": "No active session" }
+      ]
+    },
+    {
+      "endpoint": "/api/tags/suggest",
+      "method": "GET",
+      "description": "Tag autocomplete from e621 with include/exclude context",
+      "error_handling": [
+        { "error_code": "400", "message": "Query must be at least 2 characters" },
+        { "error_code": "429", "message": "Rate limit reached" }
+      ]
+    },
+    {
+      "endpoint": "/api/media/search",
+      "method": "GET",
+      "description": "Search e621 with tags, rating, sort, and pagination",
+      "error_handling": [
+        { "error_code": "400", "message": "Invalid tag syntax or unsupported filter" },
+        { "error_code": "403", "message": "Access forbidden by policy or age gate" },
+        { "error_code": "429", "message": "Rate limit hit" },
+        { "error_code": "502", "message": "Upstream error" }
+      ]
+    }
+  ],
+  "ui_changes": [],
+  "settings_changes": [
+    { "setting": "DefaultDownloadDirectory", "type": "string", "default": "C:/Users/<User>/Documents/Downloads/Furchive", "persistence": "User-level (local settings file)", "error_handling": "Alert if directory not writable; prompt to choose a new path" },
+  { "setting": "FilenameTemplate", "type": "string", "default": "{source}/{artist}/{id}.{ext}", "persistence": "User-level (local settings file)", "error_handling": "Validate illegal path characters and max path length; fallback to safe name" },
+    { "setting": "ConcurrentDownloads", "type": "int", "default": 3, "persistence": "User-level (local settings file)", "error_handling": "Clamp between 1 and 8; warn if increased beyond recommended" },
+    { "setting": "MaxResultsPerSource", "type": "int", "default": 50, "persistence": "User-level (local settings file)", "error_handling": "Clamp between 10 and 320; warn about rate-limit impact" },
+    { "setting": "RatingsDefault", "type": "object", "default": "{ \"safe\": true, \"questionable\": false, \"explicit\": false }", "persistence": "User-level (local settings file)", "error_handling": "Warn if selection conflicts with source policy" },
+    { "setting": "DownloadDuplicatesPolicy", "type": "string", "default": "skip", "persistence": "User-level (local settings file)", "error_handling": "Allowed values: skip, overwrite, rename; reject others" },
+    { "setting": "NetworkTimeoutSeconds", "type": "int", "default": 30, "persistence": "App-level (global config)", "error_handling": "Use fallback 30 on invalid value" },
+    { "setting": "RetryAttempts", "type": "int", "default": 3, "persistence": "App-level (global config)", "error_handling": "Clamp between 0 and 5" },
+    { "setting": "RateLimitBackoffStrategy", "type": "string", "default": "exponential", "persistence": "App-level (global config)", "error_handling": "Allowed: none, linear, exponential" },
+    { "setting": "TagBlacklist", "type": "array<string>", "default": [], "persistence": "User-level (local settings file)", "error_handling": "Case-insensitive match" },
+    { "setting": "SaveMetadataJson", "type": "boolean", "default": false, "persistence": "User-level (local settings file)", "error_handling": "Warn about increased disk usage per download" },
+    { "setting": "CreateSubfoldersBySource", "type": "boolean", "default": true, "persistence": "User-level (local settings file)", "error_handling": "Ensure filename uniqueness if disabled" },
+    { "setting": "UseOriginalFilename", "type": "boolean", "default": false, "persistence": "User-level (local settings file)", "error_handling": "Fallback to template if missing or unsafe" },
+    
+    { "setting": "ShowDownloadCompletedToast", "type": "boolean", "default": true, "persistence": "User-level (local settings file)", "error_handling": "If disabled, rely on queue panel indicators" },
+    { "setting": "EnableTagAutocomplete", "type": "boolean", "default": true, "persistence": "User-level (local settings file)", "error_handling": "If disabled, suppress /api/tags/suggest calls" }
+  ]
+}

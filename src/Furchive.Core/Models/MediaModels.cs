@@ -14,6 +14,8 @@ public class MediaItem
     public string Artist { get; set; } = string.Empty;
     public string PreviewUrl { get; set; } = string.Empty;
     public string FullImageUrl { get; set; } = string.Empty;
+    // When downloaded, absolute local filesystem path to the media (preferred for viewing/animation)
+    public string? LocalFilePath { get; set; }
     public string SourceUrl { get; set; } = string.Empty;
     public List<string> Tags { get; set; } = new();
     public Dictionary<string, List<string>> TagCategories { get; set; } = new();
@@ -83,6 +85,8 @@ public class DownloadJob : System.ComponentModel.INotifyPropertyChanged
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public MediaItem MediaItem { get; set; } = new();
+    // Stable queue order (monotonically increasing). Not persisted yet; reconstructed from load order.
+    public long Sequence { get; set; }
     // Aggregate/group download support
     public bool IsAggregate { get; set; } = false; // true for a synthetic job aggregating child jobs
     public string? ParentId { get; set; } // if set, this is a child of an aggregate job

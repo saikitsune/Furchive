@@ -1,0 +1,101 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+
+jobs:
+  build-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-13
+            rid: osx-x64
+          - os: macos-latest
+            rid: osx-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build -c Release
+      - name: Publish ${{ matrix.rid }}
+        run: |
+          dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishTrimmed=false -p:EnableAvaloniaWebView=true -o out/${{ matrix.rid }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: furchive-${{ matrix.rid }}
+          path: out/${{ matrix.rid }}
+
+  package-macos-linux:
+    needs: build-matrix
+    runs-on: ${{ matrix.os }}
+    if: ${{ github.event_name != 'pull_request' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-13
+            rid: osx-x64
+          - os: macos-latest
+            rid: osx-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish ${{ matrix.rid }} (ensure output exists)
+        run: |
+          dotnet publish src/Furchive.Avalonia/Furchive.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishTrimmed=false -p:EnableAvaloniaWebView=true -o src/Furchive.Avalonia/publish/${{ matrix.rid }}
+      - name: Package (macOS DMG)
+        if: startsWith(matrix.rid, 'osx')
+        run: |
+          bash scripts/package-macos-dmg.sh ${{ matrix.rid }}
+      - name: Package (Linux AppImage)
+        if: ${{ matrix.rid == 'linux-x64' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse
+          wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          sudo mv appimagetool /usr/local/bin/
+          bash scripts/package-linux-appimage.sh linux-x64
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: furchive-packages-${{ matrix.rid }}
+          path: dist/${{ matrix.rid }}/*
+
+  windows-installer:
+    needs: build-matrix
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $env:INNOSETUP = "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
+          powershell -NoProfile -ExecutionPolicy Bypass -File installer/build-installer.ps1 -Configuration Release -Runtime win-x64
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: furchive-setup
+          path: installer/inno/output/*.exe

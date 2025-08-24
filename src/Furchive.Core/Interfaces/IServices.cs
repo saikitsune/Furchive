@@ -74,6 +74,28 @@ public interface IPlatformApi
     /// Returns null if the post does not belong to any pool or the platform doesn't support it.
     /// </summary>
     Task<(int poolId, string poolName, int pageNumber)?> GetPoolContextForPostAsync(string postId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the category string for a single tag if supported (e.g., e621). Returns null if unknown/unsupported.
+    /// </summary>
+    Task<string?> GetTagCategoryAsync(string tag);
+}
+
+/// <summary>
+/// Optional interface implemented by platforms (currently e621) that expose cache maintenance
+/// and lightweight metrics / persistence hooks. Eliminates reflection-based invocation.
+/// </summary>
+public interface IE621CacheMaintenance
+{
+    void ClearSearchCache();
+    void ClearTagSuggestCache();
+    void ClearPoolPostsCache();
+    void ClearFullPoolCache();
+    void ClearPostDetailsCache();
+    void ClearPoolDetailsCache();
+    object? GetCacheMetrics();
+    void LoadPersistentCacheIfEnabled();
+    void SavePersistentCacheIfEnabled();
 }
 
 /// <summary>
@@ -100,6 +122,13 @@ public interface IUnifiedApiService
     /// Get tag suggestions from enabled platforms
     /// </summary>
     Task<List<TagSuggestion>> GetTagSuggestionsAsync(string query, List<string> sources, int limit = 10);
+
+    /// <summary>
+    /// Resolve the category for a single tag from the first platform that can provide it.
+    /// Returns null if no enabled platform supplies a category.
+    /// Used for pre-search tag chip coloring.
+    /// </summary>
+    Task<string?> GetTagCategoryAsync(string tag, List<string> sources);
 
     /// <summary>
     /// Register a platform API implementation
@@ -138,6 +167,9 @@ public interface IUnifiedApiService
     void ClearE621FullPoolCache();
     void ClearE621PostDetailsCache();
     void ClearE621PoolDetailsCache();
+    object? GetE621CacheMetrics();
+    void LoadE621PersistentCacheIfEnabled();
+    void SaveE621PersistentCacheIfEnabled();
 }
 
 /// <summary>
@@ -200,6 +232,21 @@ public interface IDownloadService
     /// Event fired when download status changes
     /// </summary>
     event EventHandler<DownloadJob>? DownloadStatusChanged;
+
+    /// <summary>Remove a job from tracking (optionally delete file).</summary>
+    Task<bool> RemoveJobAsync(string jobId, bool deleteFile = false);
+}
+
+/// <summary>
+/// Persistent store for download jobs so they survive app restarts.
+/// </summary>
+public interface IDownloadsStore
+{
+    Task InitializeAsync(CancellationToken ct = default);
+    Task UpsertAsync(DownloadJob job, CancellationToken ct = default);
+    Task<List<DownloadJob>> GetAllAsync(CancellationToken ct = default);
+    Task DeleteAsync(string id, CancellationToken ct = default);
+    Task VacuumAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -216,6 +263,11 @@ public interface ISettingsService
     /// Set a setting value
     /// </summary>
     Task SetSettingAsync<T>(string key, T value);
+
+    /// <summary>
+    /// Remove a setting key if it exists. Returns true if removed.
+    /// </summary>
+    Task<bool> RemoveSettingAsync(string key);
 
     /// <summary>
     /// Get all settings
@@ -236,4 +288,19 @@ public interface ISettingsService
     /// Event fired when settings change
     /// </summary>
     event EventHandler<string>? SettingChanged;
+}
+
+/// <summary>
+/// Cross-platform shell helper for opening files, folders, and URLs.
+/// </summary>
+public interface IPlatformShellService
+{
+    /// <summary>Open a file or application by path.</summary>
+    void OpenPath(string path);
+
+    /// <summary>Open a folder in the OS file manager.</summary>
+    void OpenFolder(string folderPath);
+
+    /// <summary>Open a URL in the default browser.</summary>
+    void OpenUrl(string url);
 }
