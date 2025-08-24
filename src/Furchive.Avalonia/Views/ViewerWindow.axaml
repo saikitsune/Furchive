@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:beh="using:Furchive.Avalonia.Behaviors" x:Class="Furchive.Avalonia.Views.ViewerWindow" Width="1100" Height="800" MinWidth="600" MinHeight="400" Title="Viewer" Icon="avares://Furchive/Assets/icon.ico">
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:beh="using:Furchive.Avalonia.Behaviors" x:Class="Furchive.Avalonia.Views.ViewerWindow" Width="1100" Height="800" MinWidth="600" MinHeight="400" Title="Viewer" Icon="avares://Furchive/Assets/icon.ico" Background="#000000">
     <Window.Styles>
         <!-- Base style for video control buttons -->
         <Style Selector="Button.video-btn">
@@ -37,46 +37,103 @@
         <Style Selector="ToggleButton.video-btn:pointerover:not(:checked)">
             <Setter Property="Background" Value="#484C52" />
         </Style>
-        <Style Selector="Slider#SeekSlider">
+    <!-- Remove old named seek slider height so new style governs -->
+    <Style Selector="Slider#SeekSlider" />
+        <!-- Modern seek slider styling -->
+        <Style Selector="Slider.seek-modern">
+            <Setter Property="Height" Value="50" />
+            <Setter Property="MinHeight" Value="50" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,0" />
+        </Style>
+        <Style Selector="Slider.seek-modern:horizontal /template/ Border#PART_TrackBackground">
+            <Setter Property="Height" Value="10" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Background" Value="#303336" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider.seek-modern:horizontal /template/ Border#PART_TrackFill">
+            <Setter Property="Height" Value="10" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#FF6A00" Offset="0" />
+                        <GradientStop Color="#FFD700" Offset="1" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider.seek-modern:horizontal /template/ Thumb#PART_Thumb">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#FF8C00" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider.seek-modern:horizontal:pointerover /template/ Thumb#PART_Thumb">
+            <Setter Property="Width" Value="20" />
             <Setter Property="Height" Value="20" />
         </Style>
-        <!-- Thicker seek slider styling -->
-        <Style Selector="Slider.seek-slider">
-            <Setter Property="Height" Value="32" />
-            <Setter Property="MinHeight" Value="32" />
+        <!-- Modern volume slider styling -->
+        <Style Selector="Slider.volume-modern">
+            <Setter Property="Height" Value="50" />
+            <Setter Property="MinHeight" Value="50" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,-2,0,0" />
+            <Setter Property="Width" Value="120" />
         </Style>
-        <Style Selector="Slider.seek-slider:horizontal /template/ Border#PART_TrackBackground">
-            <Setter Property="Height" Value="10" />
-            <Setter Property="CornerRadius" Value="5" />
-        </Style>
-        <Style Selector="Slider.seek-slider:horizontal /template/ Border#PART_TrackFill">
-            <Setter Property="Height" Value="10" />
-            <Setter Property="CornerRadius" Value="5" />
-        </Style>
-        <!-- Volume slider styling -->
-        <Style Selector="Slider.volume-slider">
-            <Setter Property="Height" Value="30" />
-            <Setter Property="MinHeight" Value="30" />
-        </Style>
-        <Style Selector="Slider.volume-slider:horizontal /template/ Border#PART_TrackBackground">
+        <Style Selector="Slider.volume-modern:horizontal /template/ Border#PART_TrackBackground">
             <Setter Property="Height" Value="8" />
             <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background" Value="#2F3134" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style Selector="Slider.volume-slider:horizontal /template/ Border#PART_TrackFill">
+        <Style Selector="Slider.volume-modern:horizontal /template/ Border#PART_TrackFill">
             <Setter Property="Height" Value="8" />
             <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#4DA6FF" Offset="0" />
+                        <GradientStop Color="#8BC8FF" Offset="1" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider.volume-modern:horizontal /template/ Thumb#PART_Thumb">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#4DA6FF" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider.volume-modern:horizontal:pointerover /template/ Thumb#PART_Thumb">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
         </Style>
     </Window.Styles>
     <Grid RowDefinitions="Auto,Auto,*">
         <!-- Control bar -->
         <DockPanel Grid.Row="0" Background="#2b2b2b" Height="40" LastChildFill="False">
+            <!-- Right side shortcuts help button -->
+            <Button x:Name="ShowShortcutsButton" DockPanel.Dock="Right" Content="Shortcuts" Margin="0,0,10,0" Click="OnShowShortcutsClick" />
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="10,0" VerticalAlignment="Center">
                 <Button x:Name="ZoomButton" Content="Zoom" Click="OnZoomButtonClick" />
-                <TextBlock Text="Size:" Margin="16,0,4,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="SizeLabel" Text="Size:" Margin="16,0,4,0" VerticalAlignment="Center" />
                 <ComboBox x:Name="SizeModeCombo" Width="110" SelectedIndex="0" SelectionChanged="OnSizeModeSelectionChanged">
                     <ComboBoxItem Content="Fit" />
                     <ComboBoxItem Content="Original" />
                 </ComboBox>
+                <Button x:Name="DownloadButton" Content="Download" Margin="24,0,0,0" Click="OnDownloadButtonClick" />
                 <Button x:Name="PrevButton" Content="Prev" Margin="24,0,0,0" IsVisible="False" Click="OnPrevClick" />
                 <Button x:Name="NextButton" Content="Next" IsVisible="False" Click="OnNextClick" />
                 <TextBlock x:Name="IndexLabel" Text="" Margin="12,0,0,0" VerticalAlignment="Center" IsVisible="False" />
@@ -92,15 +149,15 @@
             </StackPanel>
         </Border>
         <!-- Image viewport with wheel-based zoom anchoring -->
-        <Border Grid.Row="2" Background="#202020" ClipToBounds="True">
+    <Border Grid.Row="2" Background="#000000" ClipToBounds="True">
             <!-- Plain host (no scrollbars). We handle zoom + translation manually. -->
-            <Grid x:Name="ViewportHost" PointerWheelChanged="OnViewportWheel" PointerPressed="OnViewportPointerPressed" PointerReleased="OnViewportPointerReleased" PointerMoved="OnViewportPointerMoved" Background="#101010">
+            <Grid x:Name="ViewportHost" PointerWheelChanged="OnViewportWheel" PointerPressed="OnViewportPointerPressed" PointerReleased="OnViewportPointerReleased" PointerMoved="OnViewportPointerMoved" Background="#000000">
                 <Image x:Name="ImageElement" Stretch="Uniform" beh:RemoteImage.SourceUri="" RenderTransformOrigin="0,0" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <Grid x:Name="VideoHost" IsVisible="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#101010" RowDefinitions="*,Auto">
+                <Grid x:Name="VideoHost" IsVisible="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#000000" RowDefinitions="*,Auto">
                     <!-- Native/Rendered video surface goes in row 0 dynamically -->
-                    <Grid x:Name="VideoSurfaceLayer" Grid.Row="0" />
+                    <Grid x:Name="VideoSurfaceLayer" Grid.Row="0" Background="#000000" />
                     <!-- Fixed bottom control bar -->
-                    <Border Grid.Row="1" x:Name="VideoControlsBar" Background="#222" Padding="6" IsVisible="True">
+                    <Border Grid.Row="1" x:Name="VideoControlsBar" Background="#222" Padding="4,4,4,4" IsVisible="True" ClipToBounds="False">
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" RowDefinitions="Auto" VerticalAlignment="Center">
                             <Button x:Name="PlayPauseButton" Classes="video-btn" Width="48" Height="30" Click="OnPlayPauseClick">
                                 <Image x:Name="PlayPauseIcon" Width="18" Height="18" Source="{DynamicResource Icon.Play}" />
@@ -108,28 +165,63 @@
                             <ToggleButton x:Name="LoopToggle" Classes="video-btn" Grid.Column="1" Width="48" Height="30" Margin="6,0,0,0" IsChecked="True" Checked="OnLoopToggleChanged" Unchecked="OnLoopToggleChanged">
                                 <Image x:Name="LoopIcon" Width="18" Height="18" Source="{DynamicResource Icon.LoopOn}" />
                             </ToggleButton>
-                            <StackPanel Grid.Column="2" Orientation="Vertical" Margin="12,0,12,0" VerticalAlignment="Center">
-                                <Slider x:Name="SeekSlider" Classes="seek-slider" Minimum="0" Maximum="1000" Height="32" ValueChanged="OnSeekSliderValueChanged" PointerPressed="OnSeekSliderPointerPressed" PointerReleased="OnSeekSliderPointerReleased" />
-                                <TextBlock x:Name="TimeLabel" Text="00:00 / 00:00" FontSize="11" Foreground="LightGray" HorizontalAlignment="Left" Margin="2,2,0,0" />
-                            </StackPanel>
+                            <!-- Seek area: current time | slider | total time -->
+                            <Grid Grid.Column="2" ColumnDefinitions="Auto,*,Auto" Margin="12,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="CurrentTimeLabel" Text="00:00" FontSize="11" Foreground="LightGray" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <Slider x:Name="SeekSlider" Grid.Column="1" Classes="seek-modern" Minimum="0" Maximum="1000" VerticalAlignment="Center" ValueChanged="OnSeekSliderValueChanged" PointerPressed="OnSeekSliderPointerPressed" PointerReleased="OnSeekSliderPointerReleased" ClipToBounds="False" />
+                                <TextBlock x:Name="TotalTimeLabel" Grid.Column="2" Text="00:00" FontSize="11" Foreground="LightGray" VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </Grid>
                             <Button x:Name="VolumeButton" Classes="video-btn" Grid.Column="3" Width="48" Height="30" Click="OnMuteClick">
                                 <Image x:Name="VolumeIcon" Width="18" Height="18" Source="{DynamicResource Icon.Volume}" />
                             </Button>
-                            <Slider x:Name="VolumeSlider" Classes="volume-slider" Grid.Column="4" Minimum="0" Maximum="100" Width="140" Height="30" ValueChanged="OnVolumeSliderValueChanged" />
-                            <ComboBox x:Name="SpeedCombo" Grid.Column="5" Width="80" Height="30" SelectionChanged="OnSpeedSelectionChanged">
-                                <ComboBoxItem Content="0.5x" />
-                                <ComboBoxItem Content="1.0x" IsSelected="True" />
-                                <ComboBoxItem Content="1.5x" />
-                                <ComboBoxItem Content="2.0x" />
-                            </ComboBox>
+                            <!-- Volume slider with percentage -->
+                            <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center" Spacing="4">
+                                <Slider x:Name="VolumeSlider" Classes="volume-modern" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="OnVolumeSliderValueChanged" ClipToBounds="False" />
+                                <TextBlock x:Name="VolumePercentLabel" Text="80%" FontSize="11" Foreground="LightGray" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button x:Name="SpeedButton" Classes="video-btn" Grid.Column="5" Width="54" Height="30" Margin="8,0,0,0" Click="OnSpeedButtonClick">
+                                <TextBlock Text="Speed" />
+                            </Button>
                             <Button x:Name="FullscreenButton" Classes="video-btn" Grid.Column="6" Width="48" Height="30" Margin="8,0,0,0" Click="OnFullscreenClick">
                                 <Image x:Name="FullscreenIcon" Width="18" Height="18" Source="{DynamicResource Icon.Fullscreen}" />
                             </Button>
+                            <!-- Popup for speed options -->
+                            <Popup x:Name="SpeedPopup" PlacementTarget="{Binding #SpeedButton}" PlacementMode="Bottom">
+                                <Border Background="#2b2b2b" BorderBrush="#55595F" BorderThickness="1" CornerRadius="4" Padding="4">
+                                    <StackPanel Orientation="Vertical" Spacing="4">
+                                        <Button Classes="video-btn" Content="0.5x" Width="80" Height="28" Click="OnSpeedOptionClick" />
+                                        <Button Classes="video-btn" Content="1.0x" Width="80" Height="28" Click="OnSpeedOptionClick" />
+                                        <Button Classes="video-btn" Content="1.5x" Width="80" Height="28" Click="OnSpeedOptionClick" />
+                                        <Button Classes="video-btn" Content="2.0x" Width="80" Height="28" Click="OnSpeedOptionClick" />
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
                         </Grid>
                     </Border>
                 </Grid>
                 <!-- Debug overlay rectangle (toggle IsVisible in code if needed) -->
                 <Border x:Name="ViewportDebugBorder" BorderBrush="#55FF0000" BorderThickness="1" IsHitTestVisible="False" IsVisible="False" />
+                <!-- Keyboard shortcuts overlay -->
+                <!-- Overlay relocated inside VideoHost for stacking above native surface -->
+                <Border x:Name="ShortcutsOverlay" Background="#AA000000" IsVisible="False" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Grid.RowSpan="2">
+                    <ScrollViewer VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420" MaxHeight="520">
+                        <Border Background="#222" BorderBrush="#555" BorderThickness="1" CornerRadius="6" Padding="16" Width="400">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Video Shortcuts" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" />
+                                <TextBlock Text="Space / K : Play / Pause" />
+                                <TextBlock Text="Left / Right : Seek -5s / +5s" />
+                                <TextBlock Text="Shift+Left / Shift+Right : Seek -15s / +15s" />
+                                <TextBlock Text="Up / Down : Volume +5% / -5%" />
+                                <TextBlock Text="M : Mute toggle" />
+                                <TextBlock Text="F : Fullscreen toggle" />
+                                <TextBlock Text="L : Loop toggle" />
+                                <TextBlock Text="+ / - : Speed up / down" />
+                                <TextBlock Text="Esc : Close viewer" />
+                                <TextBlock Text="(Navigation A/D, Left/Right disabled while video controls active)" FontSize="11" Foreground="#CCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </ScrollViewer>
+                </Border>
             </Grid>
         </Border>
     </Grid>

@@ -19,6 +19,8 @@ using Furchive.Core.Models;
 using LibVLCSharp.Shared; // LibVLC core
 using LibVLCSharp.Avalonia; // VideoView control
 using Avalonia.Platform; // For TryGetPlatformHandle / IPlatformHandle and AssetLoader
+using Microsoft.Extensions.DependencyInjection;
+using Furchive.Core.Interfaces;
 
 namespace Furchive.Avalonia.Views;
 
@@ -83,6 +85,11 @@ public partial class ViewerWindow : Window
     private bool _loopEnabled;
     private bool _fullscreen;
     private string? _currentVideoUrl;
+    private bool _isVideoMode; // track if current media is video
+    private IDownloadService? _downloadService; // resolved from DI
+    private ISettingsService? _settingsService;
+    // Shortcut overlay state
+    private bool _shortcutsVisible;
 
     public ViewerWindow()
     {
@@ -119,6 +126,15 @@ public partial class ViewerWindow : Window
                 ApplyInitialFit(force: true);
             }
         };
+
+        // Resolve services (best-effort) from global App.Services
+        try
+        {
+            var sp = Furchive.Avalonia.App.Services;
+            _downloadService = sp?.GetService<IDownloadService>();
+            _settingsService = sp?.GetService<ISettingsService>();
+        }
+        catch { }
     }
 
     public void InitializeNavigationContext(IReadOnlyList<MediaItem> items, int index, int? poolId)
@@ -137,6 +153,15 @@ public partial class ViewerWindow : Window
 
     private void LoadMedia()
     {
+        // Ensure any existing video playback is stopped before loading new item
+        try
+        {
+            if (_activeMediaPlayer != null)
+            {
+                try { _activeMediaPlayer.Stop(); } catch { }
+            }
+        }
+        catch { }
         if (DataContext is not MediaItem item)
         {
             UpdateNavButtonsVisibility();
@@ -201,6 +226,12 @@ public partial class ViewerWindow : Window
             {
                 videoHost.IsVisible = true;
                 img.IsVisible = false;
+                _isVideoMode = true;
+                SetImageInteractionEnabled(false);
+                // Hide zoom + size UI when video mode
+                TrySetVisibility("ZoomButton", false);
+                TrySetVisibility("SizeLabel", false);
+                TrySetVisibility("SizeModeCombo", false);
                 var surfaceLayer = videoHost.FindControl<Grid>("VideoSurfaceLayer");
                 surfaceLayer?.Children.Clear();
                 try
@@ -246,6 +277,27 @@ public partial class ViewerWindow : Window
                 surfaceLayer?.Children.Clear();
             }
             img.IsVisible = true;
+            if (_isVideoMode)
+            {
+                _isVideoMode = false;
+                SetImageInteractionEnabled(true);
+                // Restore zoom + size UI
+                TrySetVisibility("ZoomButton", true);
+                TrySetVisibility("SizeLabel", true);
+                TrySetVisibility("SizeModeCombo", true);
+                // Dispose previous media player to ensure playback stops
+                try
+                {
+                    if (_activeMediaPlayer != null)
+                    {
+                        DetachVlcPlayerEvents(_activeMediaPlayer);
+                        try { _activeMediaPlayer.Stop(); } catch { }
+                        _activeMediaPlayer.Dispose();
+                        _activeMediaPlayer = null;
+                    }
+                }
+                catch { }
+            }
         }
         catch { }
 
@@ -375,21 +427,141 @@ public partial class ViewerWindow : Window
 
     private void OnViewerKeyDown(object? sender, KeyEventArgs e)
     {
-    if (e.Key == Key.Left || e.Key == Key.A)
+        // If shortcuts overlay open, allow Esc to close it first
+        if (_shortcutsVisible && e.Key == Key.Escape)
         {
-            OnPrevClick(this, new RoutedEventArgs());
+            ToggleShortcutsOverlay(false);
             e.Handled = true;
+            return;
         }
-    else if (e.Key == Key.Right || e.Key == Key.D)
-        {
-            OnNextClick(this, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
+
+        // Always allow ESC to close viewer (unless overlay just handled)
+        if (e.Key == Key.Escape)
         {
             Close();
             e.Handled = true;
+            return;
         }
+
+        // Video mode specific shortcuts override navigation (A/D, Left/Right) while a video is active
+        if (_isVideoMode && _activeMediaPlayer != null)
+        {
+            bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            switch (e.Key)
+            {
+                case Key.Space:
+                case Key.K:
+                    OnPlayPauseClick(this, new RoutedEventArgs());
+                    e.Handled = true; return;
+                case Key.Left:
+                    SeekRelative(shift ? -15000 : -5000); e.Handled = true; return;
+                case Key.Right:
+                    SeekRelative(shift ? 15000 : 5000); e.Handled = true; return;
+                case Key.Up:
+                    AdjustVolume(+5); e.Handled = true; return;
+                case Key.Down:
+                    AdjustVolume(-5); e.Handled = true; return;
+                case Key.M:
+                    OnMuteClick(this, new RoutedEventArgs()); e.Handled = true; return;
+                case Key.F:
+                    OnFullscreenClick(this, new RoutedEventArgs()); e.Handled = true; return;
+                case Key.L:
+                    var loopToggle = this.FindControl<ToggleButton>("LoopToggle");
+                    if (loopToggle != null) loopToggle.IsChecked = !(loopToggle.IsChecked ?? false);
+                    e.Handled = true; return;
+                case Key.OemPlus:
+                case Key.Add:
+                    StepSpeed(+1); e.Handled = true; return;
+                case Key.OemMinus:
+                case Key.Subtract:
+                    StepSpeed(-1); e.Handled = true; return;
+            }
+            // Block A/D navigation while in video mode so they are free for future use if desired
+            if (e.Key == Key.A || e.Key == Key.D) { e.Handled = true; return; }
+        }
+        else
+        {
+            // Image mode navigation (or video not active) retains original A/D & arrow navigation
+            if (e.Key == Key.Left || e.Key == Key.A)
+            {
+                OnPrevClick(this, new RoutedEventArgs());
+                e.Handled = true; return;
+            }
+            if (e.Key == Key.Right || e.Key == Key.D)
+            {
+                OnNextClick(this, new RoutedEventArgs());
+                e.Handled = true; return;
+            }
+        }
+    }
+
+    private void SeekRelative(int deltaMs)
+    {
+        try
+        {
+            if (_activeMediaPlayer == null) return;
+            if (_lastKnownDurationMs <= 0) return;
+            var current = _activeMediaPlayer.Time;
+            var target = Math.Clamp(current + deltaMs, 0, _lastKnownDurationMs > 0 ? _lastKnownDurationMs : int.MaxValue);
+            _activeMediaPlayer.Time = target;
+            if (_lastKnownDurationMs > 0)
+            {
+                var frac = Math.Clamp((double)target / _lastKnownDurationMs, 0, 1);
+                _activeMediaPlayer.Position = (float)frac;
+                _seekUiSuppressTicks = 2;
+            }
+        }
+        catch { }
+    }
+
+    private void AdjustVolume(int deltaPercent)
+    {
+        if (_activeMediaPlayer == null) return;
+        try
+        {
+            var newVol = Math.Clamp(_activeMediaPlayer.Volume + deltaPercent, 0, 100);
+            _activeMediaPlayer.Volume = newVol;
+            var volSlider = this.FindControl<Slider>("VolumeSlider"); if (volSlider != null) volSlider.Value = newVol;
+        }
+        catch { }
+    }
+
+    private void StepSpeed(int direction)
+    {
+        if (_activeMediaPlayer == null) return;
+        try
+        {
+            // Define discrete speed steps
+            float[] steps = new float[] { 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f };
+            float current = 1.0f;
+            try { current = _activeMediaPlayer.Rate; } catch { }
+            int idx = 0;
+            for (int i = 0; i < steps.Length; i++) { if (Math.Abs(steps[i] - current) < 0.001f) { idx = i; break; } }
+            idx = Math.Clamp(idx + direction, 0, steps.Length - 1);
+            try { _activeMediaPlayer.SetRate(steps[idx]); } catch { }
+        }
+        catch { }
+    }
+
+    private void OnShowShortcutsClick(object? sender, RoutedEventArgs e)
+    {
+        ToggleShortcutsOverlay(!_shortcutsVisible);
+    }
+
+    private void ToggleShortcutsOverlay(bool show)
+    {
+        _shortcutsVisible = show;
+        try
+        {
+            var ov = this.FindControl<Border>("ShortcutsOverlay");
+            if (ov != null) ov.IsVisible = show;
+            // Ensure overlay is above native video host; hide host input if needed
+            if (_activeVlcHost != null)
+            {
+                _activeVlcHost.IsVisible = !show; // collapse video rendering while overlay active to avoid native window drawing above overlay
+            }
+        }
+        catch { }
     }
 
     private void ApplyInitialFit(bool force = false)
@@ -975,6 +1147,16 @@ public partial class ViewerWindow : Window
                         TryAssignAndStart();
                     }
                 });
+                try
+                {
+                    var bar = host.FindControl<Border>("VideoControlsBar");
+                    if (bar != null)
+                    {
+                        bar.PointerPressed -= OnVideoBarPointerPressed;
+                        bar.PointerPressed += OnVideoBarPointerPressed;
+                    }
+                }
+                catch { }
             }
             catch (Exception ex)
             {
@@ -993,6 +1175,20 @@ public partial class ViewerWindow : Window
                 });
             }
     });
+    }
+
+    private void OnVideoBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        try
+        {
+            var pt = e.GetPosition(this);
+            if (!IsPointerOverInteractiveInBar(pt))
+            {
+                // Eat the event to prevent starting a drag sequence
+                e.Handled = true;
+            }
+        }
+        catch { }
     }
 
     // (Removed redundant nested #if HAS_LIBVLC)
@@ -1028,6 +1224,55 @@ public partial class ViewerWindow : Window
             mp.EncounteredError += OnVlcError;
         }
         catch { }
+    }
+
+    private void SetImageInteractionEnabled(bool enabled)
+    {
+        // Enable/disable zoom, size controls, zoom panel visibility
+        try
+        {
+            var zoomBtn = this.FindControl<Button>("ZoomButton"); if (zoomBtn != null) zoomBtn.IsEnabled = enabled;
+            var sizeCombo = this.FindControl<ComboBox>("SizeModeCombo"); if (sizeCombo != null) sizeCombo.IsEnabled = enabled;
+            if (!enabled)
+            {
+                // Hide zoom panel if visible when disabling
+                var zp = this.FindControl<Border>("ZoomPanel"); if (zp != null) zp.IsVisible = false;
+            }
+        }
+        catch { }
+    }
+
+    private void TrySetVisibility(string name, bool visible)
+    {
+        try
+        {
+            var ctrl = this.FindControl<Control>(name); if (ctrl != null) ctrl.IsVisible = visible;
+        }
+        catch { }
+    }
+
+    // Intercept pointer presses on video control bar to avoid starting stray drags that break seek sync
+    private bool IsPointerOverInteractiveInBar(Point p)
+    {
+        try
+        {
+            var seek = this.FindControl<Slider>("SeekSlider");
+            var vol = this.FindControl<Slider>("VolumeSlider");
+            if (seek != null)
+            {
+                var r = seek.Bounds; var o = seek.TranslatePoint(new Point(0,0), this) ?? new Point();
+                var rect = new Rect(o, r.Size);
+                if (rect.Contains(p)) return true;
+            }
+            if (vol != null)
+            {
+                var r2 = vol.Bounds; var o2 = vol.TranslatePoint(new Point(0,0), this) ?? new Point();
+                var rect2 = new Rect(o2, r2.Size);
+                if (rect2.Contains(p)) return true;
+            }
+        }
+        catch { }
+        return false;
     }
 
     private void DetachVlcPlayerEvents(MediaPlayer? mp)
@@ -1133,10 +1378,14 @@ public partial class ViewerWindow : Window
                     }
                 }
             }
-            var tl = this.FindControl<TextBlock>("TimeLabel");
-            if (tl != null)
+            var cur = this.FindControl<TextBlock>("CurrentTimeLabel");
+            var tot = this.FindControl<TextBlock>("TotalTimeLabel");
+            if (cur != null) cur.Text = FormatTime(time);
+            if (tot != null) tot.Text = FormatTime(_lastKnownDurationMs);
+            var volPct = this.FindControl<TextBlock>("VolumePercentLabel");
+            if (volPct != null && _activeMediaPlayer != null)
             {
-                tl.Text = FormatTime(time) + " / " + FormatTime(_lastKnownDurationMs);
+                try { volPct.Text = _activeMediaPlayer.Volume + "%"; } catch { }
             }
         }
         catch { }
@@ -1213,11 +1462,11 @@ public partial class ViewerWindow : Window
         {
             _pendingSeekPosition01 = slider.Value / slider.Maximum;
             LogViewerDiag($"video-seek-preview frac={_pendingSeekPosition01:F4}");
-            var tl = this.FindControl<TextBlock>("TimeLabel");
-            if (tl != null && _lastKnownDurationMs > 0)
+            var cur = this.FindControl<TextBlock>("CurrentTimeLabel");
+            if (cur != null && _lastKnownDurationMs > 0)
             {
                 var previewMs = (long)(_lastKnownDurationMs * _pendingSeekPosition01);
-                tl.Text = FormatTime(previewMs) + " / " + FormatTime(_lastKnownDurationMs);
+                cur.Text = FormatTime(previewMs);
             }
         }
     }
@@ -1306,6 +1555,7 @@ public partial class ViewerWindow : Window
                 }
                 catch { }
             }
+            var volPct = this.FindControl<TextBlock>("VolumePercentLabel"); if (volPct != null) { try { volPct.Text = volInt + "%"; } catch { } }
         }
         catch { }
     }
@@ -1355,15 +1605,57 @@ public partial class ViewerWindow : Window
     catch { }
     }
 
-    private void OnSpeedSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private async void OnDownloadButtonClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MediaItem item) return;
+            if (_downloadService == null) return;
+            var baseDir = _settingsService?.GetSetting<string>("DefaultDownloadDirectory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive"))
+                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Furchive");
+            Directory.CreateDirectory(baseDir);
+            await _downloadService.QueueDownloadAsync(item, baseDir);
+            LogViewerDiag($"viewer-download-queued id={item.Id} title={item.Title}");
+        }
+        catch (Exception ex)
+        {
+            LogViewerDiag("viewer-download-error " + ex.Message);
+        }
+    }
+
+
+    private void OnSpeedButtonClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var popup = this.FindControl<Popup>("SpeedPopup");
+            if (popup != null)
+            {
+                popup.IsOpen = !popup.IsOpen;
+            }
+        }
+        catch { }
+    }
+
+    private void OnSpeedOptionClick(object? sender, RoutedEventArgs e)
     {
         if (_activeMediaPlayer == null) return;
-        var cb = sender as ComboBox; if (cb == null || cb.SelectedItem is not ComboBoxItem item) return;
-        var text = (item.Content as string) ?? "1.0x";
-        if (text.EndsWith("x")) text = text[..^1];
-        if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var spd))
+        try
         {
-            try { _activeMediaPlayer.SetRate((float)spd); } catch { }
+            if (sender is Button b && b.Content is string s)
+            {
+                var text = s;
+                if (text.EndsWith("x")) text = text[..^1];
+                if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var spd))
+                {
+                    try { _activeMediaPlayer.SetRate((float)spd); } catch { }
+                }
+            }
+        }
+        catch { }
+        finally
+        {
+            try { var popup = this.FindControl<Popup>("SpeedPopup"); if (popup != null) popup.IsOpen = false; } catch { }
         }
     }
 
