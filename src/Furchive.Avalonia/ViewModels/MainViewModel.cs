@@ -112,6 +112,14 @@ public partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _currentSearchCts;
     private int _contextVersion = 0; // increment per new search/pool to ignore stale async results
 
+    // Simple AddRange helper until a BulkObservableCollection is introduced (future sprint)
+    private static void AddRange<T>(ObservableCollection<T> target, IEnumerable<T> items)
+    {
+        if (target == null) return;
+        if (items == null) return;
+        foreach (var item in items) target.Add(item);
+    }
+
     public partial class SavedSearch { public string Name { get; set; } = string.Empty; public List<string> IncludeTags { get; set; } = new(); public List<string> ExcludeTags { get; set; } = new(); public int RatingFilterIndex { get; set; } }
     [ObservableProperty] private string _saveSearchName = string.Empty;
     public ObservableCollection<SavedSearch> SavedSearches { get; } = new();
@@ -268,22 +276,33 @@ public partial class MainViewModel : ObservableObject
             var filteredItems = result.Items; // API applied arttags:0 filter
             if (Dispatcher.UIThread.CheckAccess()) {
                 if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
-                foreach (var item in filteredItems)
+                if (filteredItems.Count > 0)
                 {
-                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; }
-                    SearchResults.Add(item);
-                    AddItemTagCategories(item);
+                    // Batch add to reduce CollectionChanged churn
+                    var toAdd = new List<MediaItem>(filteredItems.Count);
+                    foreach (var item in filteredItems)
+                    {
+                        if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
+                        toAdd.Add(item);
+                        AddItemTagCategories(item);
+                    }
+                    AddRange(SearchResults, toAdd);
                 }
                 OnPropertyChanged(nameof(AggregatedTagCategories));
                 CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
             }
             else { await Dispatcher.UIThread.InvokeAsync(() => {
                 if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
-                foreach (var item in filteredItems)
+                if (filteredItems.Count > 0)
                 {
-                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) { item.PreviewUrl = item.FullImageUrl; }
-                    SearchResults.Add(item);
-                    AddItemTagCategories(item);
+                    var toAdd = new List<MediaItem>(filteredItems.Count);
+                    foreach (var item in filteredItems)
+                    {
+                        if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
+                        toAdd.Add(item);
+                        AddItemTagCategories(item);
+                    }
+                    AddRange(SearchResults, toAdd);
                 }
                 OnPropertyChanged(nameof(AggregatedTagCategories));
                 CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }); }
@@ -314,11 +333,16 @@ public partial class MainViewModel : ObservableObject
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
             var filteredItems = result.Items; // API applied arttags:0 filter
-            foreach (var item in filteredItems)
+            if (filteredItems.Count > 0)
             {
-                if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
-                SearchResults.Add(item);
-                AddItemTagCategories(item);
+                var toAdd = new List<MediaItem>(filteredItems.Count);
+                foreach (var item in filteredItems)
+                {
+                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
+                    toAdd.Add(item);
+                    AddItemTagCategories(item);
+                }
+                AddRange(SearchResults, toAdd);
             }
             OnPropertyChanged(nameof(AggregatedTagCategories));
             CurrentPage = nextPage;
@@ -357,11 +381,16 @@ public partial class MainViewModel : ObservableObject
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
             var filteredItems = result.Items; // API applied arttags:0 filter
-            foreach (var item in filteredItems)
+            if (filteredItems.Count > 0)
             {
-                if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
-                SearchResults.Add(item);
-                AddItemTagCategories(item);
+                var toAdd = new List<MediaItem>(filteredItems.Count);
+                foreach (var item in filteredItems)
+                {
+                    if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
+                    toAdd.Add(item);
+                    AddItemTagCategories(item);
+                }
+                AddRange(SearchResults, toAdd);
             }
             OnPropertyChanged(nameof(AggregatedTagCategories));
             // Update HasNextPage & TotalCount but leave CurrentPage untouched for gallery UI stability.
