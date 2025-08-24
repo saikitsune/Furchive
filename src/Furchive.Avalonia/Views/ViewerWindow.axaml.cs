@@ -1199,8 +1199,13 @@ public partial class ViewerWindow : Window
 
     private static void LogViewerDiag(string line)
     {
+        // Verbose viewer logging is gated by environment variable unless it's an error line
         try
         {
+            static bool IsEnabled() => string.Equals(Environment.GetEnvironmentVariable("FURCHIVE_DEBUG_VIEWER"), "1", StringComparison.Ordinal);
+            bool verbose = IsEnabled();
+            bool isError = line.Contains("error", StringComparison.OrdinalIgnoreCase) || line.Contains("exception", StringComparison.OrdinalIgnoreCase);
+            if (!verbose && !isError) return;
             var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
             Directory.CreateDirectory(logsRoot);
             File.AppendAllText(Path.Combine(logsRoot, "viewer.log"), $"[{DateTime.Now:O}] {line}\n");

@@ -147,7 +147,11 @@ public static class GifAnimatorService
             });
             try { await Task.Delay(frameTuple.delayMs, ct); } catch { }
             idx++;
-            if (idx >= state.Frames.Count) { idx = 0; loops++; if (loops % 10 == 0) LogGif($"gif-loop loops={loops}"); }
+            if (idx >= state.Frames.Count)
+            {
+                idx = 0; loops++;
+                if (loops % 10 == 0) LogGif($"gif-loop loops={loops}");
+            }
         }
     }
 
@@ -155,6 +159,9 @@ public static class GifAnimatorService
     {
         try
         {
+            static bool IsEnabled() => string.Equals(Environment.GetEnvironmentVariable("FURCHIVE_DEBUG_GIF"), "1", StringComparison.Ordinal);
+            bool isError = line.Contains("error", StringComparison.OrdinalIgnoreCase);
+            if (!IsEnabled() && !isError) return;
             var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
             Directory.CreateDirectory(logsRoot);
             File.AppendAllText(Path.Combine(logsRoot, "viewer.log"), $"[{DateTime.Now:O}] {line}\n");
