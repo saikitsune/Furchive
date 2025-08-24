@@ -38,29 +38,14 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 ; We now rely solely on the win-x64 (or overridden) publish output and recurse into it.
 Source: "{#AppPublishDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; WebView2 prerequisite copied to temporary folder and removed after install
-Source: "redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsWebView2Installed
+
 
 [Icons]
 Name: "{autoprograms}\\{#AppName}"; Filename: "{app}\\Furchive.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\\{#AppName}"; Filename: "{app}\\Furchive.exe"; Tasks: desktopicon
 
 [Run]
-; Install WebView2 Evergreen Runtime if missing
-Filename: "{tmp}\\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Parameters: "/silent /install"; StatusMsg: "Microsoft Edge WebView2 Runtime is required. Installing..."; Check: not IsWebView2Installed; Flags: waituntilterminated
-
 ; Launch application after install (optional)
 Filename: "{app}\\Furchive.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
-[Code]
-// Checks if WebView2 Evergreen Runtime is installed by checking its application directory
-function IsWebView2Installed: Boolean;
-var
-  PathX86: string;
-  PathX64: string;
-begin
-  // WebView2 installs to Program Files (x86) regardless of OS bitness for the Evergreen runtime
-  PathX86 := ExpandConstant('{pf32}') + '\\Microsoft\\EdgeWebView\\Application';
-  PathX64 := ExpandConstant('{pf}') + '\\Microsoft\\EdgeWebView\\Application';
-  Result := DirExists(PathX86) or DirExists(PathX64);
-end;
+
