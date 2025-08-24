@@ -13,7 +13,7 @@ using AvImage = global::Avalonia.Controls.Image;
 
 namespace Furchive.Avalonia.Controls;
 
-// Service that animates a local GIF within an existing Avalonia Image control.
+// Service that animates a local GIF or (A)PNG (APNG) within an existing Avalonia Image control.
 public static class GifAnimatorService
 {
     private sealed class AnimationState
@@ -30,10 +30,11 @@ public static class GifAnimatorService
     {
         Stop(target);
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return;
-        // Basic guard: only handle .gif (case-insensitive)
+        // Accept .gif, .apng, .png (will early-exit if single frame)
         try
         {
-            if (!filePath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)) return;
+            var lower = filePath.ToLowerInvariant();
+            if (!(lower.EndsWith(".gif") || lower.EndsWith(".apng") || lower.EndsWith(".png"))) return;
         }
         catch { }
     var state = new AnimationState();
@@ -65,25 +66,52 @@ public static class GifAnimatorService
             using var image = await SharpImage.LoadAsync<Rgba32>(path, ct);
             // Extract frames + delays
             int frameCount = image.Frames.Count;
-            if (frameCount == 0) return;
-            LogGif($"gif-decode path={path} frames={frameCount}");
+            if (frameCount <= 1)
+            {
+                LogGif($"anim-decode-single frame path={path} frames={frameCount}");
+                return; // not animated; static frame already shown by caller
+            }
+            LogGif($"anim-decode path={path} frames={frameCount}");
             for (int i = 0; i < frameCount; i++)
             {
                 if (ct.IsCancellationRequested) return;
                 var frame = image.Frames.CloneFrame(i);
-                int delayCs = 10; // default
+                int delayCs = 10; // default 100ms
                 // Attempt to reflect delay from metadata (ImageSharp version differences)
                 try
                 {
                     var metaObj = frame.Metadata; // ImageFrameMetadata
-                    var gifMetaProp = metaObj.GetType().GetProperty("Gif");
-                    var gifMeta = gifMetaProp?.GetValue(metaObj);
-                    if (gifMeta != null)
+                    // Try GIF metadata
+                    try
                     {
-                        var frameDelayProp = gifMeta.GetType().GetProperty("FrameDelay");
-                        if (frameDelayProp?.GetValue(gifMeta) is int fd && fd > 0)
-                            delayCs = fd;
+                        var gifMetaProp = metaObj.GetType().GetProperty("Gif");
+                        var gifMeta = gifMetaProp?.GetValue(metaObj);
+                        if (gifMeta != null)
+                        {
+                            var frameDelayProp = gifMeta.GetType().GetProperty("FrameDelay");
+                            if (frameDelayProp?.GetValue(gifMeta) is int fd && fd > 0)
+                                delayCs = fd;
+                        }
                     }
+                    catch { }
+                    // Try PNG (APNG) metadata (FrameDelayNumerator/Denominator)
+                    try
+                    {
+                        var pngMetaProp = metaObj.GetType().GetProperty("Png");
+                        var pngMeta = pngMetaProp?.GetValue(metaObj);
+                        if (pngMeta != null)
+                        {
+                            var numProp = pngMeta.GetType().GetProperty("FrameDelayNumerator");
+                            var denProp = pngMeta.GetType().GetProperty("FrameDelayDenominator");
+                            if (numProp?.GetValue(pngMeta) is int num && denProp?.GetValue(pngMeta) is int den && num >= 0 && den > 0)
+                            {
+                                // Convert to centiseconds; spec: delay = num/den seconds
+                                var ms = (int)Math.Round(1000.0 * num / den);
+                                delayCs = Math.Max(1, ms / 10);
+                            }
+                        }
+                    }
+                    catch { }
                 }
                 catch { }
                 // Convert frame to Bitmap using fast BMP (no heavy compression) to reduce startup latency
@@ -119,7 +147,7 @@ public static class GifAnimatorService
         }
         catch (Exception ex)
         {
-            LogGif($"gif-error path={path} msg={ex.Message}");
+            LogGif($"anim-error path={path} msg={ex.Message}");
         }
     }
 
@@ -133,7 +161,7 @@ public static class GifAnimatorService
         }
         catch { }
         // Loop only if more than one frame; single frame already displayed
-        if (ct.IsCancellationRequested || state.Frames.Count <= 1) return;
+    if (ct.IsCancellationRequested || state.Frames.Count <= 1) return;
         int idx = 0;
         int loops = 0;
         while (!ct.IsCancellationRequested)

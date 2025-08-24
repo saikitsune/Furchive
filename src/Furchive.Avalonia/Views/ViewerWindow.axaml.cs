@@ -482,6 +482,7 @@ public partial class ViewerWindow : Window
             {
                 var normalizedPath = url.Replace('/', System.IO.Path.DirectorySeparatorChar);
                 bool isGif = normalizedPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+                bool isApng = normalizedPath.EndsWith(".apng", StringComparison.OrdinalIgnoreCase) || normalizedPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
                 try
                 {
                     var fi = new FileInfo(normalizedPath);
@@ -510,7 +511,7 @@ public partial class ViewerWindow : Window
                     if (_currentSizeMode == SizeMode.Original)
                         ApplyOriginalSize();
                     SchedulePrefetch();
-                    if (isGif)
+                    if (isGif || isApng)
                     {
                         try { GifAnimatorService.Start(img, normalizedPath); } catch { }
                     }
@@ -533,10 +534,10 @@ public partial class ViewerWindow : Window
         if (isRemoteUrl)
         {
             // Remote (http/https) handling (still no local file)
-            bool isRemoteGif = url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
-            if (isRemoteGif)
+            bool isRemoteAnim = url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) || url.EndsWith(".apng", StringComparison.OrdinalIgnoreCase) || url.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+            if (isRemoteAnim)
             {
-                _ = EnsureRemoteGifAnimatedAsync(img, url, item);
+                _ = EnsureRemoteAnimatedAsync(img, url, item);
                 return;
             }
 
@@ -570,10 +571,10 @@ public partial class ViewerWindow : Window
                 }
                 catch { }
                     url = remoteFallback;
-                    bool isGifRemote = url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
-                    if (isGifRemote)
+                    bool isAnimRemote = url.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) || url.EndsWith(".apng", StringComparison.OrdinalIgnoreCase) || url.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+                    if (isAnimRemote)
                     {
-                        _ = EnsureRemoteGifAnimatedAsync(img, url, item);
+                        _ = EnsureRemoteAnimatedAsync(img, url, item);
                         return;
                     }
                     try { RemoteImage.SetSourceUri(img, url); } catch { }
@@ -622,7 +623,7 @@ public partial class ViewerWindow : Window
         try { img.PropertyChanged += _imageSourceHandler; } catch { }
     }
 
-    private async Task EnsureRemoteGifAnimatedAsync(Image img, string remoteUrl, MediaItem item)
+    private async Task EnsureRemoteAnimatedAsync(Image img, string remoteUrl, MediaItem item)
     {
         // Cancel any prior in-flight GIF download
         try { _currentGifDownloadCts?.Cancel(); } catch { }
@@ -647,7 +648,16 @@ public partial class ViewerWindow : Window
                 Directory.CreateDirectory(tmpDir);
                 // Use deterministic hash filename for cache reuse
                 string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(remoteUrl))).Substring(0, 16);
-                var tmpPath = Path.Combine(tmpDir, hash + ".gif");
+                string ext = ".gif";
+                try
+                {
+                    var clean = remoteUrl.Split('?', '#')[0];
+                    var e = Path.GetExtension(clean);
+                    if (!string.IsNullOrWhiteSpace(e) && (e.Equals(".gif", StringComparison.OrdinalIgnoreCase) || e.Equals(".png", StringComparison.OrdinalIgnoreCase) || e.Equals(".apng", StringComparison.OrdinalIgnoreCase)))
+                        ext = e.ToLowerInvariant();
+                }
+                catch { }
+                var tmpPath = Path.Combine(tmpDir, hash + ext);
                 if (!File.Exists(tmpPath))
                 {
                     using var resp = await _httpClient.GetAsync(remoteUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct);
