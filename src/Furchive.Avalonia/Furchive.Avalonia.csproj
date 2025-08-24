@@ -57,6 +57,29 @@
     </None>
     <!-- Make shared app icon available as an Avalonia resource -->
     <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
+  <!-- PNG icon resources (ensure corresponding PNG files exist in assets folder) -->
+  <AvaloniaResource Include="..\..\assets\play.png" Link="Assets\play.png" Condition="Exists('..\..\assets\play.png')" />
+  <AvaloniaResource Include="..\..\assets\pause.png" Link="Assets\pause.png" Condition="Exists('..\..\assets\pause.png')" />
+  <AvaloniaResource Include="..\..\assets\loop.png" Link="Assets\loop.png" Condition="Exists('..\..\assets\loop.png')" />
+  <AvaloniaResource Include="..\..\assets\loop-off.png" Link="Assets\loop-off.png" Condition="Exists('..\..\assets\loop-off.png')" />
+  <AvaloniaResource Include="..\..\assets\volume.png" Link="Assets\volume.png" Condition="Exists('..\..\assets\volume.png')" />
+  <AvaloniaResource Include="..\..\assets\volume-mute.png" Link="Assets\volume-mute.png" Condition="Exists('..\..\assets\volume-mute.png')" />
+  <AvaloniaResource Include="..\..\assets\fullscreen.png" Link="Assets\fullscreen.png" Condition="Exists('..\..\assets\fullscreen.png')" />
+    <!-- Themed (Black/White) icon variants -->
+    <AvaloniaResource Include="..\..\assets\Bplay.png" Link="Assets\Bplay.png" Condition="Exists('..\..\assets\Bplay.png')" />
+    <AvaloniaResource Include="..\..\assets\Wplay.png" Link="Assets\Wplay.png" Condition="Exists('..\..\assets\Wplay.png')" />
+    <AvaloniaResource Include="..\..\assets\Bpause.png" Link="Assets\Bpause.png" Condition="Exists('..\..\assets\Bpause.png')" />
+    <AvaloniaResource Include="..\..\assets\Wpause.png" Link="Assets\Wpause.png" Condition="Exists('..\..\assets\Wpause.png')" />
+    <AvaloniaResource Include="..\..\assets\Bloop.png" Link="Assets\Bloop.png" Condition="Exists('..\..\assets\Bloop.png')" />
+    <AvaloniaResource Include="..\..\assets\Wloop.png" Link="Assets\Wloop.png" Condition="Exists('..\..\assets\Wloop.png')" />
+    <AvaloniaResource Include="..\..\assets\Bloop-off.png" Link="Assets\Bloop-off.png" Condition="Exists('..\..\assets\Bloop-off.png')" />
+    <AvaloniaResource Include="..\..\assets\Wloop-off.png" Link="Assets\Wloop-off.png" Condition="Exists('..\..\assets\Wloop-off.png')" />
+    <AvaloniaResource Include="..\..\assets\Bvolume.png" Link="Assets\Bvolume.png" Condition="Exists('..\..\assets\Bvolume.png')" />
+    <AvaloniaResource Include="..\..\assets\Wvolume.png" Link="Assets\Wvolume.png" Condition="Exists('..\..\assets\Wvolume.png')" />
+    <AvaloniaResource Include="..\..\assets\Bvolume-mute.png" Link="Assets\Bvolume-mute.png" Condition="Exists('..\..\assets\Bvolume-mute.png')" />
+    <AvaloniaResource Include="..\..\assets\Wvolume-mute.png" Link="Assets\Wvolume-mute.png" Condition="Exists('..\..\assets\Wvolume-mute.png')" />
+    <AvaloniaResource Include="..\..\assets\Bfullscreen.png" Link="Assets\Bfullscreen.png" Condition="Exists('..\..\assets\Bfullscreen.png')" />
+    <AvaloniaResource Include="..\..\assets\Wfullscreen.png" Link="Assets\Wfullscreen.png" Condition="Exists('..\..\assets\Wfullscreen.png')" />
     
   </ItemGroup>
 </Project>

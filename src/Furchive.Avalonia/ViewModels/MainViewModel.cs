@@ -246,15 +246,12 @@ public partial class MainViewModel : ObservableObject
             await EnsureE621AuthAsync();
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
             var includeTags = IncludeTags.ToList(); var excludeTags = ExcludeTags.ToList();
-            // Virtual tag handling: no_artist -> posts with no real artist (Artist == "No Artist")
-            ProcessVirtualNoArtist(ref includeTags, ref excludeTags, out bool includeNoArtist, out bool excludeNoArtist);
+            // Virtual tag handling: translate no_artist -> arttags:0
+            ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            var filteredItems = result.Items.Where(i =>
-                (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) &&
-                (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true)
-            ).ToList();
+            var filteredItems = result.Items; // API applied arttags:0 filter
             if (Dispatcher.UIThread.CheckAccess()) {
                 foreach (var item in filteredItems)
                 {
@@ -295,12 +292,12 @@ public partial class MainViewModel : ObservableObject
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
             var includeTags = IncludeTags.ToList();
             var excludeTags = ExcludeTags.ToList();
-            ProcessVirtualNoArtist(ref includeTags, ref excludeTags, out bool includeNoArtist, out bool excludeNoArtist);
+            ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1;
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            var filteredItems = result.Items.Where(i => (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) && (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true));
+            var filteredItems = result.Items; // API applied arttags:0 filter
             foreach (var item in filteredItems)
             {
                 if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
@@ -338,12 +335,12 @@ public partial class MainViewModel : ObservableObject
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
             var includeTags = IncludeTags.ToList();
             var excludeTags = ExcludeTags.ToList();
-            ProcessVirtualNoArtist(ref includeTags, ref excludeTags, out bool includeNoArtist, out bool excludeNoArtist);
+            ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1; // do NOT assign to CurrentPage
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            var filteredItems = result.Items.Where(i => (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) && (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true));
+            var filteredItems = result.Items; // API applied arttags:0 filter
             foreach (var item in filteredItems)
             {
                 if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
@@ -709,26 +706,24 @@ public partial class MainViewModel : ObservableObject
     public async Task<MediaItem?> FetchNextFromApiAsync(bool forward)
     {
         var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
-        var include = IncludeTags.ToList(); var exclude = ExcludeTags.ToList();
-        ProcessVirtualNoArtist(ref include, ref exclude, out bool includeNoArtist, out bool excludeNoArtist);
+    var include = IncludeTags.ToList(); var exclude = ExcludeTags.ToList();
+    ProcessVirtualNoArtist(ref include, ref exclude);
         var page = Math.Max(1, CurrentPage + (forward ? 1 : -1));
-        var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) });
-        var filtered = result.Items.Where(i => (includeNoArtist ? string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true) && (excludeNoArtist ? !string.Equals(i.Artist, "No Artist", StringComparison.OrdinalIgnoreCase) : true)).ToList();
-        return filtered.FirstOrDefault();
+    var result = await _apiService.SearchAsync(new SearchParameters { IncludeTags = include, ExcludeTags = exclude, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) });
+    return result.Items.FirstOrDefault();
     }
 
     // Extracts virtual tag markers and signals filtering requirements.
-    private static void ProcessVirtualNoArtist(ref List<string> includeTags, ref List<string> excludeTags, out bool includeNoArtist, out bool excludeNoArtist)
+    private static void ProcessVirtualNoArtist(ref List<string> includeTags, ref List<string> excludeTags)
     {
-        includeNoArtist = false; excludeNoArtist = false;
-        // Normalize comparison to case-insensitive exact match on token "no_artist"
-        for (int i = includeTags.Count - 1; i >= 0; i--)
+        // Translate virtual token no_artist into underlying API tag arttags:0 (posts with zero artist tags)
+        for (int i = 0; i < includeTags.Count; i++)
         {
-            if (string.Equals(includeTags[i], "no_artist", StringComparison.OrdinalIgnoreCase)) { includeNoArtist = true; includeTags.RemoveAt(i); }
+            if (string.Equals(includeTags[i], "no_artist", StringComparison.OrdinalIgnoreCase)) includeTags[i] = "arttags:0";
         }
-        for (int i = excludeTags.Count - 1; i >= 0; i--)
+        for (int i = 0; i < excludeTags.Count; i++)
         {
-            if (string.Equals(excludeTags[i], "no_artist", StringComparison.OrdinalIgnoreCase)) { excludeNoArtist = true; excludeTags.RemoveAt(i); }
+            if (string.Equals(excludeTags[i], "no_artist", StringComparison.OrdinalIgnoreCase)) excludeTags[i] = "arttags:0";
         }
     }
 

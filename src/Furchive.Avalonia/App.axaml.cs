@@ -18,6 +18,8 @@ using Furchive.Avalonia.Services;
 using Furchive.Avalonia.Infrastructure; // for FileLoggerProvider
 using System.Net.Http;
 using Avalonia.Styling;
+using Avalonia.Platform;
+using Avalonia.Media.Imaging;
 // (WebView explicit builder namespace not present in current package build)
 
 namespace Furchive.Avalonia;
@@ -167,6 +169,15 @@ public partial class App : Application
             {
                 _settings.SettingChanged += OnSettingChanged;
             }
+            // Load icon resource dictionary once
+            try
+            {
+                var rd = new ResourceDictionary();
+                rd.MergedDictionaries.Add((ResourceDictionary)AvaloniaXamlLoader.Load(new Uri("avares://Furchive/Views/IconResources.axaml")));
+                Current!.Resources.MergedDictionaries.Add(rd);
+                ApplyIconTheme();
+            }
+            catch { }
         }
         catch { }
 
@@ -285,5 +296,49 @@ public partial class App : Application
             }
         }
         catch { }
+        // Update themed icons after theme change
+        try { ApplyIconTheme(); } catch { }
+    }
+
+    private void ApplyIconTheme()
+    {
+        bool dark;
+        var variant = RequestedThemeVariant;
+        if (variant == ThemeVariant.Default)
+            dark = true; // heuristic default
+        else
+            dark = variant == ThemeVariant.Dark;
+
+        var primaryPrefix = dark ? "W" : "B";
+        var fallbackPrefix = "B"; // always have black versions
+
+        void Set(string key, string stem)
+        {
+            var primaryUri = new Uri($"avares://Furchive/Assets/{primaryPrefix}{stem}.png");
+            var fallbackUri = new Uri($"avares://Furchive/Assets/{fallbackPrefix}{stem}.png");
+            try
+            {
+                // Try primary
+                using var s = AssetLoader.Open(primaryUri);
+                Current!.Resources[key] = new Bitmap(s);
+            }
+            catch
+            {
+                try
+                {
+                    using var s2 = AssetLoader.Open(fallbackUri);
+                    Current!.Resources[key] = new Bitmap(s2);
+                }
+                catch { }
+            }
+        }
+
+        Set("Icon.Play", "play");
+        Set("Icon.Pause", "pause");
+        Set("Icon.LoopOn", "loop");
+        Set("Icon.LoopOff", "loop-off");
+        Set("Icon.Volume", "volume");
+        Set("Icon.VolumeMute", "volume-mute");
+        Set("Icon.Fullscreen", "fullscreen");
     }
 }

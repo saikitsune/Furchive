@@ -14,11 +14,11 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Furchive.Avalonia.Behaviors;
 using Furchive.Core.Models;
-#if HAS_LIBVLC
+// Removed conditional compilation (HAS_LIBVLC) due to intermittent unmatched #endif build errors.
+// LibVLC packages are referenced unconditionally, so we always include these usings.
 using LibVLCSharp.Shared; // LibVLC core
 using LibVLCSharp.Avalonia; // VideoView control
-#endif
-using Avalonia.Platform; // For TryGetPlatformHandle / IPlatformHandle
+using Avalonia.Platform; // For TryGetPlatformHandle / IPlatformHandle and AssetLoader
 
 namespace Furchive.Avalonia.Views;
 
@@ -62,23 +62,56 @@ public partial class ViewerWindow : Window
     private static readonly object _viewerLogLock = new();
     private static readonly System.Net.Http.HttpClient _httpClient = new();
     // LibVLC shared state
-    #if HAS_LIBVLC
+    // (Removed redundant nested #if HAS_LIBVLC) 
     private static LibVLC? _sharedLibVlc;
     private static bool _libVlcInitAttempted;
     private MediaPlayer? _activeMediaPlayer;
     private Furchive.Avalonia.Controls.VlcNativeHost? _activeVlcHost; // track current native host
     private bool _isClosing;
-    #endif
+    // Overlay video controls state
+    // Fixed video controls bar (no overlay auto-hide)
+    private bool _isSeeking;
+    private int _lastKnownDurationMs;
+    private DispatcherTimer? _videoUiTimer;
+    private double _pendingSeekPosition01 = -1; // fraction while dragging
+    private double _deferredSeekFraction = -1;  // seek to apply when duration known
+    private int _seekUiSuppressTicks;           // skip auto slider update after seek
+    private double _lastSeekAppliedFraction = -1; // for reassert
+    private DateTime _lastTickLog = DateTime.MinValue;
+    private bool _updatingSeekFromPlayer; // guard to avoid feedback loop
+    private double _lastVolumeBeforeMute = 1.0;
+    private bool _loopEnabled;
+    private bool _fullscreen;
+    private string? _currentVideoUrl;
 
     public ViewerWindow()
     {
         InitializeComponent();
-    #if HAS_LIBVLC
+    // (Removed redundant nested #if HAS_LIBVLC)
     // LibVLC one-time initialization (ignore failures so image viewing still works)
     TryInitLibVlc();
-    #endif
         Opened += (_, _) => LoadMedia();
         KeyDown += OnViewerKeyDown;
+        // Initialize loop + volume icon defaults before any media loads
+        try
+        {
+            var loopToggle = this.FindControl<ToggleButton>("LoopToggle");
+            if (loopToggle != null)
+            {
+                _loopEnabled = loopToggle.IsChecked == true;
+                var loopImg = this.FindControl<Image>("LoopIcon");
+                if (loopImg != null)
+                {
+                    var key = _loopEnabled ? "Icon.LoopOn" : "Icon.LoopOff";
+                    if (Application.Current!.Resources[key] is Bitmap bmp) loopImg.Source = bmp;
+                }
+            }
+            var volImg = this.FindControl<Image>("VolumeIcon");
+            if (volImg != null && Application.Current!.Resources["Icon.Volume"] is Bitmap vbmp)
+                volImg.Source = vbmp;
+        }
+        catch { }
+    // (Removed overlay pointer tracking; fixed controls bar always visible)
         this.PropertyChanged += (_, args) =>
         {
             if (args.Property == BoundsProperty && _autoFitEnabled)
@@ -145,9 +178,19 @@ public partial class ViewerWindow : Window
     bool isVideo = false;
         try
         {
-            var ext = System.IO.Path.GetExtension(url)?.Trim('.').ToLowerInvariant();
-            if (!string.IsNullOrWhiteSpace(ext) && (ext == "mp4" || ext == "webm" || ext == "mkv" || ext == "mov"))
-                isVideo = true;
+            var cleanUrl = url.Split('?', '#')[0];
+            var ext = System.IO.Path.GetExtension(cleanUrl)?.Trim('.').ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(ext))
+            {
+                switch (ext)
+                {
+                    case "mp4":
+                    case "webm":
+                    case "mkv":
+                    case "mov":
+                        isVideo = true; break;
+                }
+            }
         }
         catch { }
 
@@ -158,10 +201,11 @@ public partial class ViewerWindow : Window
             {
                 videoHost.IsVisible = true;
                 img.IsVisible = false;
-                videoHost.Children.Clear();
+                var surfaceLayer = videoHost.FindControl<Grid>("VideoSurfaceLayer");
+                surfaceLayer?.Children.Clear();
                 try
                 {
-                    videoHost.Children.Add(new TextBlock
+                    (surfaceLayer ?? videoHost).Children.Add(new TextBlock
                     {
                         Text = "Initializing video...",
                         Foreground = Brushes.LightGray,
@@ -175,8 +219,8 @@ public partial class ViewerWindow : Window
                 catch (Exception vlex)
                 {
                     LogViewerDiag("video-libvlc-error-schedule " + vlex.Message);
-                    videoHost.Children.Clear();
-                    videoHost.Children.Add(new TextBlock
+                    surfaceLayer?.Children.Clear();
+                    (surfaceLayer ?? videoHost).Children.Add(new TextBlock
                     {
                         Text = "Video playback failed to schedule (LibVLC)",
                         Foreground = Brushes.OrangeRed,
@@ -197,7 +241,9 @@ public partial class ViewerWindow : Window
             if (priorVideoHost != null)
             {
                 priorVideoHost.IsVisible = false;
-                priorVideoHost.Children.Clear();
+                // Only clear video surface layer so controls bar persists
+                var surfaceLayer = priorVideoHost.FindControl<Grid>("VideoSurfaceLayer");
+                surfaceLayer?.Children.Clear();
             }
             img.IsVisible = true;
         }
@@ -661,12 +707,11 @@ public partial class ViewerWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
-        #if HAS_LIBVLC
+    // (Removed redundant nested #if HAS_LIBVLC)
         SafeDisposePlayer();
-        #endif
     }
 
-#if HAS_LIBVLC
+// (Removed redundant nested #if HAS_LIBVLC)
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         _isClosing = true;
@@ -695,7 +740,6 @@ public partial class ViewerWindow : Window
             _activeVlcHost = null;
         }
     }
-#endif
 
     private bool HasPlatformHandle()
     {
@@ -735,8 +779,9 @@ public partial class ViewerWindow : Window
             LogViewerDiag("video-libvlc-handle-timeout attempts=" + attempt + " elapsedMs=" + elapsedMs);
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                host.Children.Clear();
-                host.Children.Add(new TextBlock
+                var sl = host.FindControl<Grid>("VideoSurfaceLayer");
+                if (sl != null) sl.Children.Clear();
+                (sl ?? host).Children.Add(new TextBlock
                 {
                     Text = "Video unavailable (window handle not ready)",
                     Foreground = Brushes.OrangeRed,
@@ -750,14 +795,15 @@ public partial class ViewerWindow : Window
             return;
         }
 
-    #if HAS_LIBVLC
+    // (Removed redundant nested #if HAS_LIBVLC)
     // Ensure LibVLC is initialized before creating VideoView
     if (!TryInitLibVlc())
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                host.Children.Clear();
-                host.Children.Add(new TextBlock
+                var sl = host.FindControl<Grid>("VideoSurfaceLayer");
+                if (sl != null) sl.Children.Clear();
+                (sl ?? host).Children.Add(new TextBlock
                 {
                     Text = "Video playback unavailable (LibVLC init failed)",
                     Foreground = Brushes.OrangeRed,
@@ -777,7 +823,8 @@ public partial class ViewerWindow : Window
             {
                 var elapsedMs = (int)(DateTime.UtcNow - start).TotalMilliseconds;
                 LogViewerDiag($"video-libvlc-create attempt={attempt} elapsedMs={elapsedMs} url={url}");
-                host.Children.Clear();
+                var surfaceLayer = host.FindControl<Grid>("VideoSurfaceLayer");
+                surfaceLayer?.Children.Clear();
 
                 // Dispose any previous player
                 try
@@ -803,6 +850,21 @@ public partial class ViewerWindow : Window
 
                 _activeMediaPlayer = new MediaPlayer(_sharedLibVlc);
                 AttachVlcPlayerEvents(_activeMediaPlayer);
+                // Sync initial icons now that player exists
+                try
+                {
+                    var pp = this.FindControl<Image>("PlayPauseIcon");
+                    if (pp != null && Application.Current!.Resources["Icon.Pause"] is Bitmap pbmp) pp.Source = pbmp; // start assuming playing attempt
+                    var loopImg2 = this.FindControl<Image>("LoopIcon");
+                    if (loopImg2 != null)
+                    {
+                        var key = _loopEnabled ? "Icon.LoopOn" : "Icon.LoopOff";
+                        if (Application.Current!.Resources[key] is Bitmap lbmp) loopImg2.Source = lbmp;
+                    }
+                    var volImg2 = this.FindControl<Image>("VolumeIcon");
+                    if (volImg2 != null && Application.Current!.Resources["Icon.Volume"] is Bitmap vbmp2) volImg2.Source = vbmp2;
+                }
+                catch { }
 
                 // Custom native host (Windows) to embed LibVLC directly.
                 Control renderSurface;
@@ -825,7 +887,7 @@ public partial class ViewerWindow : Window
                 }
                 else
                 {
-                    // For non-Windows platforms (placeholder until implemented with other surfaces)
+                    // Non-Windows path placeholder (LibVLC rendering host TBD)
                     renderSurface = new Border
                     {
                         Background = Brushes.Black,
@@ -841,7 +903,18 @@ public partial class ViewerWindow : Window
                     };
                 }
 
-                host.Children.Add(renderSurface);
+                // Insert video rendering surface at index 0 so existing overlay (declared in XAML) stays on top.
+                var surfaceLayer2 = host.FindControl<Grid>("VideoSurfaceLayer");
+                if (surfaceLayer2 != null)
+                {
+                    try { surfaceLayer2.Children.Clear(); } catch { }
+                    surfaceLayer2.Children.Add(renderSurface);
+                }
+                else
+                {
+                    try { host.Children.Insert(0, renderSurface); } catch { host.Children.Add(renderSurface); }
+                }
+                EnsureVideoControls(host);
 
                 void TryAssignAndStart()
                 {
@@ -865,15 +938,18 @@ public partial class ViewerWindow : Window
                     // Start playback
                     try
                     {
+                        _currentVideoUrl = url;
                         using var media = new Media(_sharedLibVlc, new Uri(url));
                         var ok = _activeMediaPlayer.Play(media);
                         LogViewerDiag(ok ? "video-libvlc-play-started" : "video-libvlc-play-did-not-start");
+                        if (ok) StartVideoUiTimer();
                     }
                     catch (Exception playEx)
                     {
                         LogViewerDiag("video-libvlc-play-error " + playEx.Message);
-                        host.Children.Clear();
-                        host.Children.Add(new TextBlock
+                        var surfaceLayer = host.FindControl<Grid>("VideoSurfaceLayer");
+                        surfaceLayer?.Children.Clear();
+                        (surfaceLayer ?? host).Children.Add(new TextBlock
                         {
                             Text = "Video playback failed to start",
                             Foreground = Brushes.OrangeRed,
@@ -898,13 +974,14 @@ public partial class ViewerWindow : Window
                         // non-windows: attempt playback anyway (may rely on software callbacks later)
                         TryAssignAndStart();
                     }
-                }, DispatcherPriority.Background);
+                });
             }
             catch (Exception ex)
             {
                 LogViewerDiag("video-libvlc-error-final " + ex.Message);
-                host.Children.Clear();
-                host.Children.Add(new TextBlock
+                var surfaceLayer = host.FindControl<Grid>("VideoSurfaceLayer");
+                surfaceLayer?.Children.Clear();
+                (surfaceLayer ?? host).Children.Add(new TextBlock
                 {
                     Text = "Video playback failed (native host)",
                     Foreground = Brushes.OrangeRed,
@@ -915,24 +992,10 @@ public partial class ViewerWindow : Window
                     Margin = new Thickness(12)
                 });
             }
-        }, DispatcherPriority.Render);
-        #else
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            host.Children.Clear();
-            host.Children.Add(new TextBlock
-            {
-                Text = "Video playback disabled (LibVLC not built)",
-                Foreground = Brushes.Gray,
-                HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
-                Margin = new Thickness(12)
-            });
-        });
-        #endif
+    });
     }
 
-    #if HAS_LIBVLC
+    // (Removed redundant nested #if HAS_LIBVLC)
     private bool TryInitLibVlc()
     {
         if (_sharedLibVlc != null) return true;
@@ -982,9 +1045,333 @@ public partial class ViewerWindow : Window
 
     private void OnVlcOpening(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event opening");
     private void OnVlcPlaying(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event playing");
-    private void OnVlcEndReached(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event end-reached");
+    private void OnVlcEndReached(object? sender, EventArgs e)
+    {
+        LogViewerDiag("video-libvlc-event end-reached");
+        if (!_loopEnabled) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                if (_activeMediaPlayer == null || _sharedLibVlc == null || string.IsNullOrWhiteSpace(_currentVideoUrl)) return;
+                using var media = new Media(_sharedLibVlc, new Uri(_currentVideoUrl));
+                var ok = _activeMediaPlayer.Play(media);
+                LogViewerDiag(ok ? "video-libvlc-loop-restart" : "video-libvlc-loop-restart-failed");
+            }
+            catch (Exception ex)
+            {
+                LogViewerDiag("video-libvlc-loop-error " + ex.Message);
+            }
+        });
+    }
     private void OnVlcError(object? sender, EventArgs e) => LogViewerDiag("video-libvlc-event error");
-    #endif
-}
+    // End of LibVLC event handlers; remaining helper methods also require LibVLC
+    private void EnsureVideoControls(Grid videoHost)
+    {
+        var bar = videoHost.FindControl<Border>("VideoControlsBar");
+        if (bar != null) bar.IsVisible = true;
+        var volume = this.FindControl<Slider>("VolumeSlider");
+        if (volume != null && double.IsNaN(volume.Value)) volume.Value = 80;
+        var speed = this.FindControl<ComboBox>("SpeedCombo");
+        if (speed != null) speed.SelectedIndex = 1; // 1.0x
+    }
+
+    private void StartVideoUiTimer()
+    {
+        _videoUiTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _videoUiTimer.Tick -= OnVideoUiTick; // avoid duplicates
+        _videoUiTimer.Tick += OnVideoUiTick;
+        _videoUiTimer.IsEnabled = true;
+    }
+
+    private void OnVideoUiTick(object? sender, EventArgs e)
+    {
+        if (_activeMediaPlayer == null) return;
+        try
+        {
+            var length = _activeMediaPlayer.Length; // ms
+            var time = _activeMediaPlayer.Time; // ms
+            if ((DateTime.UtcNow - _lastTickLog).TotalSeconds >= 2)
+            {
+                try { LogViewerDiag($"video-tick time={time} length={length} pos={_activeMediaPlayer.Position:F4}"); } catch { }
+                _lastTickLog = DateTime.UtcNow;
+            }
+            if (length > 0) _lastKnownDurationMs = (int)length;
+        if (_deferredSeekFraction >= 0 && length > 0)
+            {
+                try
+                {
+            var frac = Math.Clamp(_deferredSeekFraction, 0.0, 1.0);
+            ApplySeekFraction(frac, isDeferred:true);
+                }
+                catch { }
+                finally { _deferredSeekFraction = -1; }
+            }
+            // Sync volume slider & button every tick
+            var volSlider = this.FindControl<Slider>("VolumeSlider");
+            if (volSlider != null && Math.Abs(volSlider.Value - _activeMediaPlayer.Volume) > 0.1)
+            {
+                try { volSlider.Value = _activeMediaPlayer.Volume; } catch { }
+            }
+            // Volume button content no longer replaced with text; icon image child retained.
+            var seek = this.FindControl<Slider>("SeekSlider");
+            if (seek != null)
+            {
+                seek.IsEnabled = length > 0;
+                if (_seekUiSuppressTicks > 0)
+                {
+                    _seekUiSuppressTicks--; // allow player to settle after seek
+                }
+                else if (!_isSeeking && length > 0)
+                {
+                    var pos = Math.Clamp((double)time / length, 0, 1);
+                    var target = pos * seek.Maximum;
+                    if (Math.Abs(seek.Value - target) > 2)
+                    {
+                        _updatingSeekFromPlayer = true;
+                        try { seek.Value = target; } finally { _updatingSeekFromPlayer = false; }
+                    }
+                }
+            }
+            var tl = this.FindControl<TextBlock>("TimeLabel");
+            if (tl != null)
+            {
+                tl.Text = FormatTime(time) + " / " + FormatTime(_lastKnownDurationMs);
+            }
+        }
+        catch { }
+    }
+
+    private static string FormatTime(long ms)
+    {
+        if (ms < 0) ms = 0;
+        var ts = TimeSpan.FromMilliseconds(ms);
+        if (ts.TotalHours >= 1) return ts.ToString(@"hh\:mm\:ss");
+        return ts.ToString(@"mm\:ss");
+    }
+
+    private void OnPlayPauseClick(object? sender, RoutedEventArgs e)
+    {
+        if (_activeMediaPlayer == null) return;
+        try
+        {
+            if (_activeMediaPlayer.IsPlaying) _activeMediaPlayer.Pause(); else _activeMediaPlayer.Play();
+            var iconImg = this.FindControl<Image>("PlayPauseIcon");
+            if (iconImg != null)
+            {
+                try
+                {
+                    var key = _activeMediaPlayer.IsPlaying ? "Icon.Pause" : "Icon.Play";
+                    if (Application.Current!.Resources[key] is Bitmap bmp) iconImg.Source = bmp;
+                }
+                catch { }
+            }
+            var volSlider = this.FindControl<Slider>("VolumeSlider");
+            if (volSlider != null && volSlider.Value != _activeMediaPlayer.Volume)
+            {
+                try { volSlider.Value = _activeMediaPlayer.Volume; } catch { }
+            }
+        }
+        catch { }
+    }
+
+    private void OnSeekSliderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _isSeeking = true;
+    LogViewerDiag("video-seek-drag-begin");
+    }
+
+    private void OnSeekSliderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _isSeeking = false;
+    LogViewerDiag("video-seek-drag-end");
+        CommitSeek();
+    }
+
+    private void OnSeekSliderValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_activeMediaPlayer == null) return;
+        var slider = sender as Slider; if (slider == null) return;
+        // Fallback direct seek path (if pointer events suppressed by native hwnd)
+        if (!_isSeeking && !_updatingSeekFromPlayer && _lastKnownDurationMs > 0 && _activeMediaPlayer != null)
+        {
+            var desiredFrac = slider.Value / slider.Maximum;
+            var currentFrac = _lastKnownDurationMs > 0 ? Math.Clamp((double)_activeMediaPlayer.Time / _lastKnownDurationMs, 0, 1) : _activeMediaPlayer.Position;
+            if (Math.Abs(desiredFrac - currentFrac) > 0.02) // >2% change
+            {
+                try
+                {
+                    var ms = (long)(_lastKnownDurationMs * desiredFrac);
+                    _activeMediaPlayer.Time = ms;
+                    _seekUiSuppressTicks = 2;
+                    LogViewerDiag($"video-seek-fallback-applied frac={desiredFrac:F4} ms={ms}");
+                }
+                catch (Exception ex) { LogViewerDiag("video-seek-fallback-error " + ex.Message); }
+            }
+        }
+        if (_isSeeking)
+        {
+            _pendingSeekPosition01 = slider.Value / slider.Maximum;
+            LogViewerDiag($"video-seek-preview frac={_pendingSeekPosition01:F4}");
+            var tl = this.FindControl<TextBlock>("TimeLabel");
+            if (tl != null && _lastKnownDurationMs > 0)
+            {
+                var previewMs = (long)(_lastKnownDurationMs * _pendingSeekPosition01);
+                tl.Text = FormatTime(previewMs) + " / " + FormatTime(_lastKnownDurationMs);
+            }
+        }
+    }
+
+    private void CommitSeek()
+    {
+        if (_activeMediaPlayer == null) return;
+        if (_pendingSeekPosition01 >= 0)
+        {
+            var frac = Math.Clamp(_pendingSeekPosition01, 0.0, 1.0);
+            if (_lastKnownDurationMs > 0)
+            {
+                ApplySeekFraction(frac, isDeferred:false);
+            }
+            else
+            {
+                _deferredSeekFraction = frac;
+                LogViewerDiag($"video-seek-defer frac={frac:F4}");
+            }
+        }
+        _pendingSeekPosition01 = -1;
+    }
+
+    private void ApplySeekFraction(double frac, bool isDeferred)
+    {
+        if (_activeMediaPlayer == null) return;
+        try
+        {
+            var before = _activeMediaPlayer.Position;
+            _activeMediaPlayer.Position = (float)frac; // property set first
+            if (_lastKnownDurationMs > 0)
+            {
+                var ms = (long)(_lastKnownDurationMs * frac);
+                try { _activeMediaPlayer.Time = ms; } catch { }
+            }
+            _seekUiSuppressTicks = 3;
+            _lastSeekAppliedFraction = frac;
+            LogViewerDiag($"video-seek-apply {(isDeferred?"deferred":"commit")} frac={frac:F4} before={before:F4} after={_activeMediaPlayer.Position:F4}");
+            // Reassert shortly after in case VLC drifts
+            DispatcherTimer.RunOnce(() =>
+            {
+                try
+                {
+                    if (_activeMediaPlayer == null) return;
+                    var current = _activeMediaPlayer.Position;
+                    if (Math.Abs(current - frac) > 0.03)
+                    {
+                        var before2 = current;
+                        var wasPlaying = _activeMediaPlayer.IsPlaying;
+                        if (wasPlaying) { try { _activeMediaPlayer.Pause(); } catch { } }
+                        try { _activeMediaPlayer.Position = (float)frac; } catch { }
+                        if (_lastKnownDurationMs > 0)
+                        {
+                            var ms2 = (long)(_lastKnownDurationMs * frac);
+                            try { _activeMediaPlayer.Time = ms2; } catch { }
+                        }
+                        if (wasPlaying) { try { _activeMediaPlayer.Play(); } catch { } }
+                        LogViewerDiag($"video-seek-reassert frac={frac:F4} before={before2:F4} after={_activeMediaPlayer.Position:F4}");
+                        _seekUiSuppressTicks = 2;
+                    }
+                }
+                catch { }
+            }, TimeSpan.FromMilliseconds(300));
+        }
+        catch (Exception ex)
+        {
+            LogViewerDiag("video-seek-error " + ex.Message);
+        }
+    }
+
+    private void OnVolumeSliderValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_activeMediaPlayer == null) return;
+        var slider = sender as Slider; if (slider == null) return;
+        try
+        {
+            var volInt = (int)Math.Clamp(slider.Value, 0, 100);
+            _activeMediaPlayer.Volume = volInt;
+            if (volInt > 0) _lastVolumeBeforeMute = slider.Value / 100.0;
+            var vIconImg = this.FindControl<Image>("VolumeIcon"); if (vIconImg != null)
+            {
+                try
+                {
+                    var key = volInt == 0 ? "Icon.VolumeMute" : "Icon.Volume";
+                    if (Application.Current!.Resources[key] is Bitmap bmp) vIconImg.Source = bmp;
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    private void OnMuteClick(object? sender, RoutedEventArgs e)
+    {
+        if (_activeMediaPlayer == null) return;
+        try
+        {
+            if (_activeMediaPlayer.Volume > 0)
+            {
+                _lastVolumeBeforeMute = _activeMediaPlayer.Volume / 100.0;
+                _activeMediaPlayer.Volume = 0;
+                var volSlider = this.FindControl<Slider>("VolumeSlider"); if (volSlider != null && Math.Abs(volSlider.Value - 0) > 0.1) volSlider.Value = 0;
+            }
+            else
+            {
+                var restore = _lastVolumeBeforeMute <= 0 ? 0.8 : _lastVolumeBeforeMute;
+                _activeMediaPlayer.Volume = (int)(restore * 100);
+                var volSlider = this.FindControl<Slider>("VolumeSlider"); if (volSlider != null && Math.Abs(volSlider.Value - _activeMediaPlayer.Volume) > 0.1) volSlider.Value = _activeMediaPlayer.Volume;
+            }
+            var vIcon2 = this.FindControl<Image>("VolumeIcon"); if (vIcon2 != null)
+            {
+                try
+                {
+                    var key = _activeMediaPlayer.Volume == 0 ? "Icon.VolumeMute" : "Icon.Volume";
+                    if (Application.Current!.Resources[key] is Bitmap bmp) vIcon2.Source = bmp;
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    private void OnLoopToggleChanged(object? sender, RoutedEventArgs e)
+    {
+        _loopEnabled = (sender as ToggleButton)?.IsChecked == true;
+    try
+    {
+        var loopImg = this.FindControl<Image>("LoopIcon");
+        if (loopImg != null)
+        {
+            var resKey = _loopEnabled ? "Icon.LoopOn" : "Icon.LoopOff";
+            try { if (Application.Current!.Resources[resKey] is Bitmap bmp) loopImg.Source = bmp; } catch { }
+        }
+    }
+    catch { }
+    }
+
+    private void OnSpeedSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_activeMediaPlayer == null) return;
+        var cb = sender as ComboBox; if (cb == null || cb.SelectedItem is not ComboBoxItem item) return;
+        var text = (item.Content as string) ?? "1.0x";
+        if (text.EndsWith("x")) text = text[..^1];
+        if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var spd))
+        {
+            try { _activeMediaPlayer.SetRate((float)spd); } catch { }
+        }
+    }
+
+    private void OnFullscreenClick(object? sender, RoutedEventArgs e)
+    {
+        try { _fullscreen = !_fullscreen; this.WindowState = _fullscreen ? WindowState.FullScreen : WindowState.Normal; }
+        catch { }
+    }
 // LibVLC singleton removed temporarily while resolving package restore instability
+}
 
