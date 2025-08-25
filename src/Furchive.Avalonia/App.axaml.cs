@@ -25,6 +25,7 @@ public partial class App : Application
     private IHost? _host;
     internal static IServiceProvider? Services { get; private set; }
     private ISettingsService? _settings;
+    private ILogger<App>? _logger;
 
     public override void Initialize()
     {
@@ -106,6 +107,15 @@ public partial class App : Application
             desktop.MainWindow = wnd;
             if (!wnd.IsVisible) wnd.Show();
             desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+
+            // Capture logger if available
+            try { _logger = Services.GetService<ILogger<App>>(); } catch { }
+
+            // Ensure temp directory cleaned when app exits
+            desktop.Exit += (_, __) =>
+            {
+                try { CleanupTempDirectory(); } catch { }
+            };
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -121,4 +131,42 @@ public partial class App : Application
     }
 
     private void ApplyIconTheme() { /* no-op simplified */ }
+
+    private void CleanupTempDirectory()
+    {
+        try
+        {
+            var tempRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
+            if (!Directory.Exists(tempRoot)) return;
+            _logger?.LogDebug("Cleaning temp directory at {Path}", tempRoot);
+
+            // Delete files first
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(tempRoot, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(file, FileAttributes.Normal); } catch { }
+                    try { File.Delete(file); } catch { }
+                }
+            }
+            catch { }
+
+            // Then attempt to delete subdirectories (deepest first)
+            try
+            {
+                var dirs = Directory.EnumerateDirectories(tempRoot, "*", SearchOption.AllDirectories)
+                    .OrderByDescending(d => d.Length)
+                    .ToList();
+                foreach (var d in dirs)
+                {
+                    try { Directory.Delete(d, true); } catch { }
+                }
+            }
+            catch { }
+
+            // Finally attempt to remove the root itself (optional)
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+        catch { }
+    }
 }

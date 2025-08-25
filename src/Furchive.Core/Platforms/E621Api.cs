@@ -69,12 +69,14 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     private readonly CacheMetrics _metricsPostDetails = new();
     private readonly CacheMetrics _metricsPoolDetails = new();
 
-    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null, IE621CacheStore? dbCache = null)
+    private readonly IPoolsCacheStore? _poolsCacheStore; // access to pools_list_cache export data
+    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null, IE621CacheStore? dbCache = null, IPoolsCacheStore? poolsCacheStore = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settings = settings;
         _dbCache = dbCache;
+        _poolsCacheStore = poolsCacheStore;
 
         // Configure concurrency and TTLs from settings with sane defaults
         int GetInt(string key, int fallback)
@@ -133,7 +135,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     public void ClearPoolPostsCache() { _poolPostsCache.Clear(); try { _dbCache?.ClearAsync("pool_posts"); } catch { } }
     public void ClearFullPoolCache() { _poolAllCache.Clear(); try { _dbCache?.ClearAsync("full_pool"); } catch { } }
     public void ClearPostDetailsCache() { _postDetailsCache.Clear(); try { _dbCache?.ClearAsync("post_details"); } catch { } }
-    public void ClearPoolDetailsCache() { _poolCache.Clear(); try { _dbCache?.ClearAsync("pool_details"); } catch { } }
+    public void ClearPoolDetailsCache() { _poolCache.Clear(); /* persistent pool_details cache removed */ }
 
     // Lightweight helper used by UI to prune pools whose posts have all been deleted.
     // Returns the current count of visible (non-deleted) posts for a given pool, or null on failure.
@@ -620,16 +622,19 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         try
         {
             System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Lookups);
-            if (_dbCache != null)
+            // Attempt to build from pools_list_cache export if not already cached
+            if (!_poolCache.ContainsKey(poolId) && _poolsCacheStore != null)
             {
                 try
                 {
-                    var db = await _dbCache.GetAsync<E621PoolDetail>("pool_details", poolId.ToString());
-                    if (db != null)
+                    var info = await _poolsCacheStore.GetPoolByIdAsync(poolId, ct);
+                    if (info != null && !string.IsNullOrWhiteSpace(info.PostIdsRaw))
                     {
+                        var ids = ParseExportPostIds(info.PostIdsRaw);
+                        var detLocal = new E621PoolDetail { Id = info.Id, Name = info.Name, PostIds = ids };
+                        _poolCache[poolId] = (detLocal, DateTime.UtcNow.Add(_poolTtl));
                         System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
-                        _poolCache[poolId] = (db, DateTime.UtcNow.AddMinutes(2));
-                        return db;
+                        return detLocal;
                     }
                 }
                 catch { }
@@ -641,48 +646,40 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
                     System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
                     return entry.detail;
                 }
-                else
+                // Serve stale then refresh
+                System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
+                _ = Task.Run(async () =>
                 {
-                    // SWR: serve stale and refresh in background
-                    System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
-                    _ = Task.Run(async () =>
+                    await _poolFetchLimiter.WaitAsync(ct).ConfigureAwait(false);
+                    try
                     {
-                        await _poolFetchLimiter.WaitAsync(ct).ConfigureAwait(false);
-                        try
+                        var url = AppendAuth($"https://e621.net/pools/{poolId}.json");
+                        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                        var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
+                        if (!resp.IsSuccessStatusCode) return;
+                        var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        var det = JsonSerializer.Deserialize<E621PoolDetail>(json, jsonOptions);
+                        if (det != null)
                         {
-                            var url = AppendAuth($"https://e621.net/pools/{poolId}.json");
-                            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                            var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
-                            if (!resp.IsSuccessStatusCode) return; 
-                            var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                            var det = JsonSerializer.Deserialize<E621PoolDetail>(json, jsonOptions);
-                            if (det != null)
-                            {
-                                System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Evictions);
-                                _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
-                                try { if (_dbCache != null) await _dbCache.SetAsync("pool_details", poolId.ToString(), det, DateTime.UtcNow.Add(_poolTtl)); } catch { }
-                            }
+                            System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Evictions);
+                            _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
                         }
-                        catch (Exception ex) { _logger.LogDebug(ex, "SWR refresh for pool detail failed"); }
-                        finally { _poolFetchLimiter.Release(); }
-                    });
-                    return entry.detail;
-                }
+                    }
+                    catch (Exception ex) { _logger.LogDebug(ex, "SWR refresh for pool detail failed"); }
+                    finally { _poolFetchLimiter.Release(); }
+                });
+                return entry.detail;
             }
-
             System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Misses);
-
             await _poolFetchLimiter.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                // Double-check after acquiring the limiter
                 if (_poolCache.TryGetValue(poolId, out entry) && DateTime.UtcNow < entry.expires)
                 {
                     System.Threading.Interlocked.Increment(ref _metricsPoolDetails.Hits);
                     return entry.detail;
                 }
-
                 var url = AppendAuth($"https://e621.net/pools/{poolId}.json");
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -690,17 +687,10 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
                 if (!resp.IsSuccessStatusCode) return null;
                 var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
                 var det = JsonSerializer.Deserialize<E621PoolDetail>(json, jsonOptions);
-                if (det != null)
-                {
-                    _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
-                    try { if (_dbCache != null) await _dbCache.SetAsync("pool_details", poolId.ToString(), det, DateTime.UtcNow.Add(_poolTtl)); } catch { }
-                }
+                if (det != null) _poolCache[poolId] = (det, DateTime.UtcNow.Add(_poolTtl));
                 return det;
             }
-            finally
-            {
-                _poolFetchLimiter.Release();
-            }
+            finally { _poolFetchLimiter.Release(); }
         }
         catch (Exception ex)
         {
@@ -1829,6 +1819,27 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         public int Key { get; set; }
         public DateTime ExpiresUtc { get; set; }
         public E621PoolDetail Value { get; set; } = new();
+    }
+
+    private static List<int> ParseExportPostIds(string raw)
+    {
+        var list = new List<int>();
+        if (string.IsNullOrWhiteSpace(raw)) return list;
+        ReadOnlySpan<char> span = raw.AsSpan();
+        int start = 0;
+        for (int i = 0; i <= span.Length; i++)
+        {
+            if (i == span.Length || span[i] == ' ' || span[i] == ',' || span[i] == ';' || span[i] == '\t' || span[i] == '\n' || span[i] == '\r')
+            {
+                if (i > start)
+                {
+                    var slice = span.Slice(start, i - start).ToString();
+                    if (int.TryParse(slice, out var id)) list.Add(id);
+                }
+                start = i + 1;
+            }
+        }
+        return list;
     }
 
     public void LoadPersistentCacheIfEnabled()
