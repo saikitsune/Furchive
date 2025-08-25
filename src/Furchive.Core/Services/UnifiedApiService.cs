@@ -294,6 +294,4 @@ public class UnifiedApiService : IUnifiedApiService
     public void ClearE621PostDetailsCache() => TryGetE621()?.ClearPostDetailsCache();
     public void ClearE621PoolDetailsCache() => TryGetE621()?.ClearPoolDetailsCache();
     public object? GetE621CacheMetrics() => TryGetE621()?.GetCacheMetrics();
-    public void LoadE621PersistentCacheIfEnabled() => TryGetE621()?.LoadPersistentCacheIfEnabled();
-    public void SaveE621PersistentCacheIfEnabled() => TryGetE621()?.SavePersistentCacheIfEnabled();
 }

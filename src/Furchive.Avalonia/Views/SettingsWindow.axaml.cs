@@ -55,20 +55,7 @@ public partial class SettingsWindow : Window
         try { SaveMetadataJson.IsChecked = _settings?.GetSetting<bool>("SaveMetadataJson", false) ?? false; } catch { SaveMetadataJson.IsChecked = false; }
     try { UseOriginalFilename.IsChecked = _settings?.GetSetting<bool>("UseOriginalFilename", false) ?? false; } catch { UseOriginalFilename.IsChecked = false; }
     try { SavePostJson.IsChecked = _settings?.GetSetting<bool>("SavePostJson", false) ?? false; } catch { SavePostJson.IsChecked = false; }
-    // e621 Advanced (defaults chosen conservatively)
-    try { E621MaxPoolDetailConcurrency.Value = _settings?.GetSetting<int>("E621MaxPoolDetailConcurrency", 8) ?? 8; } catch { E621MaxPoolDetailConcurrency.Value = 8; }
-    try { E621SearchTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.Search", 10) ?? 10; } catch { E621SearchTtlMinutes.Value = 10; }
-    try { E621TagSuggestTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.TagSuggest", 180) ?? 180; } catch { E621TagSuggestTtlMinutes.Value = 180; }
-    try { E621PoolPostsTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.PoolPosts", 60) ?? 60; } catch { E621PoolPostsTtlMinutes.Value = 60; }
-    try { E621PoolAllTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.PoolAll", 360) ?? 360; } catch { E621PoolAllTtlMinutes.Value = 360; }
-    try { E621PostDetailsTtlMinutes.Value = _settings?.GetSetting<int>("E621CacheTtlMinutes.PostDetails", 1440) ?? 1440; } catch { E621PostDetailsTtlMinutes.Value = 1440; }
-    try { E621PersistentCacheEnabled.IsChecked = _settings?.GetSetting<bool>("E621PersistentCacheEnabled", true) ?? true; } catch { E621PersistentCacheEnabled.IsChecked = true; }
-    try { E621PersistentCacheMaxEntries_Search.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.Search", 200) ?? 200; } catch { E621PersistentCacheMaxEntries_Search.Value = 200; }
-    try { E621PersistentCacheMaxEntries_TagSuggest.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.TagSuggest", 400) ?? 400; } catch { E621PersistentCacheMaxEntries_TagSuggest.Value = 400; }
-    try { E621PersistentCacheMaxEntries_PoolPosts.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PoolPosts", 200) ?? 200; } catch { E621PersistentCacheMaxEntries_PoolPosts.Value = 200; }
-    try { E621PersistentCacheMaxEntries_FullPool.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.FullPool", 150) ?? 150; } catch { E621PersistentCacheMaxEntries_FullPool.Value = 150; }
-    try { E621PersistentCacheMaxEntries_PostDetails.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PostDetails", 800) ?? 800; } catch { E621PersistentCacheMaxEntries_PostDetails.Value = 800; }
-    try { E621PersistentCacheMaxEntries_PoolDetails.Value = _settings?.GetSetting<int>("E621PersistentCacheMaxEntries.PoolDetails", 400) ?? 400; } catch { E621PersistentCacheMaxEntries_PoolDetails.Value = 400; }
+    // e621 advanced TTL & persistent cache controls removed; legacy settings retained but hidden
 
     // Theme selection removed (dark-only); no action needed
 
@@ -165,21 +152,7 @@ public partial class SettingsWindow : Window
                 }
                 catch { }
             }
-            // Advanced caches
-            await _settings.SetSettingAsync("E621MaxPoolDetailConcurrency", Math.Clamp((int)(E621MaxPoolDetailConcurrency.Value ?? 16), 1, 16));
-            await _settings.SetSettingAsync("E621CacheTtlMinutes.Search", Math.Clamp((int)(E621SearchTtlMinutes.Value ?? 10), 1, 1440));
-            await _settings.SetSettingAsync("E621CacheTtlMinutes.TagSuggest", Math.Clamp((int)(E621TagSuggestTtlMinutes.Value ?? 180), 1, 1440));
-            await _settings.SetSettingAsync("E621CacheTtlMinutes.PoolPosts", Math.Clamp((int)(E621PoolPostsTtlMinutes.Value ?? 60), 1, 1440));
-            await _settings.SetSettingAsync("E621CacheTtlMinutes.PoolAll", Math.Clamp((int)(E621PoolAllTtlMinutes.Value ?? 360), 1, 1440));
-            await _settings.SetSettingAsync("E621CacheTtlMinutes.PostDetails", Math.Clamp((int)(E621PostDetailsTtlMinutes.Value ?? 1440), 1, 1440));
-            // Persistent cache
-            await _settings.SetSettingAsync("E621PersistentCacheEnabled", E621PersistentCacheEnabled.IsChecked == true);
-            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.Search", Math.Clamp((int)(E621PersistentCacheMaxEntries_Search.Value ?? 200), 50, 5000));
-            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.TagSuggest", Math.Clamp((int)(E621PersistentCacheMaxEntries_TagSuggest.Value ?? 400), 50, 10000));
-            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolPosts", Math.Clamp((int)(E621PersistentCacheMaxEntries_PoolPosts.Value ?? 200), 50, 5000));
-            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.FullPool", Math.Clamp((int)(E621PersistentCacheMaxEntries_FullPool.Value ?? 150), 50, 5000));
-            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PostDetails", Math.Clamp((int)(E621PersistentCacheMaxEntries_PostDetails.Value ?? 800), 50, 20000));
-            await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolDetails", Math.Clamp((int)(E621PersistentCacheMaxEntries_PoolDetails.Value ?? 400), 50, 10000));
+            // Advanced caches removed: we no longer persist TTL or persistent cache sizing options
             await _settings.SetSettingAsync("DebugLoggingEnabled", DebugLoggingEnabled.IsChecked == true);
             // Notify that settings were saved
             try { WeakReferenceMessenger.Default.Send(new SettingsSavedMessage()); } catch { }
@@ -402,12 +375,7 @@ public partial class SettingsWindow : Window
         catch { }
     }
 
-    private void OnClearE621SearchCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621SearchCache(); } catch { } }
-    private void OnClearE621TagSuggestCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621TagSuggestCache(); } catch { } }
-    private void OnClearE621PoolPostsCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621PoolPostsCache(); } catch { } }
-    private void OnClearE621FullPoolCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621FullPoolCache(); } catch { } }
-    private void OnClearE621PostDetailsCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621PostDetailsCache(); } catch { } }
-    private void OnClearE621PoolDetailsCache(object? sender, RoutedEventArgs e) { try { _api?.ClearE621PoolDetailsCache(); } catch { } }
+    // Clear cache handlers removed along with UI buttons
 
     private void OnMaxResultsPerSourceChanged(object? sender, NumericUpDownValueChangedEventArgs e)
     {

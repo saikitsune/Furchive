@@ -35,7 +35,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     // The (now unused) _searchCache field and _searchTtl remain commented out for clarity and to avoid accidental reuse.
     // private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (SearchResult result, DateTime expires)> _searchCache = new();
     // private readonly TimeSpan _searchTtl; // configurable (retained variable removed below)
-    private readonly TimeSpan _searchTtl = TimeSpan.Zero; // placeholder to satisfy metrics code paths if any remain
+    private readonly TimeSpan _searchTtl; // now fixed at 30 days in constructor
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<TagSuggestion> list, DateTime expires)> _tagSuggestCache = new();
     private readonly TimeSpan _tagSuggestTtl; // configurable
     private readonly System.Collections.Concurrent.ConcurrentDictionary<(int poolId, int page, int limit, bool authed), (SearchResult result, DateTime expires)> _poolPostsCache = new();
@@ -44,15 +44,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     private readonly TimeSpan _poolAllTtl; // configurable
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (MediaItem item, DateTime expires)> _postDetailsCache = new();
     private readonly TimeSpan _postDetailsTtl; // configurable
-    // Persistent cache settings
-    private readonly bool _persistEnabled;
-    private readonly int _maxSearchEntries;
-    private readonly int _maxTagSuggestEntries;
-    private readonly int _maxPoolPostsEntries;
-    private readonly int _maxFullPoolEntries;
-    private readonly int _maxPostDetailsEntries;
-    private readonly int _maxPoolDetailsEntries;
-    private readonly string _diskCacheDir;
+    // Persistent cache removed: no related fields retained
 
     // Lightweight cache metrics
     private sealed class CacheMetrics
@@ -78,43 +70,24 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         _dbCache = dbCache;
         _poolsCacheStore = poolsCacheStore;
 
-        // Configure concurrency and TTLs from settings with sane defaults
-        int GetInt(string key, int fallback)
-        {
-            try
-            {
-                if (_settings == null) return fallback;
-                var v = _settings.GetSetting<int>(key, fallback);
-                return v == 0 ? fallback : v;
-            }
-            catch { return fallback; }
-        }
+    // Concurrency & TTL settings are no longer user-configurable (UI removed).
+    // Use conservative fixed defaults; background refresh logic (future) will proactively update stale entries
+    // instead of expiring them out from under the UI.
+    int SafeCpuHalf() => Math.Max(1, Environment.ProcessorCount / 2);
+    var maxConcurrency = Math.Clamp(SafeCpuHalf(), 1, 16); // previously configurable via E621MaxPoolDetailConcurrency
+    _poolFetchLimiter = new SemaphoreSlim(maxConcurrency, maxConcurrency);
 
-    var maxConcurrency = Math.Clamp(GetInt("E621MaxPoolDetailConcurrency", 16), 1, 16);
-        _poolFetchLimiter = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+    // Treat caches as effectively long‑lived; choose 30 days so existing expiry checks rarely invalidate data.
+    // (A forthcoming periodic refresh service can refresh items irrespective of these TTL markers.)
+    _poolTtl = TimeSpan.FromDays(30);
+    _searchTtl = TimeSpan.FromDays(30);
+    _tagSuggestTtl = TimeSpan.FromDays(30);
+    _poolPostsTtl = TimeSpan.FromDays(30);
+    _poolAllTtl = TimeSpan.FromDays(30);
+    _postDetailsTtl = TimeSpan.FromDays(30);
 
-    // Recommended defaults (minutes): Search 10, TagSuggest 180, PoolPosts 60, FullPool 360, PostDetails 1440, Pools 360
-    _poolTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.Pools", 360), 1, 1440));
-    _searchTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.Search", 10), 1, 1440));
-    _tagSuggestTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.TagSuggest", 180), 1, 1440));
-    _poolPostsTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PoolPosts", 60), 1, 1440));
-    _poolAllTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PoolAll", 360), 1, 1440));
-    _postDetailsTtl = TimeSpan.FromMinutes(Math.Clamp(GetInt("E621CacheTtlMinutes.PostDetails", 1440), 1, 1440));
-
-        // Persistent cache configuration
-        bool GetBool(string key, bool fallback)
-        {
-            try { return _settings?.GetSetting<bool>(key, fallback) ?? fallback; }
-            catch { return fallback; }
-        }
-        _persistEnabled = GetBool("E621PersistentCacheEnabled", false);
-        _maxSearchEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.Search", 200), 50, 5000);
-        _maxTagSuggestEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.TagSuggest", 400), 50, 10000);
-        _maxPoolPostsEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.PoolPosts", 200), 50, 5000);
-        _maxFullPoolEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.FullPool", 150), 50, 5000);
-        _maxPostDetailsEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.PostDetails", 800), 50, 20000);
-        _maxPoolDetailsEntries = Math.Clamp(GetInt("E621PersistentCacheMaxEntries.PoolDetails", 400), 50, 10000);
-        _diskCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621");
+    // Persistent cache options removed; disable JSON persistence except for legacy backward compatibility path.
+    // No persistence directory needed anymore
     }
 
     // Cache maintenance helpers (invoked from Settings)
@@ -1777,49 +1750,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         };
     }
 
-    // Persistent cache schema and helpers
-    private sealed class CacheEnvelope<T>
-    {
-        public string Version { get; set; } = "1";
-        public DateTime SavedAtUtc { get; set; } = DateTime.UtcNow;
-        public List<T> Items { get; set; } = new();
-    }
-    private sealed class SearchEntry
-    {
-        public string Key { get; set; } = string.Empty;
-        public DateTime ExpiresUtc { get; set; }
-        public SearchResult Value { get; set; } = new();
-    }
-    private sealed class TagSuggestEntry
-    {
-        public string Key { get; set; } = string.Empty;
-        public DateTime ExpiresUtc { get; set; }
-        public List<TagSuggestion> Value { get; set; } = new();
-    }
-    private sealed class PoolPostsEntry
-    {
-        public (int poolId, int page, int limit, bool authed) Key { get; set; }
-        public DateTime ExpiresUtc { get; set; }
-        public SearchResult Value { get; set; } = new();
-    }
-    private sealed class FullPoolEntry
-    {
-        public (int poolId, bool authed) Key { get; set; }
-        public DateTime ExpiresUtc { get; set; }
-        public List<MediaItem> Value { get; set; } = new();
-    }
-    private sealed class PostDetailsEntry
-    {
-        public int Key { get; set; }
-        public DateTime ExpiresUtc { get; set; }
-        public MediaItem Value { get; set; } = new();
-    }
-    private sealed class PoolDetailsEntry
-    {
-        public int Key { get; set; }
-        public DateTime ExpiresUtc { get; set; }
-        public E621PoolDetail Value { get; set; } = new();
-    }
+    // Persistent cache schema & helpers removed
 
     private static List<int> ParseExportPostIds(string raw)
     {
@@ -1842,167 +1773,5 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         return list;
     }
 
-    public void LoadPersistentCacheIfEnabled()
-    {
-        // No-op when SQLite cache is present; legacy JSON persistence retained for backward compatibility if needed
-        if (_dbCache != null) return;
-        if (!_persistEnabled) return;
-        try
-        {
-            Directory.CreateDirectory(_diskCacheDir);
-            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            // Search cache loading skipped (disabled)
-            // TagSuggest
-            TryLoad("tag_suggest.json", (JsonDocument doc) =>
-            {
-                var env = JsonSerializer.Deserialize<CacheEnvelope<TagSuggestEntry>>(doc.RootElement.GetRawText(), opts);
-                if (env?.Items == null) return;
-                var now = DateTime.UtcNow;
-                foreach (var it in env.Items)
-                {
-                    if (it == null) continue;
-                    if (it.ExpiresUtc <= now) continue;
-                    _tagSuggestCache[it.Key] = (it.Value, it.ExpiresUtc);
-                }
-            });
-            // PoolPosts
-            TryLoad("pool_posts.json", (JsonDocument doc) =>
-            {
-                var env = JsonSerializer.Deserialize<CacheEnvelope<PoolPostsEntry>>(doc.RootElement.GetRawText(), opts);
-                if (env?.Items == null) return;
-                var now = DateTime.UtcNow;
-                foreach (var it in env.Items)
-                {
-                    if (it == null) continue;
-                    if (it.ExpiresUtc <= now) continue;
-                    _poolPostsCache[it.Key] = (it.Value, it.ExpiresUtc);
-                }
-            });
-            // FullPool
-            TryLoad("full_pool.json", (JsonDocument doc) =>
-            {
-                var env = JsonSerializer.Deserialize<CacheEnvelope<FullPoolEntry>>(doc.RootElement.GetRawText(), opts);
-                if (env?.Items == null) return;
-                var now = DateTime.UtcNow;
-                foreach (var it in env.Items)
-                {
-                    if (it == null) continue;
-                    if (it.ExpiresUtc <= now) continue;
-                    _poolAllCache[it.Key] = (it.Value, it.ExpiresUtc);
-                }
-            });
-            // PostDetails
-            TryLoad("post_details.json", (JsonDocument doc) =>
-            {
-                var env = JsonSerializer.Deserialize<CacheEnvelope<PostDetailsEntry>>(doc.RootElement.GetRawText(), opts);
-                if (env?.Items == null) return;
-                var now = DateTime.UtcNow;
-                foreach (var it in env.Items)
-                {
-                    if (it == null) continue;
-                    if (it.ExpiresUtc <= now) continue;
-                    _postDetailsCache[it.Key] = (it.Value, it.ExpiresUtc);
-                }
-            });
-            // PoolDetails
-            TryLoad("pool_details.json", (JsonDocument doc) =>
-            {
-                var env = JsonSerializer.Deserialize<CacheEnvelope<PoolDetailsEntry>>(doc.RootElement.GetRawText(), opts);
-                if (env?.Items == null) return;
-                var now = DateTime.UtcNow;
-                foreach (var it in env.Items)
-                {
-                    if (it == null) continue;
-                    if (it.ExpiresUtc <= now) continue;
-                    _poolCache[it.Key] = (it.Value, it.ExpiresUtc);
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load persistent e621 cache");
-        }
-    }
-
-    public void SavePersistentCacheIfEnabled()
-    {
-        if (_dbCache != null) return;
-        if (!_persistEnabled) return;
-        try
-        {
-            Directory.CreateDirectory(_diskCacheDir);
-            var opts = new JsonSerializerOptions { WriteIndented = false };
-            var now = DateTime.UtcNow;
-            // helper local function
-            void Save<TEntry>(string file, IEnumerable<TEntry> items)
-            {
-                var env = new CacheEnvelope<TEntry> { Items = items.ToList(), SavedAtUtc = now };
-                var path = Path.Combine(_diskCacheDir, file);
-                var json = JsonSerializer.Serialize(env, opts);
-                File.WriteAllText(path, json);
-            }
-
-            // Search cache saving skipped (disabled)
-
-            // TagSuggest
-            var tagItems = _tagSuggestCache
-                .Where(kv => kv.Value.expires > now)
-                .OrderByDescending(kv => kv.Value.expires)
-                .Take(_maxTagSuggestEntries)
-                .Select(kv => new TagSuggestEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.list });
-            Save("tag_suggest.json", tagItems);
-
-            // PoolPosts
-            var ppItems = _poolPostsCache
-                .Where(kv => kv.Value.expires > now)
-                .OrderByDescending(kv => kv.Value.expires)
-                .Take(_maxPoolPostsEntries)
-                .Select(kv => new PoolPostsEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.result });
-            Save("pool_posts.json", ppItems);
-
-            // FullPool
-            var fpItems = _poolAllCache
-                .Where(kv => kv.Value.expires > now)
-                .OrderByDescending(kv => kv.Value.expires)
-                .Take(_maxFullPoolEntries)
-                .Select(kv => new FullPoolEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.items });
-            Save("full_pool.json", fpItems);
-
-            // PostDetails
-            var pdItems = _postDetailsCache
-                .Where(kv => kv.Value.expires > now)
-                .OrderByDescending(kv => kv.Value.expires)
-                .Take(_maxPostDetailsEntries)
-                .Select(kv => new PostDetailsEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.item });
-            Save("post_details.json", pdItems);
-
-            // PoolDetails
-            var pdetItems = _poolCache
-                .Where(kv => kv.Value.expires > now)
-                .OrderByDescending(kv => kv.Value.expires)
-                .Take(_maxPoolDetailsEntries)
-                .Select(kv => new PoolDetailsEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.detail });
-            Save("pool_details.json", pdetItems);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to save persistent e621 cache");
-        }
-    }
-
-    private void TryLoad(string fileName, Action<JsonDocument> apply)
-    {
-        try
-        {
-            var path = Path.Combine(_diskCacheDir, fileName);
-            if (!File.Exists(path)) return;
-            using var fs = File.OpenRead(path);
-            using var doc = JsonDocument.Parse(fs);
-            apply(doc);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Failed to load cache file {File}", fileName);
-        }
-    }
+    // Persistence load/save helpers removed
 }

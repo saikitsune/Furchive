@@ -94,8 +94,6 @@ public interface IE621CacheMaintenance
     void ClearPostDetailsCache();
     void ClearPoolDetailsCache();
     object? GetCacheMetrics();
-    void LoadPersistentCacheIfEnabled();
-    void SavePersistentCacheIfEnabled();
 }
 
 /// <summary>
@@ -168,8 +166,6 @@ public interface IUnifiedApiService
     void ClearE621PostDetailsCache();
     void ClearE621PoolDetailsCache();
     object? GetE621CacheMetrics();
-    void LoadE621PersistentCacheIfEnabled();
-    void SaveE621PersistentCacheIfEnabled();
 }
 
 /// <summary>
