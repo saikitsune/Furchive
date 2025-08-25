@@ -91,7 +91,6 @@ public interface IE621CacheMaintenance
     void ClearTagSuggestCache();
     void ClearPoolPostsCache();
     void ClearFullPoolCache();
-    void ClearPostDetailsCache();
     void ClearPoolDetailsCache();
     object? GetCacheMetrics();
 }
@@ -163,7 +162,6 @@ public interface IUnifiedApiService
     void ClearE621TagSuggestCache();
     void ClearE621PoolPostsCache();
     void ClearE621FullPoolCache();
-    void ClearE621PostDetailsCache();
     void ClearE621PoolDetailsCache();
     object? GetE621CacheMetrics();
 }

@@ -17,7 +17,8 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     
     private readonly HttpClient _httpClient;
     private readonly ILogger<E621Api> _logger;
-    private readonly IE621CacheStore? _dbCache; // optional SQLite cache
+    private readonly IE621CacheStore? _dbCache; // legacy generic cache (search/tag_suggest/pools)
+    private readonly IPostsCacheStore? _postsStore; // authoritative posts cache
     private readonly ISettingsService? _settings;
     private string? _userAgent;
     private string? _username;
@@ -62,13 +63,14 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     private readonly CacheMetrics _metricsPoolDetails = new();
 
     private readonly IPoolsCacheStore? _poolsCacheStore; // access to pools_list_cache export data
-    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null, IE621CacheStore? dbCache = null, IPoolsCacheStore? poolsCacheStore = null)
+    public E621Api(HttpClient httpClient, ILogger<E621Api> logger, ISettingsService? settings = null, IE621CacheStore? dbCache = null, IPoolsCacheStore? poolsCacheStore = null, IPostsCacheStore? postsStore = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settings = settings;
-        _dbCache = dbCache;
-        _poolsCacheStore = poolsCacheStore;
+    _dbCache = dbCache;
+    _poolsCacheStore = poolsCacheStore;
+    _postsStore = postsStore;
 
     // Concurrency & TTL settings are no longer user-configurable (UI removed).
     // Use conservative fixed defaults; background refresh logic (future) will proactively update stale entries
@@ -107,7 +109,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     public void ClearTagSuggestCache() { _tagSuggestCache.Clear(); try { _dbCache?.ClearAsync("tag_suggest"); } catch { } }
     public void ClearPoolPostsCache() { _poolPostsCache.Clear(); try { _dbCache?.ClearAsync("pool_posts"); } catch { } }
     public void ClearFullPoolCache() { _poolAllCache.Clear(); try { _dbCache?.ClearAsync("full_pool"); } catch { } }
-    public void ClearPostDetailsCache() { _postDetailsCache.Clear(); try { _dbCache?.ClearAsync("post_details"); } catch { } }
+    // Legacy explicit clear removed: posts cache is persisted; in-memory details cache cleared opportunistically by TTL.
     public void ClearPoolDetailsCache() { _poolCache.Clear(); /* persistent pool_details cache removed */ }
 
     // Lightweight helper used by UI to prune pools whose posts have all been deleted.
@@ -676,55 +678,42 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     {
         try
         {
-            // Cache check for post details (DB first)
-            if (_dbCache != null)
+            // Prefer normalized posts store first
+            if (_postsStore != null)
             {
-                try
-                {
-                    var dbItem = await _dbCache.GetAsync<MediaItem>("post_details", id);
-                    if (dbItem != null)
-                    {
-                        return dbItem;
-                    }
-                }
-                catch { }
+                try { var stored = await _postsStore.GetPostAsync(id); if (stored != null) return stored; } catch { }
             }
-            // In-memory cache check for post details
+            // In-memory cache check
             var hasPostId = int.TryParse(id, out var postIdInt);
             if (hasPostId)
             {
                 System.Threading.Interlocked.Increment(ref _metricsPostDetails.Lookups);
-                if (_postDetailsCache.TryGetValue(postIdInt, out var cached))
+                if (_postDetailsCache.TryGetValue(postIdInt, out var mem))
                 {
-                    if (DateTime.UtcNow < cached.expires)
+                    if (DateTime.UtcNow < mem.expires)
                     {
                         System.Threading.Interlocked.Increment(ref _metricsPostDetails.Hits);
-                        return cached.item;
+                        return mem.item;
                     }
-                    else
+                    // Serve stale then refresh
+                    System.Threading.Interlocked.Increment(ref _metricsPostDetails.Hits);
+                    _ = Task.Run(async () =>
                     {
-                        System.Threading.Interlocked.Increment(ref _metricsPostDetails.Hits);
-                        // SWR refresh
-                        _ = Task.Run(async () =>
+                        try
                         {
-                            try
+                            var fresh = await FetchPostDetailsAsync(id);
+                            if (fresh != null)
                             {
-                                var fresh = await FetchPostDetailsAsync(id);
-                                if (fresh != null)
-                                {
-                                    System.Threading.Interlocked.Increment(ref _metricsPostDetails.Evictions);
-                                    _postDetailsCache[postIdInt] = (fresh, DateTime.UtcNow.Add(_postDetailsTtl));
-                                }
+                                System.Threading.Interlocked.Increment(ref _metricsPostDetails.Evictions);
+                                _postDetailsCache[postIdInt] = (fresh, DateTime.UtcNow.Add(_postDetailsTtl));
+                                try { _ = _postsStore?.UpsertPostsAsync(new[] { fresh }); } catch { }
                             }
-                            catch (Exception ex) { _logger.LogDebug(ex, "SWR refresh for post details failed"); }
-                        });
-                        return cached.item;
-                    }
+                        }
+                        catch (Exception exFresh) { _logger.LogDebug(exFresh, "SWR refresh for post details failed"); }
+                    });
+                    return mem.item;
                 }
-                else
-                {
-                    System.Threading.Interlocked.Increment(ref _metricsPostDetails.Misses);
-                }
+                System.Threading.Interlocked.Increment(ref _metricsPostDetails.Misses);
             }
             // Ensure UA header is present if not authenticated yet
             if (string.IsNullOrWhiteSpace(_userAgent))
@@ -782,11 +771,10 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
                 _logger.LogDebug(ex, "Enriching media details with pool context failed for {Id}", id);
             }
 
-            // Cache the details before returning
             if (hasPostId && item != null)
             {
                 _postDetailsCache[postIdInt] = (item, DateTime.UtcNow.Add(_postDetailsTtl));
-                try { if (_dbCache != null) await _dbCache.SetAsync("post_details", id, item, DateTime.UtcNow.Add(_postDetailsTtl)); } catch { }
+                try { _ = _postsStore?.UpsertPostsAsync(new[] { item }); } catch { }
             }
             return item;
         }
@@ -1623,6 +1611,9 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
             }
         }
 
+        // Deduplicate & normalize tag list for MediaItem.Tags (used by SQLite post cache)
+        var tagList = tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
         return new MediaItem
         {
             Id = p.Id.ToString(),
@@ -1633,6 +1624,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
             FullImageUrl = fullUrl,
             SourceUrl = $"https://e621.net/posts/{p.Id}",
             TagCategories = categories,
+            Tags = tagList,
             Rating = rating,
             CreatedAt = p.CreatedAt ?? DateTime.MinValue,
             Score = p.Score?.Total ?? 0,

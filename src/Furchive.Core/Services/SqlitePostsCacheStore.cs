@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS posts (
   full_url TEXT,
   source_url TEXT,
   tags TEXT,
+    tag_categories TEXT, -- JSON serialized dictionary<string,List<string>> for full category mapping
   rating INTEGER,
   created_at TEXT,
   score INTEGER,
@@ -51,6 +52,9 @@ CREATE TABLE IF NOT EXISTS posts (
   pool_id INTEGER -- nullable; helps retrieving by pool
 );
 CREATE INDEX IF NOT EXISTS idx_posts_pool ON posts(pool_id);
+-- Migration: add tag_categories column if missing (older schemas)
+PRAGMA table_info(posts);
+
 ";
         await cmd.ExecuteNonQueryAsync(ct);
     }
@@ -62,8 +66,8 @@ CREATE INDEX IF NOT EXISTS idx_posts_pool ON posts(pool_id);
         await using var tx = await conn.BeginTransactionAsync(ct);
         var cmd = conn.CreateCommand();
         cmd.Transaction = (SqliteTransaction)tx;
-        cmd.CommandText = @"INSERT INTO posts(id,source,title,description,artist,preview_url,full_url,source_url,tags,rating,created_at,score,favorite_count,file_ext,file_size,width,height,pool_id)
-VALUES(@id,@source,@title,@desc,@artist,@purl,@furl,@surl,@tags,@rating,@created,@score,@fav,@ext,@fsize,@w,@h,@pool)
+    cmd.CommandText = @"INSERT INTO posts(id,source,title,description,artist,preview_url,full_url,source_url,tags,tag_categories,rating,created_at,score,favorite_count,file_ext,file_size,width,height,pool_id)
+VALUES(@id,@source,@title,@desc,@artist,@purl,@furl,@surl,@tags,@tagcats,@rating,@created,@score,@fav,@ext,@fsize,@w,@h,@pool)
 ON CONFLICT(id) DO UPDATE SET
  source=excluded.source,
  title=excluded.title,
@@ -73,6 +77,7 @@ ON CONFLICT(id) DO UPDATE SET
  full_url=excluded.full_url,
  source_url=excluded.source_url,
  tags=excluded.tags,
+ tag_categories=excluded.tag_categories,
  rating=excluded.rating,
  created_at=excluded.created_at,
  score=excluded.score,
@@ -91,7 +96,8 @@ ON CONFLICT(id) DO UPDATE SET
         var pFurl = cmd.CreateParameter(); pFurl.ParameterName = "@furl"; cmd.Parameters.Add(pFurl);
         var pSurl = cmd.CreateParameter(); pSurl.ParameterName = "@surl"; cmd.Parameters.Add(pSurl);
         var pTags = cmd.CreateParameter(); pTags.ParameterName = "@tags"; cmd.Parameters.Add(pTags);
-        var pRating = cmd.CreateParameter(); pRating.ParameterName = "@rating"; cmd.Parameters.Add(pRating);
+    var pTagCats = cmd.CreateParameter(); pTagCats.ParameterName = "@tagcats"; cmd.Parameters.Add(pTagCats);
+    var pRating = cmd.CreateParameter(); pRating.ParameterName = "@rating"; cmd.Parameters.Add(pRating);
         var pCreated = cmd.CreateParameter(); pCreated.ParameterName = "@created"; cmd.Parameters.Add(pCreated);
         var pScore = cmd.CreateParameter(); pScore.ParameterName = "@score"; cmd.Parameters.Add(pScore);
         var pFav = cmd.CreateParameter(); pFav.ParameterName = "@fav"; cmd.Parameters.Add(pFav);
@@ -112,6 +118,7 @@ ON CONFLICT(id) DO UPDATE SET
             pFurl.Value = m.FullImageUrl ?? string.Empty;
             pSurl.Value = m.SourceUrl ?? string.Empty;
             pTags.Value = string.Join('\u001F', m.Tags ?? new()); // unit separator for join
+            pTagCats.Value = (m.TagCategories != null && m.TagCategories.Count > 0) ? System.Text.Json.JsonSerializer.Serialize(m.TagCategories) : string.Empty;
             pRating.Value = (int)m.Rating;
             pCreated.Value = m.CreatedAt == default ? string.Empty : m.CreatedAt.ToString("O");
             pScore.Value = m.Score;
@@ -132,7 +139,7 @@ ON CONFLICT(id) DO UPDATE SET
         await using var conn = Create();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, rating, created_at, score, favorite_count, file_ext, file_size, width, height FROM posts WHERE pool_id=@pid ORDER BY id";
+    cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, tag_categories, rating, created_at, score, favorite_count, file_ext, file_size, width, height FROM posts WHERE pool_id=@pid ORDER BY id";
         var p = cmd.CreateParameter(); p.ParameterName = "@pid"; p.Value = poolId; cmd.Parameters.Add(p);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
@@ -148,14 +155,15 @@ ON CONFLICT(id) DO UPDATE SET
                 FullImageUrl = r.IsDBNull(6) ? string.Empty : r.GetString(6),
                 SourceUrl = r.IsDBNull(7) ? string.Empty : r.GetString(7),
                 Tags = r.IsDBNull(8) ? new List<string>() : r.GetString(8).Split('\u001F', StringSplitOptions.RemoveEmptyEntries).ToList(),
-                Rating = r.IsDBNull(9) ? ContentRating.Safe : (ContentRating)r.GetInt32(9),
-                CreatedAt = r.IsDBNull(10) ? default : DateTime.TryParse(r.GetString(10), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : default,
-                Score = r.IsDBNull(11) ? 0 : r.GetInt32(11),
-                FavoriteCount = r.IsDBNull(12) ? 0 : r.GetInt32(12),
-                FileExtension = r.IsDBNull(13) ? string.Empty : r.GetString(13),
-                FileSizeBytes = r.IsDBNull(14) ? 0 : r.GetInt64(14),
-                Width = r.IsDBNull(15) ? 0 : r.GetInt32(15),
-                Height = r.IsDBNull(16) ? 0 : r.GetInt32(16)
+                TagCategories = r.IsDBNull(9) ? new Dictionary<string, List<string>>() : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(r.GetString(9)) ?? new(),
+                Rating = r.IsDBNull(10) ? ContentRating.Safe : (ContentRating)r.GetInt32(10),
+                CreatedAt = r.IsDBNull(11) ? default : DateTime.TryParse(r.GetString(11), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : default,
+                Score = r.IsDBNull(12) ? 0 : r.GetInt32(12),
+                FavoriteCount = r.IsDBNull(13) ? 0 : r.GetInt32(13),
+                FileExtension = r.IsDBNull(14) ? string.Empty : r.GetString(14),
+                FileSizeBytes = r.IsDBNull(15) ? 0 : r.GetInt64(15),
+                Width = r.IsDBNull(16) ? 0 : r.GetInt32(16),
+                Height = r.IsDBNull(17) ? 0 : r.GetInt32(17)
             });
         }
         return list;
@@ -166,7 +174,7 @@ ON CONFLICT(id) DO UPDATE SET
         await using var conn = Create();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, rating, created_at, score, favorite_count, file_ext, file_size, width, height FROM posts WHERE id=@id";
+    cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, tag_categories, rating, created_at, score, favorite_count, file_ext, file_size, width, height FROM posts WHERE id=@id";
         var p = cmd.CreateParameter(); p.ParameterName = "@id"; p.Value = postId; cmd.Parameters.Add(p);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         if (await r.ReadAsync(ct))
@@ -182,14 +190,15 @@ ON CONFLICT(id) DO UPDATE SET
                 FullImageUrl = r.IsDBNull(6) ? string.Empty : r.GetString(6),
                 SourceUrl = r.IsDBNull(7) ? string.Empty : r.GetString(7),
                 Tags = r.IsDBNull(8) ? new List<string>() : r.GetString(8).Split('\u001F', StringSplitOptions.RemoveEmptyEntries).ToList(),
-                Rating = r.IsDBNull(9) ? ContentRating.Safe : (ContentRating)r.GetInt32(9),
-                CreatedAt = r.IsDBNull(10) ? default : DateTime.TryParse(r.GetString(10), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : default,
-                Score = r.IsDBNull(11) ? 0 : r.GetInt32(11),
-                FavoriteCount = r.IsDBNull(12) ? 0 : r.GetInt32(12),
-                FileExtension = r.IsDBNull(13) ? string.Empty : r.GetString(13),
-                FileSizeBytes = r.IsDBNull(14) ? 0 : r.GetInt64(14),
-                Width = r.IsDBNull(15) ? 0 : r.GetInt32(15),
-                Height = r.IsDBNull(16) ? 0 : r.GetInt32(16)
+                TagCategories = r.IsDBNull(9) ? new Dictionary<string, List<string>>() : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(r.GetString(9)) ?? new(),
+                Rating = r.IsDBNull(10) ? ContentRating.Safe : (ContentRating)r.GetInt32(10),
+                CreatedAt = r.IsDBNull(11) ? default : DateTime.TryParse(r.GetString(11), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : default,
+                Score = r.IsDBNull(12) ? 0 : r.GetInt32(12),
+                FavoriteCount = r.IsDBNull(13) ? 0 : r.GetInt32(13),
+                FileExtension = r.IsDBNull(14) ? string.Empty : r.GetString(14),
+                FileSizeBytes = r.IsDBNull(15) ? 0 : r.GetInt64(15),
+                Width = r.IsDBNull(16) ? 0 : r.GetInt32(16),
+                Height = r.IsDBNull(17) ? 0 : r.GetInt32(17)
             };
         }
         return null;

@@ -35,7 +35,15 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isE621Enabled = true;
     [ObservableProperty] private bool _isSearching = false;
     [ObservableProperty] private MediaItem? _selectedMedia;
-    partial void OnSelectedMediaChanged(MediaItem? value) { OnPropertyChanged(nameof(IsSelectedDownloaded)); OnPropertyChanged(nameof(CanOpenSelectedInBrowser)); OnPropertyChanged(nameof(CanOpenViewer)); _ = EnsurePreviewPoolInfoAsync(value); }
+    partial void OnSelectedMediaChanged(MediaItem? value)
+    {
+        OnPropertyChanged(nameof(IsSelectedDownloaded));
+        OnPropertyChanged(nameof(CanOpenSelectedInBrowser));
+        OnPropertyChanged(nameof(CanOpenViewer));
+        _ = EnsurePreviewPoolInfoAsync(value);
+        // Fire-and-forget enrichment of full post details (score, dimensions, tag categories, etc.)
+        _ = EnsureSelectedMediaDetailsAsync(value);
+    }
     [ObservableProperty] private string _statusMessage = "Ready";
     [ObservableProperty] private bool _isBackgroundCaching = false;
     [ObservableProperty] private int _backgroundCachingCurrent = 0;
@@ -593,6 +601,67 @@ public partial class MainViewModel : ObservableObject
             PreviewPoolName = string.Empty; OnPropertyChanged(nameof(PreviewPoolDisplayName)); OnPropertyChanged(nameof(PreviewPoolVisible));
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Ensure the currently selected media item has full detail metadata populated (tag categories, score,
+    /// dimensions, etc.). Pool streaming loads and DB cache hydration often omit TagCategories; this method
+    /// fetches full details from the unified API (which itself consults caches) and merges them into the
+    /// existing SelectedMedia instance without replacing the reference (so selection remains stable).
+    /// </summary>
+    private async Task EnsureSelectedMediaDetailsAsync(MediaItem? item)
+    {
+        try
+        {
+            if (item == null) return;
+            // Only e621 currently implements detailed enrichment; skip others.
+            if (!string.Equals(item.Source, "e621", StringComparison.OrdinalIgnoreCase)) return;
+            // If we already have non-pool tag categories (e.g., artist/general) assume enriched.
+            if (item.TagCategories != null && item.TagCategories.Any(kv => kv.Key != "pool_name" && kv.Key != "page_number" && kv.Key != "pool_id" && kv.Value != null && kv.Value.Count > 0))
+                return;
+            var details = await _apiService.GetMediaDetailsAsync(item.Source, item.Id);
+            if (details == null) return;
+            // Preserve existing pool context tags (pool_name/page_number) before overwriting TagCategories.
+            List<(string key, List<string> vals)> poolContext = new();
+            if (item.TagCategories != null)
+            {
+                foreach (var kv in item.TagCategories)
+                {
+                    if (kv.Key == "pool_name" || kv.Key == "page_number" || kv.Key == "pool_id")
+                    {
+                        poolContext.Add((kv.Key, kv.Value));
+                    }
+                }
+            }
+            // Merge primitive fields
+            item.Title = string.IsNullOrWhiteSpace(details.Title) ? item.Title : details.Title;
+            item.Description = string.IsNullOrWhiteSpace(details.Description) ? item.Description : details.Description;
+            item.Artist = string.IsNullOrWhiteSpace(details.Artist) ? item.Artist : details.Artist;
+            if (!string.IsNullOrWhiteSpace(details.SourceUrl)) item.SourceUrl = details.SourceUrl;
+            if (!string.IsNullOrWhiteSpace(details.PreviewUrl)) item.PreviewUrl = details.PreviewUrl;
+            if (!string.IsNullOrWhiteSpace(details.FullImageUrl)) item.FullImageUrl = details.FullImageUrl;
+            item.Score = details.Score != 0 ? details.Score : item.Score;
+            item.FavoriteCount = details.FavoriteCount != 0 ? details.FavoriteCount : item.FavoriteCount;
+            item.FileExtension = string.IsNullOrWhiteSpace(details.FileExtension) ? item.FileExtension : details.FileExtension;
+            item.FileSizeBytes = details.FileSizeBytes != 0 ? details.FileSizeBytes : item.FileSizeBytes;
+            item.Width = details.Width != 0 ? details.Width : item.Width;
+            item.Height = details.Height != 0 ? details.Height : item.Height;
+            if (details.CreatedAt != default) item.CreatedAt = details.CreatedAt;
+            // Replace tags & categories with enriched set
+            if (details.Tags != null && details.Tags.Count > 0) item.Tags = details.Tags;
+            item.TagCategories = details.TagCategories != null && details.TagCategories.Count > 0 ? details.TagCategories : (item.TagCategories ?? new Dictionary<string, List<string>>());
+            // Re-apply preserved pool context tags if they were lost
+            foreach (var (key, vals) in poolContext)
+            {
+                if (!item.TagCategories.ContainsKey(key)) item.TagCategories[key] = vals;
+            }
+            // Notify UI that SelectedMedia's internal fields changed
+            try { await Dispatcher.UIThread.InvokeAsync(() => OnPropertyChanged(nameof(SelectedMedia))); } catch { }
+        }
+        catch (Exception ex)
+        {
+            try { _logger.LogDebug(ex, "Selected media enrichment failed for {Id}", item?.Id); } catch { }
+        }
     }
 
     private void ApplyPoolsFilter()

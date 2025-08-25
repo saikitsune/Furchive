@@ -291,7 +291,6 @@ public class UnifiedApiService : IUnifiedApiService
     public void ClearE621TagSuggestCache() => TryGetE621()?.ClearTagSuggestCache();
     public void ClearE621PoolPostsCache() => TryGetE621()?.ClearPoolPostsCache();
     public void ClearE621FullPoolCache() => TryGetE621()?.ClearFullPoolCache();
-    public void ClearE621PostDetailsCache() => TryGetE621()?.ClearPostDetailsCache();
     public void ClearE621PoolDetailsCache() => TryGetE621()?.ClearPoolDetailsCache();
     public object? GetE621CacheMetrics() => TryGetE621()?.GetCacheMetrics();
 }
