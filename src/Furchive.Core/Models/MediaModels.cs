@@ -27,6 +27,8 @@ public class MediaItem
     public long FileSizeBytes { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+    // Timestamp (UTC) when this record was last fetched from the remote API (for background refresh logic)
+    public DateTime? LastFetchedAt { get; set; }
 }
 
 /// <summary>

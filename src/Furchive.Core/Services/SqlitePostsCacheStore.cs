@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS posts (
   file_size INTEGER,
   width INTEGER,
   height INTEGER,
+    last_fetched TEXT,
   pool_id INTEGER -- nullable; helps retrieving by pool
 );
 CREATE INDEX IF NOT EXISTS idx_posts_pool ON posts(pool_id);
@@ -66,8 +67,8 @@ PRAGMA table_info(posts);
         await using var tx = await conn.BeginTransactionAsync(ct);
         var cmd = conn.CreateCommand();
         cmd.Transaction = (SqliteTransaction)tx;
-    cmd.CommandText = @"INSERT INTO posts(id,source,title,description,artist,preview_url,full_url,source_url,tags,tag_categories,rating,created_at,score,favorite_count,file_ext,file_size,width,height,pool_id)
-VALUES(@id,@source,@title,@desc,@artist,@purl,@furl,@surl,@tags,@tagcats,@rating,@created,@score,@fav,@ext,@fsize,@w,@h,@pool)
+    cmd.CommandText = @"INSERT INTO posts(id,source,title,description,artist,preview_url,full_url,source_url,tags,tag_categories,rating,created_at,score,favorite_count,file_ext,file_size,width,height,last_fetched,pool_id)
+VALUES(@id,@source,@title,@desc,@artist,@purl,@furl,@surl,@tags,@tagcats,@rating,@created,@score,@fav,@ext,@fsize,@w,@h,@fetched,@pool)
 ON CONFLICT(id) DO UPDATE SET
  source=excluded.source,
  title=excluded.title,
@@ -86,6 +87,7 @@ ON CONFLICT(id) DO UPDATE SET
  file_size=excluded.file_size,
  width=excluded.width,
  height=excluded.height,
+ last_fetched=excluded.last_fetched,
  pool_id=COALESCE(excluded.pool_id, posts.pool_id);";
         var pId = cmd.CreateParameter(); pId.ParameterName = "@id"; cmd.Parameters.Add(pId);
         var pSource = cmd.CreateParameter(); pSource.ParameterName = "@source"; cmd.Parameters.Add(pSource);
@@ -105,6 +107,7 @@ ON CONFLICT(id) DO UPDATE SET
         var pFsize = cmd.CreateParameter(); pFsize.ParameterName = "@fsize"; cmd.Parameters.Add(pFsize);
         var pW = cmd.CreateParameter(); pW.ParameterName = "@w"; cmd.Parameters.Add(pW);
         var pH = cmd.CreateParameter(); pH.ParameterName = "@h"; cmd.Parameters.Add(pH);
+    var pFetched = cmd.CreateParameter(); pFetched.ParameterName = "@fetched"; cmd.Parameters.Add(pFetched);
         var pPool = cmd.CreateParameter(); pPool.ParameterName = "@pool"; cmd.Parameters.Add(pPool);
 
         foreach (var m in posts)
@@ -127,6 +130,7 @@ ON CONFLICT(id) DO UPDATE SET
             pFsize.Value = m.FileSizeBytes;
             pW.Value = m.Width;
             pH.Value = m.Height;
+            pFetched.Value = (m.LastFetchedAt ?? DateTime.UtcNow).ToString("O");
             pPool.Value = poolId.HasValue ? poolId.Value : (object?)DBNull.Value;
             await cmd.ExecuteNonQueryAsync(ct);
         }
@@ -139,7 +143,7 @@ ON CONFLICT(id) DO UPDATE SET
         await using var conn = Create();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
-    cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, tag_categories, rating, created_at, score, favorite_count, file_ext, file_size, width, height FROM posts WHERE pool_id=@pid ORDER BY id";
+    cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, tag_categories, rating, created_at, score, favorite_count, file_ext, file_size, width, height, last_fetched FROM posts WHERE pool_id=@pid ORDER BY id";
         var p = cmd.CreateParameter(); p.ParameterName = "@pid"; p.Value = poolId; cmd.Parameters.Add(p);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
@@ -163,7 +167,8 @@ ON CONFLICT(id) DO UPDATE SET
                 FileExtension = r.IsDBNull(14) ? string.Empty : r.GetString(14),
                 FileSizeBytes = r.IsDBNull(15) ? 0 : r.GetInt64(15),
                 Width = r.IsDBNull(16) ? 0 : r.GetInt32(16),
-                Height = r.IsDBNull(17) ? 0 : r.GetInt32(17)
+                Height = r.IsDBNull(17) ? 0 : r.GetInt32(17),
+                LastFetchedAt = r.IsDBNull(18) ? null : DateTime.TryParse(r.GetString(18), null, System.Globalization.DateTimeStyles.RoundtripKind, out var lf) ? lf : null
             });
         }
         return list;
@@ -174,7 +179,7 @@ ON CONFLICT(id) DO UPDATE SET
         await using var conn = Create();
         await conn.OpenAsync(ct);
         var cmd = conn.CreateCommand();
-    cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, tag_categories, rating, created_at, score, favorite_count, file_ext, file_size, width, height FROM posts WHERE id=@id";
+    cmd.CommandText = "SELECT id, source, title, description, artist, preview_url, full_url, source_url, tags, tag_categories, rating, created_at, score, favorite_count, file_ext, file_size, width, height, last_fetched FROM posts WHERE id=@id";
         var p = cmd.CreateParameter(); p.ParameterName = "@id"; p.Value = postId; cmd.Parameters.Add(p);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         if (await r.ReadAsync(ct))
@@ -198,7 +203,8 @@ ON CONFLICT(id) DO UPDATE SET
                 FileExtension = r.IsDBNull(14) ? string.Empty : r.GetString(14),
                 FileSizeBytes = r.IsDBNull(15) ? 0 : r.GetInt64(15),
                 Width = r.IsDBNull(16) ? 0 : r.GetInt32(16),
-                Height = r.IsDBNull(17) ? 0 : r.GetInt32(17)
+                Height = r.IsDBNull(17) ? 0 : r.GetInt32(17),
+                LastFetchedAt = r.IsDBNull(18) ? null : DateTime.TryParse(r.GetString(18), null, System.Globalization.DateTimeStyles.RoundtripKind, out var lf) ? lf : null
             };
         }
         return null;

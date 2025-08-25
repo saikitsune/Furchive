@@ -180,6 +180,8 @@ public partial class MainWindow : Window
             }
             catch { }
             Closing += (_, __) => { try { PersistSplitterSizes(); } catch { } };
+            // Global page navigation shortcuts (Left/Right) when window focused and not typing in a text box
+            try { KeyDown += OnWindowKeyDown; } catch { }
         }
         catch (Exception ex)
         {
@@ -194,6 +196,40 @@ public partial class MainWindow : Window
             // Propagate so App startup can catch and display a fallback error window instead of silently exiting
             throw new InvalidOperationException("Failed to construct MainWindow", ex);
         }
+    }
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        try
+        {
+            // Only interested in Left / Right arrows
+            if (e.Key != Key.Left && e.Key != Key.Right) return;
+            // Ignore if a TextBox currently has focus (user typing)
+            try
+            {
+                var focused = this.FocusManager?.GetFocusedElement();
+                if (focused is TextBox) return;
+            }
+            catch { }
+            if (DataContext is not MainViewModel vm) return;
+            if (e.Key == Key.Right)
+            {
+                if (vm.CanGoNext && vm.NextPageCommand.CanExecute(null))
+                {
+                    vm.NextPageCommand.Execute(null);
+                    e.Handled = true;
+                }
+            }
+            else if (e.Key == Key.Left)
+            {
+                if (vm.CanGoPrev && vm.PrevPageCommand.CanExecute(null))
+                {
+                    vm.PrevPageCommand.Execute(null);
+                    e.Handled = true;
+                }
+            }
+        }
+        catch { }
     }
     private void LockDownloadColumnMinimums(DataGrid dg)
     {

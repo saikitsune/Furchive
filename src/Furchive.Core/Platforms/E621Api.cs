@@ -412,13 +412,24 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
                 _logger.LogDebug(ex, "Prefetching pool context during search failed");
             }
             _logger.LogInformation("e621 search returned {Count} posts", items.Count);
+            int totalCount = 0;
+            try
+            {
+                if (httpResp.Headers.TryGetValues("X-Total-Count", out var tv))
+                {
+                    var first = tv.FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(first) && int.TryParse(first, out var parsed) && parsed >= 0)
+                        totalCount = parsed;
+                }
+            }
+            catch { }
             var resultObj = new SearchResult
             {
                 Items = items,
                 CurrentPage = parameters.Page,
                 // Determine next page based on server page size, not client-side filtering
                 HasNextPage = rawCount >= limit,
-                TotalCount = 0
+                TotalCount = totalCount
             };
             // Not cached (by design)
             return resultObj;
@@ -681,7 +692,34 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
             // Prefer normalized posts store first
             if (_postsStore != null)
             {
-                try { var stored = await _postsStore.GetPostAsync(id); if (stored != null) return stored; } catch { }
+                try
+                {
+                    var stored = await _postsStore.GetPostAsync(id);
+                    if (stored != null)
+                    {
+                        // If stale beyond freshness window, trigger background refresh while serving cached
+                        var staleAfter = TimeSpan.FromHours(6);
+                        if (!stored.LastFetchedAt.HasValue || (DateTime.UtcNow - stored.LastFetchedAt.Value) > staleAfter)
+                        {
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    var fresh = await FetchPostDetailsAsync(id);
+                                    if (fresh != null)
+                                    {
+                                        fresh.LastFetchedAt = DateTime.UtcNow;
+                                        try { await _postsStore.UpsertPostsAsync(new[] { fresh }); } catch { }
+                                        if (int.TryParse(id, out var pid)) _postDetailsCache[pid] = (fresh, DateTime.UtcNow.Add(_postDetailsTtl));
+                                    }
+                                }
+                                catch (Exception exBg) { _logger.LogDebug(exBg, "Background refresh failed for post {Id}", id); }
+                            });
+                        }
+                        return stored;
+                    }
+                }
+                catch { }
             }
             // In-memory cache check
             var hasPostId = int.TryParse(id, out var postIdInt);
@@ -743,32 +781,39 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
             if (post == null) return null;
 
             var item = MapPostToMediaItem(post);
-            try
+            if (item != null) item.LastFetchedAt = DateTime.UtcNow;
+            if (item != null)
             {
-                var pools = post.Pools ?? post.Relationships?.Pools;
-                if (pools != null && pools.Count > 0)
+                try
                 {
-                    var poolId = pools[0];
-                    var det = await GetPoolDetailCachedAsync(poolId, options, CancellationToken.None);
-                    if (det != null)
+                    var pools = post.Pools ?? post.Relationships?.Pools;
+                    if (pools != null && pools.Count > 0)
                     {
-                        int page = 0;
-                        if (det.PostIds != null && hasPostId)
+                        var poolId = pools[0];
+                        var det = await GetPoolDetailCachedAsync(poolId, options, CancellationToken.None);
+                        if (det != null)
                         {
-                            var idx = det.PostIds.FindIndex(x => x == postIdInt);
-                            if (idx >= 0) page = idx + 1;
+                            int page = 0;
+                            if (det.PostIds != null && hasPostId)
+                            {
+                                var idx = det.PostIds.FindIndex(x => x == postIdInt);
+                                if (idx >= 0) page = idx + 1;
+                            }
+                            if (item != null)
+                            {
+                                item!.TagCategories ??= new Dictionary<string, List<string>>();
+                                item!.TagCategories["pool_id"] = new List<string> { poolId.ToString() };
+                                item!.TagCategories["pool_name"] = new List<string> { det.Name ?? ($"Pool {poolId}") };
+                                if (page > 0)
+                                    item!.TagCategories["page_number"] = new List<string> { page.ToString("D5") };
+                            }
                         }
-                        item.TagCategories ??= new Dictionary<string, List<string>>();
-                        item.TagCategories["pool_id"] = new List<string> { poolId.ToString() };
-                        item.TagCategories["pool_name"] = new List<string> { det.Name ?? ($"Pool {poolId}") };
-                        if (page > 0)
-                            item.TagCategories["page_number"] = new List<string> { page.ToString("D5") };
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Enriching media details with pool context failed for {Id}", id);
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Enriching media details with pool context failed for {Id}", id);
+                }
             }
 
             if (hasPostId && item != null)
@@ -796,9 +841,10 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         var json = await resp.Content.ReadAsStringAsync();
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var wrapper = JsonSerializer.Deserialize<E621PostWrapper>(json, options);
-        var post = wrapper?.Post;
-        if (post == null) return null;
-        var item = MapPostToMediaItem(post);
+    var post = wrapper?.Post;
+    if (post == null) return null;
+    var item = MapPostToMediaItem(post);
+    if (item != null) item.LastFetchedAt = DateTime.UtcNow;
         try
         {
             var pools = post.Pools ?? post.Relationships?.Pools;

@@ -139,7 +139,32 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private int _totalCount = 0;
     public bool CanGoPrev => CurrentPage > 1;
     public bool CanGoNext => HasNextPage;
-    public string PageInfo => $"Page {CurrentPage}{(TotalCount > 0 ? $" • {TotalCount} total" : string.Empty)}";
+    private int _lastPageSize = 50; // updated each search
+    // Sticky snapshot of last known positive TotalCount so transient zero assignments (e.g. from
+    // background refresh paths that don't carry X-Total-Count) don't make PageInfo regress
+    // from "Page N / T" back to just "Page N" causing flicker.
+    private int _stickyTotalCount = 0;
+    partial void OnTotalCountChanged(int value)
+    {
+        if (value > 0 && value >= _stickyTotalCount)
+            _stickyTotalCount = value;
+        // Ensure PageInfo recomputes any time total count changes
+        OnPropertyChanged(nameof(PageInfo));
+    }
+    public string PageInfo
+    {
+        get
+        {
+            // Prefer current positive TotalCount; fall back to last sticky positive value.
+            var effectiveTotal = TotalCount > 0 ? TotalCount : _stickyTotalCount;
+            if (effectiveTotal > 0 && _lastPageSize > 0)
+            {
+                var totalPages = (int)Math.Ceiling(effectiveTotal / (double)_lastPageSize);
+                return $"Page {CurrentPage} / {totalPages}";
+            }
+            return $"Page {CurrentPage}";
+        }
+    }
 
     // Gallery sizing
     public double GalleryTileWidth => 180 * GalleryScale;
@@ -373,8 +398,8 @@ public partial class MainViewModel : ObservableObject
             _currentSearchCts = new CancellationTokenSource();
             var token = _currentSearchCts.Token;
             var localVersion = System.Threading.Interlocked.Increment(ref _contextVersion);
-            if (Dispatcher.UIThread.CheckAccess()) { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); } }
-            else { await Dispatcher.UIThread.InvokeAsync(() => { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); } }); }
+            if (Dispatcher.UIThread.CheckAccess()) { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); _stickyTotalCount = 0; } }
+            else { await Dispatcher.UIThread.InvokeAsync(() => { IsSearching = true; StatusMessage = "Searching..."; if (reset) { SearchResults.Clear(); ClearAggregatedTagCategories(); _stickyTotalCount = 0; } }); }
 
             await EnsureE621AuthAsync();
             var sources = new List<string>(); if (IsE621Enabled) sources.Add("e621"); if (!sources.Any()) sources.Add("e621");
@@ -382,7 +407,9 @@ public partial class MainViewModel : ObservableObject
             // Virtual tag handling: translate no_artist -> arttags:0
             ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
-            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
+            var pageSize = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
+            _lastPageSize = pageSize;
+            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = pageSize };
             // Execute search. _apiService is injected via ctor and never null; assert for static analysis clarity.
             var api = _apiService;
             System.Diagnostics.Debug.Assert(api != null, "_apiService should have been injected");
@@ -424,6 +451,7 @@ public partial class MainViewModel : ObservableObject
                 TotalCount = totalCountLocal;
                 OnPropertyChanged(nameof(CanGoPrev));
                 OnPropertyChanged(nameof(CanGoNext));
+                // PageInfo change already triggered via TotalCount partial but keep explicit for clarity
                 OnPropertyChanged(nameof(PageInfo));
             });
             bool hadErrors = resultErrors.Count > 0;
@@ -456,7 +484,9 @@ public partial class MainViewModel : ObservableObject
             ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1;
-            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
+            var pageSize2 = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
+            _lastPageSize = pageSize2;
+            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = pageSize2 };
             var result = await _apiService.SearchAsync(searchParams);
             List<MediaItem> filteredItems = result.Items ?? new List<MediaItem>(); // non-null list
             if (filteredItems.Count > 0)
@@ -508,7 +538,9 @@ public partial class MainViewModel : ObservableObject
             ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var nextPage = CurrentPage + 1; // do NOT assign to CurrentPage
-            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
+            var pageSize3 = _settingsService.GetSetting<int>("MaxResultsPerSource", 50);
+            _lastPageSize = pageSize3;
+            var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = pageSize3 };
             var result = await _apiService.SearchAsync(searchParams);
             List<MediaItem> filteredItems = result.Items ?? new List<MediaItem>(); // non-null list
             if (filteredItems.Count > 0)
