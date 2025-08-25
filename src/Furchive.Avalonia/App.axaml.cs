@@ -2,8 +2,6 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Controls;
-using Avalonia.Media;
-using Avalonia.Layout;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -13,14 +11,12 @@ using Furchive.Core.Services;
 using Furchive.Core.Platforms;
 using Furchive.Avalonia.Views;
 using Furchive.Avalonia.ViewModels;
-// Removed WebView infrastructure usage (migrated to LibVLC for video)
 using Furchive.Avalonia.Services;
-using Furchive.Avalonia.Infrastructure; // for FileLoggerProvider
+using Furchive.Avalonia.Infrastructure;
 using System.Net.Http;
 using Avalonia.Styling;
-using Avalonia.Platform;
-using Avalonia.Media.Imaging;
-// (WebView explicit builder namespace not present in current package build)
+using System.IO;
+using System;
 
 namespace Furchive.Avalonia;
 
@@ -37,72 +33,51 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-    try
-    {
-        // Simple file trace to diagnose startup even if regular logging fails
-        string traceFile = string.Empty;
+        // Preload settings just enough to know logging level
+        SettingsService? preloadedSettings = null;
+        bool debugLogging = false;
         try
         {
-            var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
-            Directory.CreateDirectory(logsRoot);
-            traceFile = Path.Combine(logsRoot, "startup-trace.log");
-            File.WriteAllText(traceFile, $"[{DateTime.Now:O}] Enter OnFrameworkInitializationCompleted\n");
+            var tempLoggerFactory = LoggerFactory.Create(b => { });
+            var tempLogger = tempLoggerFactory.CreateLogger<SettingsService>();
+            preloadedSettings = new SettingsService(tempLogger);
+            preloadedSettings.LoadAsync().GetAwaiter().GetResult();
+            debugLogging = preloadedSettings.GetSetting<bool>("DebugLoggingEnabled", false);
         }
         catch { }
 
-    // WebView initialization path removed.
-
-    // Clean any leftover animated temp cache in app temp directory at startup
-        try
-        {
-            var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
-            if (Directory.Exists(tempDir))
-            {
-                foreach (var f in Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories)) { try { File.Delete(f); } catch { } }
-                foreach (var d in Directory.EnumerateDirectories(tempDir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length)) { try { if (!Directory.EnumerateFileSystemEntries(d).Any()) Directory.Delete(d); } catch { } }
-            }
-        }
-        catch { }
-
-    var builder = Host.CreateDefaultBuilder();
+        var builder = Host.CreateDefaultBuilder();
         builder.ConfigureServices((context, services) =>
         {
             services.AddSingleton<IConfiguration>(context.Configuration);
             services.AddLogging(logging =>
             {
                 logging.ClearProviders();
-                logging.AddDebug();
+                logging.SetMinimumLevel(debugLogging ? LogLevel.Debug : LogLevel.Information);
+                if (debugLogging) logging.AddDebug();
                 logging.AddConsole();
-                // Write logs to a user-writable folder to avoid permission issues under Program Files
                 try
                 {
                     var logsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "logs");
                     Directory.CreateDirectory(logsRoot);
                     var debugLog = Path.Combine(logsRoot, "debug.log");
-                    // Truncate on each run to keep the file small
                     try { File.WriteAllText(debugLog, string.Empty); } catch { }
-                    // Also truncate viewer and vlc logs at app startup for fresh diagnostics each run
-                    try { File.WriteAllText(Path.Combine(logsRoot, "viewer.log"), string.Empty); } catch { }
-                    try { File.WriteAllText(Path.Combine(logsRoot, "vlc.log"), string.Empty); } catch { }
                     logging.AddProvider(new FileLoggerProvider(debugLog));
                 }
-                catch
-                {
-                    // If logging cannot initialize, continue with default providers only
-                }
+                catch { }
             });
             services.AddHttpClient();
-            services.AddSingleton<ISettingsService, SettingsService>();
+            if (preloadedSettings != null) services.AddSingleton<ISettingsService>(preloadedSettings); else services.AddSingleton<ISettingsService, SettingsService>();
             services.AddSingleton<IUnifiedApiService, UnifiedApiService>();
             services.AddSingleton<IDownloadsStore, SqliteDownloadsStore>();
             services.AddSingleton<IDownloadService, DownloadService>();
-            // Local media proxy to serve HTML5 player and proxy video with headers
             services.AddSingleton<ILocalMediaProxy, LocalMediaProxyService>();
             services.AddHostedService(sp => (LocalMediaProxyService)sp.GetRequiredService<ILocalMediaProxy>());
             services.AddSingleton<IThumbnailCacheService, ThumbnailCacheService>();
             services.AddSingleton<ICpuWorkQueue, CpuWorkQueue>();
             services.AddSingleton<IPlatformShellService, PlatformShellService>();
             services.AddSingleton<IPoolsCacheStore, SqlitePoolsCacheStore>();
+            services.AddSingleton<IPostsCacheStore, SqlitePostsCacheStore>();
             services.AddSingleton<IE621CacheStore, E621SqliteCacheStore>();
             services.AddSingleton<IPoolPruningService, PoolPruningService>();
             services.AddHostedService(sp => (CpuWorkQueue)sp.GetRequiredService<ICpuWorkQueue>());
@@ -112,223 +87,38 @@ public partial class App : Application
                 var logger = sp.GetRequiredService<ILogger<E621Api>>();
                 var settings = sp.GetService<ISettingsService>();
                 var cache = sp.GetService<IE621CacheStore>();
-                var api = new E621Api(http, logger, settings, cache);
-                return api;
+                return new E621Api(http, logger, settings, cache);
             });
-            services.AddTransient<Furchive.Avalonia.ViewModels.MainViewModel>();
+            services.AddTransient<MainViewModel>();
             services.AddTransient<MainWindow>();
         });
-    _host = builder.Build();
-    try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Host built\n"); } catch { }
-        // Start host synchronously to avoid returning before MainWindow is created
+
+        _host = builder.Build();
         _host.StartAsync().GetAwaiter().GetResult();
         Services = _host.Services;
-    try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Host started\n"); } catch { }
-        try
-        {
-            if (!string.IsNullOrEmpty(traceFile))
-            {
-                var lt = ApplicationLifetime != null ? ApplicationLifetime.GetType().FullName : "null";
-                File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Lifetime after host start: {lt}\n");
-            }
-        }
-        catch { }
+        _settings = preloadedSettings ?? Services.GetService<ISettingsService>();
 
-    // Optionally show a tiny placeholder window early to prove GUI can show while we continue init
-    // Remove placeholder logic to avoid blocking startup
+        ApplyThemeFromSettings();
 
-    // Ensure settings are loaded from disk before creating any windows/view models
-        try
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var sp = Services;
-            if (sp != null)
-            {
-        _settings = sp.GetService<ISettingsService>();
-        if (_settings != null)
-                {
-                    try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Settings load starting\n"); } catch { }
-                    // Load settings synchronously to guarantee availability
-            _settings.LoadAsync().GetAwaiter().GetResult();
-                    try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Settings loaded\n"); } catch { }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            try
-            {
-                if (Services is IServiceProvider sp)
-                {
-                    var logger = sp.GetService<ILogger<App>>();
-                    logger?.LogError(ex, "Failed to load settings at startup");
-                }
-            }
-            catch { }
+            var wnd = Services!.GetRequiredService<MainWindow>();
+            desktop.MainWindow = wnd;
+            if (!wnd.IsVisible) wnd.Show();
+            desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
         }
 
-        try
-        {
-            if (!string.IsNullOrEmpty(traceFile))
-            {
-                var lt2 = ApplicationLifetime != null ? ApplicationLifetime.GetType().FullName : "null";
-                File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Lifetime: {lt2}\n");
-            }
-        }
-        catch { }
-
-        // Apply forced dark theme before creating main window. Theme switching removed.
-        try
-        {
-            ApplyThemeFromSettings(); // now always dark
-            // Load icon resource dictionary once
-            try
-            {
-                var rd = new ResourceDictionary();
-                rd.MergedDictionaries.Add((ResourceDictionary)AvaloniaXamlLoader.Load(new Uri("avares://Furchive/Views/IconResources.axaml")));
-                Current!.Resources.MergedDictionaries.Add(rd);
-                ApplyIconTheme();
-            }
-            catch { }
-        }
-        catch { }
-
-    if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            try
-            {
-                var sp = _host!.Services;
-                var logger = sp.GetService<ILogger<App>>();
-                var wnd = sp.GetRequiredService<MainWindow>();
-                desktop.MainWindow = wnd;
-                logger?.LogInformation("MainWindow created and assigned.");
-                if (!wnd.IsVisible) wnd.Show();
-                desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
-                try
-                {
-                    desktop.Exit += (_, __) =>
-                    {
-                        try
-                        {
-                            // Clear legacy temp dir
-                            var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
-                            if (Directory.Exists(tempDir))
-                            {
-                                foreach (var file in Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories))
-                                { try { File.Delete(file); } catch { } }
-                                foreach (var dir in Directory.EnumerateDirectories(tempDir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length))
-                                { try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); } catch { } }
-                            }
-                        }
-                        catch { }
-                        // Animated cache now shares the temp directory; already cleared above
-                    };
-                }
-                catch { }
-                if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] MainWindow shown and shutdown mode set\n");
-            }
-            catch (Exception ex)
-            {
-                var logger = Services?.GetService<ILogger<App>>();
-                logger?.LogError(ex, "Failed to create or assign MainWindow");
-                if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] EXCEPTION creating/assigning MainWindow: {ex}\n");
-                // Show a minimal fallback window to surface the error instead of silently hanging
-                var tb = new TextBlock { Text = ex.ToString(), TextWrapping = TextWrapping.Wrap };
-                var sv = new ScrollViewer { Content = tb, Margin = new Thickness(12) };
-                var fb = new Window { Title = "Furchive - Startup Error", Width = 900, Height = 600, Content = sv };
-                desktop.MainWindow = fb;
-                fb.Show();
-                return;
-            }
-        }
-        else
-        {
-            // Fallback: try to show a window even if lifetime isn't classic, for diagnostics
-            try
-            {
-                var sp = _host!.Services;
-                var wnd = sp.GetRequiredService<MainWindow>();
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Non-classic lifetime; calling Show() on MainWindow\n"); } catch { }
-                wnd.Show();
-            }
-            catch (Exception ex)
-            {
-                try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] EXCEPTION in non-classic Show(): {ex}\n"); } catch { }
-                throw;
-            }
-        }
         base.OnFrameworkInitializationCompleted();
-        try { if (!string.IsNullOrEmpty(traceFile)) File.AppendAllText(traceFile, $"[{DateTime.Now:O}] Exiting OnFrameworkInitializationCompleted\n"); } catch { }
-        }
-        catch (Exception ex)
-        {
-            try
-            {
-                var path = Path.Combine(AppContext.BaseDirectory, "startup-fatal.txt");
-                File.WriteAllText(path, ex.ToString());
-            }
-            catch { }
-            throw;
-        }
     }
 
     private void ApplyThemeFromSettings()
     {
-        // Always force dark theme; ignore stored ThemeMode setting.
-        var variant = ThemeVariant.Dark;
-        try { RequestedThemeVariant = variant; } catch { }
         try
         {
-            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.Windows != null)
-            {
-                foreach (var w in desktop.Windows)
-                {
-                    try { w.RequestedThemeVariant = variant; } catch { }
-                }
-            }
+            RequestedThemeVariant = ThemeVariant.Dark;
         }
         catch { }
-        try { ApplyIconTheme(); } catch { }
     }
 
-    private void ApplyIconTheme()
-    {
-        bool dark;
-        var variant = RequestedThemeVariant;
-        if (variant == ThemeVariant.Default)
-            dark = true; // heuristic default
-        else
-            dark = variant == ThemeVariant.Dark;
-
-        var primaryPrefix = dark ? "W" : "B";
-        var fallbackPrefix = "B"; // always have black versions
-
-        void Set(string key, string stem)
-        {
-            var primaryUri = new Uri($"avares://Furchive/Assets/{primaryPrefix}{stem}.png");
-            var fallbackUri = new Uri($"avares://Furchive/Assets/{fallbackPrefix}{stem}.png");
-            try
-            {
-                // Try primary
-                using var s = AssetLoader.Open(primaryUri);
-                Current!.Resources[key] = new Bitmap(s);
-            }
-            catch
-            {
-                try
-                {
-                    using var s2 = AssetLoader.Open(fallbackUri);
-                    Current!.Resources[key] = new Bitmap(s2);
-                }
-                catch { }
-            }
-        }
-
-        Set("Icon.Play", "play");
-        Set("Icon.Pause", "pause");
-        Set("Icon.LoopOn", "loop");
-        Set("Icon.LoopOff", "loop-off");
-        Set("Icon.Volume", "volume");
-        Set("Icon.VolumeMute", "volume-mute");
-        Set("Icon.Fullscreen", "fullscreen");
-    }
+    private void ApplyIconTheme() { /* no-op simplified */ }
 }

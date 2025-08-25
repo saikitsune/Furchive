@@ -27,6 +27,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ILogger<MainViewModel> _logger;
     private readonly string _cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache");
     private readonly IPoolsCacheStore _cacheStore;
+    private readonly IPostsCacheStore _postsCache;
     private readonly IPlatformApi? _e621Platform;
     private readonly IPlatformShellService? _shell;
     private readonly IPoolPruningService _pruningService;
@@ -140,9 +141,9 @@ public partial class MainViewModel : ObservableObject
     private double _galleryScale = 1.0;
     public double GalleryScale { get => _galleryScale; set { if (Math.Abs(_galleryScale - value) > 0.0001) { _galleryScale = value; OnPropertyChanged(nameof(GalleryScale)); OnPropertyChanged(nameof(GalleryTileWidth)); OnPropertyChanged(nameof(GalleryTileHeight)); OnPropertyChanged(nameof(GalleryImageSize)); OnPropertyChanged(nameof(GalleryFontSize)); } } }
 
-    public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore, IPoolPruningService pruningService, IPlatformShellService? shell = null)
+    public MainViewModel(IUnifiedApiService apiService, IDownloadService downloadService, ISettingsService settingsService, ILogger<MainViewModel> logger, IEnumerable<IPlatformApi> platformApis, IThumbnailCacheService thumbCache, ICpuWorkQueue cpuQueue, IPoolsCacheStore cacheStore, IPostsCacheStore postsCache, IPoolPruningService pruningService, IPlatformShellService? shell = null)
     {
-        _apiService = apiService; _downloadService = downloadService; _settingsService = settingsService; _logger = logger; _thumbCache = thumbCache; _cpuQueue = cpuQueue; _cacheStore = cacheStore; _shell = shell;
+        _apiService = apiService; _downloadService = downloadService; _settingsService = settingsService; _logger = logger; _thumbCache = thumbCache; _cpuQueue = cpuQueue; _cacheStore = cacheStore; _postsCache = postsCache; _shell = shell;
     _pruningService = pruningService;
     foreach (var p in platformApis) { _apiService.RegisterPlatform(p); if (string.Equals(p.PlatformName, "e621", StringComparison.OrdinalIgnoreCase)) { _e621Platform = p; } }
     _downloadService.DownloadStatusChanged += OnDownloadStatusChanged; _downloadService.DownloadProgressUpdated += OnDownloadProgressUpdated;
@@ -156,6 +157,7 @@ public partial class MainViewModel : ObservableObject
         // Pools: load from SQLite cache on startup; refresh only if empty
         // Synchronously load from SQLite so the list appears instantly; background work only if needed
     try { _cacheStore.InitializeAsync().GetAwaiter().GetResult(); } catch (Exception ex) { _logger.LogWarning(ex, "Pools cache store initialization failed (continuing)"); }
+    try { _postsCache.InitializeAsync().GetAwaiter().GetResult(); } catch (Exception ex) { _logger.LogWarning(ex, "Posts cache store initialization failed (continuing)"); }
         // Migration guard: if DB has meta timestamp but zero pools, force a rebuild
         try
         {
@@ -181,8 +183,69 @@ public partial class MainViewModel : ObservableObject
         catch { }
         if (!hadCachedStartup)
         {
-            // No cache -> do first-time full fetch (async) unless already scheduled by guard
-            if (!_rebuildScheduled) _ = Task.Run(RefreshPoolsIfStaleAsync);
+            // No cache -> attempt fast bootstrap from e621 DB export, then incremental API catch‑up.
+            if (!_rebuildScheduled)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        PoolsStatusText = "importing pools export…";
+                        if (_cacheStore is Furchive.Core.Services.SqlitePoolsCacheStore concrete)
+                        {
+                            (bool success, DateTime? exportDateUtc) = await concrete.ImportPoolsFromLatestExportAsync();
+                            if (success)
+                            {
+                                var loaded = await LoadPoolsFromDbAsync();
+                                if (loaded)
+                                {
+                                    _poolsCacheLastSavedUtc = exportDateUtc ?? DateTime.UtcNow.AddDays(-1);
+                                    // Fetch pools created/updated since export to catch up
+                                    try
+                                    {
+                                        var newer = await _apiService.GetPoolsUpdatedSinceAsync("e621", _poolsCacheLastSavedUtc);
+                                        if (newer != null && newer.Count > 0)
+                                        {
+                                            var current = Pools.ToDictionary(p => p.Id);
+                                            foreach (var n in newer)
+                                            {
+                                                if (!n.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && n.PostCount > 0)
+                                                {
+                                                    if (current.TryGetValue(n.Id, out var existing))
+                                                    {
+                                                        // Preserve extended metadata if API object lacks it
+                                                        if (string.IsNullOrEmpty(n.CreatedAt)) n.CreatedAt = existing.CreatedAt;
+                                                        if (string.IsNullOrEmpty(n.UpdatedAt)) n.UpdatedAt = existing.UpdatedAt;
+                                                        if (!n.CreatorId.HasValue && existing.CreatorId.HasValue) n.CreatorId = existing.CreatorId;
+                                                        if (string.IsNullOrEmpty(n.Description)) n.Description = existing.Description;
+                                                        if (string.IsNullOrEmpty(n.Category)) n.Category = existing.Category;
+                                                        if (string.IsNullOrEmpty(n.PostIdsRaw)) n.PostIdsRaw = existing.PostIdsRaw;
+                                                        // IsActive rarely provided; keep existing if API omitted
+                                                        if (!n.IsActive && existing.IsActive) n.IsActive = existing.IsActive;
+                                                    }
+                                                    current[n.Id] = n;
+                                                }
+                                            }
+                                            var merged = current.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                                            Dispatcher.UIThread.Post(() => { Pools.Clear(); foreach (var p in merged) Pools.Add(p); ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; });
+                                            try { await _cacheStore.UpsertPoolsAsync(merged); var saved = await _cacheStore.GetPoolsSavedAtAsync(); _poolsCacheLastSavedUtc = saved ?? _poolsCacheLastSavedUtc; } catch { }
+                                        }
+                                    }
+                                    catch (Exception ex) { _logger.LogDebug(ex, "Incremental catch-up after export import failed"); }
+                                    return; // done
+                                }
+                            }
+                        }
+                        // Fallback to legacy full API fetch
+                        await RefreshPoolsIfStaleAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Pools export bootstrap failed; falling back to API");
+                        try { await RefreshPoolsIfStaleAsync(); } catch { }
+                    }
+                });
+            }
         }
         else
         {
@@ -191,8 +254,42 @@ public partial class MainViewModel : ObservableObject
         }
     // Restore last session only if enabled in settings
     try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) { _ = RestoreLastSessionAsync(); } } catch { _ = RestoreLastSessionAsync(); }
-    WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
-        WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => { try { Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; }); var file = GetPoolsCacheFilePath(); try { if (File.Exists(file)) File.Delete(file); } catch { } _poolsCacheLastSavedUtc = DateTime.MinValue; await RefreshPoolsIfStaleAsync(); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); } });
+        WeakReferenceMessenger.Default.Register<PoolsCacheRebuiltMessage>(this, async (_, __) => { try { _ = await LoadPoolsFromDbAsync(); Dispatcher.UIThread.Post(() => ApplyPoolsFilter()); } catch (Exception ex) { _logger.LogWarning(ex, "Failed to update pools after cache rebuild notification"); } });
+        WeakReferenceMessenger.Default.Register<PoolsCacheRebuildRequestedMessage>(this, async (_, __) => {
+            try
+            {
+                Dispatcher.UIThread.Post(() => { Pools.Clear(); FilteredPools.Clear(); PoolsStatusText = "rebuilding cache…"; });
+                _poolsCacheLastSavedUtc = DateTime.MinValue;
+                // Attempt forced re-import from latest export first for speed
+                bool imported = false;
+                try
+                {
+                    if (_cacheStore is Furchive.Core.Services.SqlitePoolsCacheStore concrete)
+                    {
+                        (bool success, DateTime? exportDateUtc) = await concrete.ImportPoolsFromLatestExportAsync(force: true);
+                        if (success)
+                        {
+                            imported = true;
+                            var loaded = await LoadPoolsFromDbAsync();
+                            if (loaded)
+                            {
+                                _poolsCacheLastSavedUtc = exportDateUtc ?? DateTime.UtcNow;
+                                Dispatcher.UIThread.Post(() => { ApplyPoolsFilter(); PoolsStatusText = $"{Pools.Count} pools"; });
+                            }
+                        }
+                    }
+                }
+                catch (Exception exImp) { _logger.LogDebug(exImp, "Forced pools export reimport failed; falling back to API"); }
+                if (!imported)
+                {
+                    // Fallback: delete cache DB file then full API refresh
+                    var file = GetPoolsCacheFilePath();
+                    try { if (File.Exists(file)) File.Delete(file); } catch { }
+                    await RefreshPoolsIfStaleAsync();
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to rebuild pools cache on request"); }
+        });
     WeakReferenceMessenger.Default.Register<SettingsSavedMessage>(this, (_, __) => { try { UpdateFavoritesVisibility(); GalleryScale = _settingsService.GetSetting<double>("GalleryScale", GalleryScale); } catch (Exception ex) { _logger.LogDebug(ex, "SettingsSavedMessage handling failed"); } });
     WeakReferenceMessenger.Default.Register<PoolsSoftRefreshRequestedMessage>(this, async (_, __) => { try { await SoftRefreshPoolsAsync(); } catch (Exception ex) { _logger.LogDebug(ex, "PoolsSoftRefreshRequested handling failed"); } });
     }
@@ -254,8 +351,15 @@ public partial class MainViewModel : ObservableObject
 
     private async Task PerformSearchAsync(int page, bool reset)
     {
-        try
-        {
+    try
+    {
+            // NOTE: The nullable analyzer (CS8602) repeatedly flags several dereferences in this method
+            // (rawResultLocal.TotalCount, foreach candidate usage, etc.) despite explicit coalescing
+            // ("?? new SearchResult()") and defensive null filtering. The involved members are all
+            // initialized with non-null defaults (see SearchResult.Items/Errors). After multiple
+            // refactors the warnings persist as false positives, so we locally suppress them with a
+            // targeted pragma. If invariants change, remove this pragma and re‑evaluate.
+#pragma warning disable CS8602 // Dereference of a possibly null reference (false positives explained above)
             // Cancel any prior search/pool streaming context
             _currentSearchCts?.Cancel();
             _currentSearchCts = new CancellationTokenSource();
@@ -271,43 +375,57 @@ public partial class MainViewModel : ObservableObject
             ProcessVirtualNoArtist(ref includeTags, ref excludeTags);
             var ratings = RatingFilterIndex switch { 0 => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit }, 1 => new List<ContentRating> { ContentRating.Explicit }, 2 => new List<ContentRating> { ContentRating.Questionable }, 3 => new List<ContentRating> { ContentRating.Safe }, _ => new List<ContentRating> { ContentRating.Safe, ContentRating.Questionable, ContentRating.Explicit } };
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = page, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
-            var result = await _apiService.SearchAsync(searchParams);
+            // Execute search. _apiService is injected via ctor and never null; assert for static analysis clarity.
+            var api = _apiService;
+            System.Diagnostics.Debug.Assert(api != null, "_apiService should have been injected");
+            SearchResult rawResultLocal = await api.SearchAsync(searchParams) ?? new SearchResult();
             if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
-            var filteredItems = result.Items; // API applied arttags:0 filter
-            if (Dispatcher.UIThread.CheckAccess()) {
-                if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
-                if (filteredItems.Count > 0)
-                {
-                    // Batch add to reduce CollectionChanged churn
-                    var toAdd = new List<MediaItem>(filteredItems.Count);
-                    foreach (var item in filteredItems)
-                    {
-                        if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
-                        toAdd.Add(item);
-                        AddItemTagCategories(item);
-                    }
-                    AddRange(SearchResults, toAdd);
-                }
-                OnPropertyChanged(nameof(AggregatedTagCategories));
-                CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo));
+            // Materialize into new collections so later mutations (if any) won't affect UI snapshot; Items/Errors are non-null via model defaults
+            List<MediaItem> resultItems = rawResultLocal.Items != null && rawResultLocal.Items.Count > 0 ? new List<MediaItem>(rawResultLocal.Items!) : new List<MediaItem>();
+            Dictionary<string, string> resultErrors = rawResultLocal.Errors != null && rawResultLocal.Errors.Count > 0 ? new Dictionary<string, string>(rawResultLocal.Errors!) : new Dictionary<string, string>();
+            // Snapshot simple scalars before marshaling to UI thread to avoid analyzer closure nullability confusion
+            bool hasNextPageLocal = rawResultLocal.HasNextPage;
+            int totalCountLocal = rawResultLocal.TotalCount;
+            // Persist (upsert) post details ONLY. Search queries themselves are intentionally NOT cached;
+            // every new search always hits the remote API to surface latest edits/score/ratings.
+            if (resultItems.Count > 0)
+            {
+                try { _ = Task.Run(() => _postsCache.UpsertPostsAsync(resultItems, null)); } catch { }
             }
-            else { await Dispatcher.UIThread.InvokeAsync(() => {
+            // Single unified UI thread update to avoid duplicated branches that confused nullable analysis
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
                 if (token.IsCancellationRequested || localVersion != _contextVersion) return; // stale
-                if (filteredItems.Count > 0)
+                if (resultItems.Count > 0)
                 {
-                    var toAdd = new List<MediaItem>(filteredItems.Count);
-                    foreach (var item in filteredItems)
+                    var toAdd = new List<MediaItem>(resultItems.Count);
+                    foreach (var candidate in resultItems)
                     {
-                        if (string.IsNullOrWhiteSpace(item.PreviewUrl) && !string.IsNullOrWhiteSpace(item.FullImageUrl)) item.PreviewUrl = item.FullImageUrl;
-                        toAdd.Add(item);
-                        AddItemTagCategories(item);
+                        if (candidate is null) continue; // skip any unexpected null entries
+                        var m = candidate; // local non-null ref for analyzer
+                        if (string.IsNullOrWhiteSpace(m.PreviewUrl) && !string.IsNullOrWhiteSpace(m.FullImageUrl)) m.PreviewUrl = m.FullImageUrl;
+                        toAdd.Add(m);
+                        AddItemTagCategories(m);
                     }
+                    // SearchResults property is non-null (initialized at declaration)
                     AddRange(SearchResults, toAdd);
                 }
                 OnPropertyChanged(nameof(AggregatedTagCategories));
-                CurrentPage = page; HasNextPage = result.HasNextPage; TotalCount = result.TotalCount; OnPropertyChanged(nameof(CanGoPrev)); OnPropertyChanged(nameof(CanGoNext)); OnPropertyChanged(nameof(PageInfo)); }); }
-            var status = result.Errors.Any() ? $"Found {filteredItems.Count} items (errors: {string.Join(", ", result.Errors.Keys)})" : $"Found {filteredItems.Count} items"; if (Dispatcher.UIThread.CheckAccess()) StatusMessage = status; else await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = status);
+                CurrentPage = page;
+                HasNextPage = hasNextPageLocal;
+                TotalCount = totalCountLocal;
+                OnPropertyChanged(nameof(CanGoPrev));
+                OnPropertyChanged(nameof(CanGoNext));
+                OnPropertyChanged(nameof(PageInfo));
+            });
+            bool hadErrors = resultErrors.Count > 0;
+            int count = resultItems.Count;
+            string errorsJoined = hadErrors ? string.Join(", ", resultErrors.Keys) : string.Empty;
+            var status = hadErrors ? $"Found {count} items (errors: {errorsJoined})" : $"Found {count} items";
+            if (Dispatcher.UIThread.CheckAccess()) StatusMessage = status; else await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = status);
             try { if (_settingsService.GetSetting<bool>("LoadLastSessionEnabled", true)) await PersistLastSessionAsync(); } catch { }
+            // End of region with known safe dereferences.
+#pragma warning restore CS8602
         }
         finally { if (Dispatcher.UIThread.CheckAccess()) IsSearching = false; else await Dispatcher.UIThread.InvokeAsync(() => IsSearching = false); }
     }
@@ -332,7 +450,7 @@ public partial class MainViewModel : ObservableObject
             var nextPage = CurrentPage + 1;
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            var filteredItems = result.Items; // API applied arttags:0 filter
+            List<MediaItem> filteredItems = result.Items ?? new List<MediaItem>(); // non-null list
             if (filteredItems.Count > 0)
             {
                 var toAdd = new List<MediaItem>(filteredItems.Count);
@@ -344,6 +462,8 @@ public partial class MainViewModel : ObservableObject
                 }
                 AddRange(SearchResults, toAdd);
             }
+            // Cache appended posts (details only; never caching the query itself)
+            try { if (filteredItems != null && filteredItems.Count > 0) _ = Task.Run(() => _postsCache.UpsertPostsAsync(filteredItems, null)); } catch { }
             OnPropertyChanged(nameof(AggregatedTagCategories));
             CurrentPage = nextPage;
             HasNextPage = result.HasNextPage;
@@ -351,7 +471,9 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CanGoPrev));
             OnPropertyChanged(nameof(CanGoNext));
             OnPropertyChanged(nameof(PageInfo));
-            return result.Items.Any();
+            if (filteredItems == null) return false; // defensive (compiler flow)
+            System.Diagnostics.Debug.Assert(filteredItems != null);
+            return filteredItems.Count > 0;
         }
         catch (Exception ex)
         {
@@ -380,7 +502,7 @@ public partial class MainViewModel : ObservableObject
             var nextPage = CurrentPage + 1; // do NOT assign to CurrentPage
             var searchParams = new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = sources, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = nextPage, Limit = _settingsService.GetSetting<int>("MaxResultsPerSource", 50) };
             var result = await _apiService.SearchAsync(searchParams);
-            var filteredItems = result.Items; // API applied arttags:0 filter
+            List<MediaItem> filteredItems = result.Items ?? new List<MediaItem>(); // non-null list
             if (filteredItems.Count > 0)
             {
                 var toAdd = new List<MediaItem>(filteredItems.Count);
@@ -398,7 +520,11 @@ public partial class MainViewModel : ObservableObject
             TotalCount = Math.Max(TotalCount, result.TotalCount);
             OnPropertyChanged(nameof(CanGoNext));
             OnPropertyChanged(nameof(PageInfo)); // total count might change
-            return result.Items.Any();
+            // Cache viewer-appended posts (details only)
+            try { if (filteredItems != null && filteredItems.Count > 0) _ = Task.Run(() => _postsCache.UpsertPostsAsync(filteredItems, null)); } catch { }
+            if (filteredItems == null) return false;
+            var listViewer = filteredItems; // non-null
+            return listViewer.Count > 0;
         }
         catch (Exception ex)
         {
@@ -417,7 +543,29 @@ public partial class MainViewModel : ObservableObject
             var pages = Enumerable.Range(currentPage + 1, ahead).ToList(); if (pages.Count == 0) return;
             await Dispatcher.UIThread.InvokeAsync(() => { IsBackgroundCaching = true; BackgroundCachingCurrent = 0; BackgroundCachingTotal = pages.Count; BackgroundCachingItemsFetched = 0; });
             var degree = Math.Clamp(_settingsService.GetSetting<int>("E621SearchPrefetchParallelism", 2), 1, 4); using var throttler = new SemaphoreSlim(degree); var tasks = new List<Task>();
-            foreach (var p in pages) { await throttler.WaitAsync(); var task = Task.Run(async () => { try { var sr = await _apiService.SearchAsync(new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = p, Limit = limit }); await Dispatcher.UIThread.InvokeAsync(() => { BackgroundCachingItemsFetched += sr.Items?.Count ?? 0; }); } catch (Exception ex) { _logger.LogDebug(ex, "Prefetch page {Page} failed", p); } finally { await Dispatcher.UIThread.InvokeAsync(() => { BackgroundCachingCurrent++; OnPropertyChanged(nameof(BackgroundCachingPercent)); }); throttler.Release(); } }); tasks.Add(task); }
+            foreach (var p in pages)
+            {
+                await throttler.WaitAsync();
+                var task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var sr = await _apiService.SearchAsync(new SearchParameters { IncludeTags = includeTags, ExcludeTags = excludeTags, Sources = new List<string> { "e621" }, Ratings = ratings, Sort = Furchive.Core.Models.SortOrder.Newest, Page = p, Limit = limit });
+                        // Cache any returned posts (details only)
+                        var items = sr.Items ?? new List<MediaItem>();
+                        if (items.Count > 0) { try { _ = _postsCache.UpsertPostsAsync(items, null); } catch { } }
+                        await Dispatcher.UIThread.InvokeAsync(() => { BackgroundCachingItemsFetched += items.Count; });
+                    }
+                    catch (Exception ex)
+                    { _logger.LogDebug(ex, "Prefetch page {Page} failed", p); }
+                    finally
+                    {
+                        await Dispatcher.UIThread.InvokeAsync(() => { BackgroundCachingCurrent++; OnPropertyChanged(nameof(BackgroundCachingPercent)); });
+                        throttler.Release();
+                    }
+                });
+                tasks.Add(task);
+            }
             await Task.WhenAll(tasks);
         }
         catch { }
@@ -489,13 +637,16 @@ public partial class MainViewModel : ObservableObject
     }
     [RelayCommand] private async Task UnpinPoolAsync(PoolInfo? pool) { if (pool == null) return; try { var existing = PinnedPools.FirstOrDefault(p => p.Id == pool.Id); if (existing != null) PinnedPools.Remove(existing); await PersistPinnedPoolsAsync(); } catch { } }
     private async Task PersistPinnedPoolsAsync() { try { await _cacheStore.SavePinnedPoolsAsync(PinnedPools.ToList()); } catch { } }
-    private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "pools_cache.sqlite");
+    private string GetPoolsCacheFilePath() => Path.Combine(_cacheDir, "e621", "pools_list_cache.sqlite");
 
     private async Task<bool> LoadPoolsFromDbAsync()
     {
         try
         {
-            var list = await _cacheStore.GetAllPoolsAsync();
+            // Use detailed load so extended metadata columns (created_at, etc.) are hydrated on first import
+            List<PoolInfo>? list;
+            try { list = await _cacheStore.GetAllPoolsDetailedAsync(CancellationToken.None); }
+            catch { list = await _cacheStore.GetAllPoolsAsync(CancellationToken.None); }
             if (list != null && list.Any())
             {
                 Dispatcher.UIThread.Post(() =>
@@ -559,7 +710,20 @@ public partial class MainViewModel : ObservableObject
             var current = Pools.ToDictionary(p => p.Id);
             foreach (var u in updates)
             {
-                if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0) { current[u.Id] = u; }
+                if (!u.Name.StartsWith("(deleted)", StringComparison.OrdinalIgnoreCase) && u.PostCount > 0)
+                {
+                    if (current.TryGetValue(u.Id, out var existing))
+                    {
+                        if (string.IsNullOrEmpty(u.CreatedAt)) u.CreatedAt = existing.CreatedAt;
+                        if (string.IsNullOrEmpty(u.UpdatedAt)) u.UpdatedAt = existing.UpdatedAt;
+                        if (!u.CreatorId.HasValue && existing.CreatorId.HasValue) u.CreatorId = existing.CreatorId;
+                        if (string.IsNullOrEmpty(u.Description)) u.Description = existing.Description;
+                        if (string.IsNullOrEmpty(u.Category)) u.Category = existing.Category;
+                        if (string.IsNullOrEmpty(u.PostIdsRaw)) u.PostIdsRaw = existing.PostIdsRaw;
+                        if (!u.IsActive && existing.IsActive) u.IsActive = existing.IsActive;
+                    }
+                    current[u.Id] = u;
+                }
                 else { current.Remove(u.Id); }
             }
             var updated = current.Values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
@@ -626,7 +790,7 @@ public partial class MainViewModel : ObservableObject
             _poolStreamCts = new CancellationTokenSource();
             var streamToken = CancellationTokenSource.CreateLinkedTokenSource(_poolStreamCts.Token, token).Token;
 
-            var cached = await _cacheStore.GetPoolPostsAsync(pool.Id);
+            var cached = await _postsCache.GetPoolPostsAsync(pool.Id);
             int cachedTotal = cached?.Count ?? 0;
             TotalCount = cachedTotal; OnPropertyChanged(nameof(PageInfo));
 
@@ -689,7 +853,7 @@ public partial class MainViewModel : ObservableObject
                     // After cached items streamed, fetch fresh full list to detect new additions; stream only new tail beyond cached count
                     var fresh = await _apiService.GetAllPoolPostsAsync("e621", pool.Id, streamToken) ?? new List<MediaItem>();
                     if (streamToken.IsCancellationRequested) return;
-                    try { await _cacheStore.UpsertPoolPostsAsync(pool.Id, fresh); } catch { }
+                    try { await _postsCache.UpsertPostsAsync(fresh, pool.Id); } catch { }
                     if (fresh.Count > cachedTotal && !streamToken.IsCancellationRequested && localVersion == _contextVersion)
                     {
                         for (int i = cachedTotal; i < fresh.Count; i += 5)

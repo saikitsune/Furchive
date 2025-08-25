@@ -28,8 +28,14 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     private readonly SemaphoreSlim _poolFetchLimiter; // bounded concurrency (configurable)
     private readonly TimeSpan _poolTtl; // configurable
     // Additional caches to speed up API flows
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (SearchResult result, DateTime expires)> _searchCache = new();
-    private readonly TimeSpan _searchTtl; // configurable
+    // NOTE: Query-level search result caching has been DISABLED intentionally.
+    // Historical implementation used _searchCache (in-memory) plus persistent SQLite (search.sqlite) / JSON (search.json) layers.
+    // Per updated architecture: We always perform a fresh API call for searches so post metadata stays current.
+    // Only individual post details are cached (via posts_cache.sqlite) after retrieval elsewhere in the pipeline.
+    // The (now unused) _searchCache field and _searchTtl remain commented out for clarity and to avoid accidental reuse.
+    // private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (SearchResult result, DateTime expires)> _searchCache = new();
+    // private readonly TimeSpan _searchTtl; // configurable (retained variable removed below)
+    private readonly TimeSpan _searchTtl = TimeSpan.Zero; // placeholder to satisfy metrics code paths if any remain
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<TagSuggestion> list, DateTime expires)> _tagSuggestCache = new();
     private readonly TimeSpan _tagSuggestTtl; // configurable
     private readonly System.Collections.Concurrent.ConcurrentDictionary<(int poolId, int page, int limit, bool authed), (SearchResult result, DateTime expires)> _poolPostsCache = new();
@@ -110,7 +116,19 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     }
 
     // Cache maintenance helpers (invoked from Settings)
-    public void ClearSearchCache() { _searchCache.Clear(); try { _dbCache?.ClearAsync("search"); } catch { } }
+    public void ClearSearchCache()
+    {
+        // No-op: Search result caching disabled. Attempt best-effort removal of legacy on-disk cache once (non-fatal).
+        try { _dbCache?.ClearAsync("search"); } catch { }
+        try
+        {
+            var legacyJson = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621", "search.json");
+            if (File.Exists(legacyJson)) File.Delete(legacyJson);
+            var legacySqlite = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621", "search.sqlite");
+            if (File.Exists(legacySqlite)) File.Delete(legacySqlite);
+        }
+        catch { }
+    }
     public void ClearTagSuggestCache() { _tagSuggestCache.Clear(); try { _dbCache?.ClearAsync("tag_suggest"); } catch { } }
     public void ClearPoolPostsCache() { _poolPostsCache.Clear(); try { _dbCache?.ClearAsync("pool_posts"); } catch { } }
     public void ClearFullPoolCache() { _poolAllCache.Clear(); try { _dbCache?.ClearAsync("full_pool"); } catch { } }
@@ -271,8 +289,9 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     {
         try
         {
-            System.Threading.Interlocked.Increment(ref _metricsSearch.Lookups);
-            // Build a cache key for searches after we build the tagQuery below
+            System.Threading.Interlocked.Increment(ref _metricsSearch.Lookups); // metrics retained (Lookups only) for UI consistency
+            // Intentionally no query-level caching: always build request and hit network.
+            // (Old cache key logic removed.)
             // Ensure UA header is present if not authenticated yet
             if (string.IsNullOrWhiteSpace(_userAgent))
             {
@@ -321,53 +340,8 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
             var url = $"https://e621.net/posts.json?tags={Uri.EscapeDataString(tagQuery)}&limit={limit}&page={parameters.Page}";
             url = AppendAuthAndFilter(url, isPostsList: true);
 
-            // Try cache before hitting network (DB first, then in-memory)
-            var cacheKey = $"{tagQuery}||p={parameters.Page}||l={limit}||authed={!string.IsNullOrWhiteSpace(_apiKey)}";
-            if (_dbCache != null)
-            {
-                try
-                {
-                    var fromDb = await _dbCache.GetAsync<SearchResult>("search", cacheKey);
-                    if (fromDb != null && (fromDb.Items?.Count ?? 0) > 0)
-                    {
-                        System.Threading.Interlocked.Increment(ref _metricsSearch.Hits);
-                        // backfill in-memory with a short TTL to avoid duplicate DB reads during session
-                        _searchCache[cacheKey] = (fromDb, DateTime.UtcNow.AddMinutes(2));
-                        return fromDb;
-                    }
-                }
-                catch { }
-            }
-            if (_searchCache.TryGetValue(cacheKey, out var cached))
-            {
-                if (DateTime.UtcNow < cached.expires)
-                {
-                    System.Threading.Interlocked.Increment(ref _metricsSearch.Hits);
-                    return cached.result;
-                }
-                else
-                {
-                    // SWR: serve stale and refresh in background
-                    System.Threading.Interlocked.Increment(ref _metricsSearch.Hits);
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var fresh = await FetchSearchAsync(tagQuery, limit, parameters.Page);
-                            if (fresh != null)
-                            {
-                                // count eviction when replacing expired
-                                System.Threading.Interlocked.Increment(ref _metricsSearch.Evictions);
-                                _searchCache[cacheKey] = (fresh, DateTime.UtcNow.Add(_searchTtl));
-                            }
-                        }
-                        catch (Exception ex) { _logger.LogDebug(ex, "SWR refresh for search failed"); }
-                    });
-                    return cached.result;
-                }
-            }
-
-            System.Threading.Interlocked.Increment(ref _metricsSearch.Misses);
+            // Always perform network request (no cache hit path).
+            System.Threading.Interlocked.Increment(ref _metricsSearch.Misses); // every search is a miss under disabled caching
 
             _logger.LogInformation("e621 search: tags=\"{Tags}\", page={Page}, limit={Limit}", tagQuery, parameters.Page, limit);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -469,8 +443,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
                 HasNextPage = rawCount >= limit,
                 TotalCount = 0
             };
-            _searchCache[cacheKey] = (resultObj, DateTime.UtcNow.Add(_searchTtl));
-            try { if (_dbCache != null) await _dbCache.SetAsync("search", cacheKey, resultObj, DateTime.UtcNow.Add(_searchTtl)); } catch { }
+            // Not cached (by design)
             return resultObj;
         }
         catch (Exception ex)
@@ -1805,7 +1778,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
     {
         return new
         {
-            Search = new { Entries = _searchCache.Count, Lookups = _metricsSearch.Lookups, Hits = _metricsSearch.Hits, Misses = _metricsSearch.Misses, Evictions = _metricsSearch.Evictions },
+            Search = new { Entries = 0, Lookups = _metricsSearch.Lookups, Hits = 0, Misses = _metricsSearch.Misses, Evictions = 0, Disabled = true },
             TagSuggest = new { Entries = _tagSuggestCache.Count, Lookups = _metricsTagSuggest.Lookups, Hits = _metricsTagSuggest.Hits, Misses = _metricsTagSuggest.Misses, Evictions = _metricsTagSuggest.Evictions },
             PoolPosts = new { Entries = _poolPostsCache.Count, Lookups = _metricsPoolPosts.Lookups, Hits = _metricsPoolPosts.Hits, Misses = _metricsPoolPosts.Misses, Evictions = _metricsPoolPosts.Evictions },
             FullPool = new { Entries = _poolAllCache.Count, Lookups = _metricsFullPool.Lookups, Hits = _metricsFullPool.Hits, Misses = _metricsFullPool.Misses, Evictions = _metricsFullPool.Evictions },
@@ -1867,19 +1840,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
         {
             Directory.CreateDirectory(_diskCacheDir);
             var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            // Search
-            TryLoad("search.json", (JsonDocument doc) =>
-            {
-                var env = JsonSerializer.Deserialize<CacheEnvelope<SearchEntry>>(doc.RootElement.GetRawText(), opts);
-                if (env?.Items == null) return;
-                var now = DateTime.UtcNow;
-                foreach (var it in env.Items)
-                {
-                    if (it == null) continue;
-                    if (it.ExpiresUtc <= now) continue;
-                    _searchCache[it.Key] = (it.Value, it.ExpiresUtc);
-                }
-            });
+            // Search cache loading skipped (disabled)
             // TagSuggest
             TryLoad("tag_suggest.json", (JsonDocument doc) =>
             {
@@ -1970,13 +1931,7 @@ public class E621Api : IPlatformApi, IE621CacheMaintenance
                 File.WriteAllText(path, json);
             }
 
-            // Search: respect cap and TTL
-            var searchItems = _searchCache
-                .Where(kv => kv.Value.expires > now)
-                .OrderByDescending(kv => kv.Value.expires)
-                .Take(_maxSearchEntries)
-                .Select(kv => new SearchEntry { Key = kv.Key, ExpiresUtc = kv.Value.expires, Value = kv.Value.result });
-            Save("search.json", searchItems);
+            // Search cache saving skipped (disabled)
 
             // TagSuggest
             var tagItems = _tagSuggestCache

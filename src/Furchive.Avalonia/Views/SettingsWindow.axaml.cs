@@ -76,6 +76,7 @@ public partial class SettingsWindow : Window
     try { GalleryScale.Value = _settings?.GetSetting<double>("GalleryScale", 1.0) ?? 1.0; } catch { GalleryScale.Value = 1.0; }
         try { GalleryScaleText.Text = GalleryScale.Value.ToString("0.00"); } catch { }
     try { LoadLastSessionEnabled.IsChecked = _settings?.GetSetting<bool>("LoadLastSessionEnabled", true) ?? true; } catch { LoadLastSessionEnabled.IsChecked = true; }
+    try { DebugLoggingEnabled.IsChecked = _settings?.GetSetting<bool>("DebugLoggingEnabled", false) ?? false; } catch { DebugLoggingEnabled.IsChecked = false; }
     // Viewer section removed: schedule legacy key cleanup (fire and forget)
     try
     {
@@ -113,7 +114,7 @@ public partial class SettingsWindow : Window
         // Pools info (SQLite db)
         try
         {
-            PoolsCacheFilePath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "pools_cache.sqlite");
+            PoolsCacheFilePath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621", "pools_list_cache.sqlite");
         }
         catch { }
     }
@@ -179,6 +180,7 @@ public partial class SettingsWindow : Window
             await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.FullPool", Math.Clamp((int)(E621PersistentCacheMaxEntries_FullPool.Value ?? 150), 50, 5000));
             await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PostDetails", Math.Clamp((int)(E621PersistentCacheMaxEntries_PostDetails.Value ?? 800), 50, 20000));
             await _settings.SetSettingAsync("E621PersistentCacheMaxEntries.PoolDetails", Math.Clamp((int)(E621PersistentCacheMaxEntries_PoolDetails.Value ?? 400), 50, 10000));
+            await _settings.SetSettingAsync("DebugLoggingEnabled", DebugLoggingEnabled.IsChecked == true);
             // Notify that settings were saved
             try { WeakReferenceMessenger.Default.Send(new SettingsSavedMessage()); } catch { }
         }
@@ -365,7 +367,7 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "pools_cache.sqlite");
+            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "cache", "e621", "pools_list_cache.sqlite");
             PoolsCacheFilePath.Text = file;
             if (File.Exists(file))
             {

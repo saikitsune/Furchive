@@ -3,6 +3,7 @@ tests/
 **/.vscode/*.md
 **/.vscode/*.jpg
 **/installer/output/
+**/.vscode/pools*.csv
 
 # --- Standard .NET / Visual Studio build artifacts ---
 **/bin/

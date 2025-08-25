@@ -159,6 +159,11 @@
                     <ScrollViewer>
                         <StackPanel Spacing="10" Margin="0,8,0,0">
                 <Separator/>
+                <TextBlock Text="Logging" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <CheckBox x:Name="DebugLoggingEnabled" Content="Enable debug logging (requires restart)"/>
+                </StackPanel>
+                <Separator/>
                 <TextBlock Text="Cache" FontWeight="SemiBold"/>
                 <StackPanel>
                     <TextBlock Text="Cache path"/>
