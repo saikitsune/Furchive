@@ -82,7 +82,8 @@ public static class RemoteImage
                 {
                     try
                     {
-                        var tmpDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "anim-cache");
+                        // Store short-lived animated image cache in app local temp directory
+                        var tmpDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
                         Directory.CreateDirectory(tmpDir);
                         var ext = Path.GetExtension(lowerUrl.Split('?', '#')[0]);
                         if (string.IsNullOrWhiteSpace(ext)) ext = ".gif"; // default

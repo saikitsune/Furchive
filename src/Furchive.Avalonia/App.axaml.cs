@@ -52,6 +52,18 @@ public partial class App : Application
 
     // WebView initialization path removed.
 
+    // Clean any leftover animated temp cache in app temp directory at startup
+        try
+        {
+            var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
+            if (Directory.Exists(tempDir))
+            {
+                foreach (var f in Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories)) { try { File.Delete(f); } catch { } }
+                foreach (var d in Directory.EnumerateDirectories(tempDir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length)) { try { if (!Directory.EnumerateFileSystemEntries(d).Any()) Directory.Delete(d); } catch { } }
+            }
+        }
+        catch { }
+
     var builder = Host.CreateDefaultBuilder();
         builder.ConfigureServices((context, services) =>
         {
@@ -197,21 +209,18 @@ public partial class App : Application
                     {
                         try
                         {
+                            // Clear legacy temp dir
                             var tempDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
                             if (Directory.Exists(tempDir))
                             {
                                 foreach (var file in Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories))
-                                {
-                                    try { File.Delete(file); } catch { }
-                                }
-                                // Optionally remove empty subdirectories
+                                { try { File.Delete(file); } catch { } }
                                 foreach (var dir in Directory.EnumerateDirectories(tempDir, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length))
-                                {
-                                    try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); } catch { }
-                                }
+                                { try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); } catch { } }
                             }
                         }
                         catch { }
+                        // Animated cache now shares the temp directory; already cleared above
                     };
                 }
                 catch { }

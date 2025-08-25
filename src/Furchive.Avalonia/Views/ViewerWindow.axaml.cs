@@ -646,7 +646,8 @@ public partial class ViewerWindow : Window
             }
             else
             {
-                var tmpDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "anim-cache");
+                // Use app local temp directory for animated media cache (cleared on startup/shutdown)
+                var tmpDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Furchive", "temp");
                 Directory.CreateDirectory(tmpDir);
                 // Use deterministic hash filename for cache reuse
                 string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(remoteUrl))).Substring(0, 16);
