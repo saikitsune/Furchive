@@ -21,3 +21,4 @@ Reynard owns environment/native UI proof and integration. Specialists receive bo
 - Unprivileged GTK/WebKit SDK recovered and native package builds; container denies WebKit sandbox namespaces. Sai authorized rewrite branch push/native Actions to recover runtime proof.
 - Native hosted macOS/Windows/Linux basic runtime proof established by run43091317909. Extracted package basic runtime proof established by run43093280146. Signing/notarization, installers and broader media acceptance remain pending; no release authority inferred.
 - Project LICENSE absent: leave license choice pending, not an implementation blocker.
+- Download native CI43098258533 at2992d62 remains externally queued, zero jobs/artifacts after GitHub Actions incident dvy0t3mvh1lg/recovery backlog. Source/Linux gate verified; native Windows/macOS actual contracts still mandatory. Same-card owner continuation, not completed portable support.
