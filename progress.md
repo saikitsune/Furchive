@@ -20,4 +20,8 @@
 
 ## Native CI attempt 1
 - Pushed6f9b390 to rewrite/rust; main untouched. Run43088440335 finished: macOS PASS including actual image/video play+seek and virtualized DOM; Windows missing required ICO; Linux custom-scheme video code4 while images/grid and all build/test gates pass.
-- Corrections and RED/GREEN evidence in rust/docs/native-ci-attempt-1.md. Linux transport correction requires new native CI evidence; no sandbox or gate weakening. Full application still incomplete.
+- Corrections and RED/GREEN evidence in rust/docs/native-ci-attempt-1.md. Linux transport correction subsequently verified by attempt2; no sandbox or gate weakening. Full application still incomplete.
+
+## Native runtime attempt2
+- Run43091317909 at b1e5b40 PASS on all3 platforms; downloaded all3 receipts and independently validated. See rust/docs/native-runtime-milestone.md for exact scope/diagnostics. Basic runtime gate is not full packaged-app/media acceptance.
+- Automatic continuation extends native CI to re-extract and exercise Debian/macOS.app/Windows portable ZIP payloads, no install or release. Local Debian build/extract PASS; local runtime NOT RUN.

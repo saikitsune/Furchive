@@ -1,0 +1,30 @@
+"""Contract tests for locating the executable in the actual extracted app payload."""
+from pathlib import Path
+import importlib.util
+import plistlib
+import tempfile
+import unittest
+
+spec=importlib.util.spec_from_file_location('package_qualification',Path(__file__).with_name('qualify-package.py'))
+if spec is None or spec.loader is None:raise RuntimeError('package checker module missing')
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+class PackageLayout(unittest.TestCase):
+    def test_bundle_executable_must_exist_in_exact_platform_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            linux=root/'linux/usr/bin/furchive-desktop';linux.parent.mkdir(parents=True);linux.write_bytes(b'owned test executable')
+            self.assertEqual(module.locate_binary(root/'linux','Linux'),linux)
+            win=root/'windows/furchive-desktop.exe';win.parent.mkdir(parents=True);win.write_bytes(b'owned test executable')
+            self.assertEqual(module.locate_binary(root/'windows','Windows'),win)
+            app=root/'mac/Furchive Rust Alpha.app';(app/'Contents/MacOS').mkdir(parents=True)
+            (app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'furchive-desktop'}))
+            mac=app/'Contents/MacOS/furchive-desktop';mac.write_bytes(b'owned test executable')
+            self.assertEqual(module.locate_binary(root/'mac','macOS'),mac)
+            (app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'../../outside'}))
+            with self.assertRaises(ValueError):module.locate_binary(root/'mac','macOS')
+            linux.unlink()
+            with self.assertRaises(ValueError):module.locate_binary(root/'linux','Linux')
+
+if __name__=='__main__':unittest.main()

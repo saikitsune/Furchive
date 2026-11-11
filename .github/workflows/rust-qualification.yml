@@ -71,6 +71,25 @@ jobs:
       - name: Exercise native WKWebView
         if: runner.os == 'macOS'
         run: python3 rust/scripts/run-native-qualification.py rust/apps/desktop/src-tauri/target/debug/furchive-desktop --output rust/test-artifacts/ci-native-${{ runner.os }}.json
+      - name: Package layout contracts
+        run: python rust/scripts/test-package-qualification.py -v
+      - name: Build Debian qualification payload
+        if: runner.os == 'Linux'
+        working-directory: rust/apps/desktop
+        run: npm run tauri -- build --debug --features self-test --bundles deb --ci -- --locked
+      - name: Build unsigned macOS qualification app
+        if: runner.os == 'macOS'
+        working-directory: rust/apps/desktop
+        run: npm run tauri -- build --debug --features self-test --bundles app --ci --no-sign -- --locked
+      - name: Exercise extracted Debian payload
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dbus-run-session -- python3 rust/scripts/qualify-package.py --output rust/test-artifacts/package-${{ runner.os }}
+      - name: Exercise extracted portable Windows payload
+        if: runner.os == 'Windows'
+        run: python rust/scripts/qualify-package.py --output rust/test-artifacts/package-${{ runner.os }}
+      - name: Exercise extracted macOS app payload
+        if: runner.os == 'macOS'
+        run: python3 rust/scripts/qualify-package.py --output rust/test-artifacts/package-${{ runner.os }}
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:
@@ -80,3 +99,9 @@ jobs:
           path: |
             rust/test-artifacts/ci-native-*.json
             rust/test-artifacts/ci-native-*.log
+            rust/test-artifacts/package-*/package.json
+            rust/test-artifacts/package-*/native.json
+            rust/test-artifacts/package-*/native.log
+            rust/test-artifacts/package-*/*.deb
+            rust/test-artifacts/package-*/*.zip
+            rust/test-artifacts/package-*/*.tar.gz
