@@ -1,12 +1,228 @@
+struct OwnedTemp {
+    _temp: tempfile::TempDir,
+    media: std::path::PathBuf,
+    state: std::path::PathBuf,
+}
+impl OwnedTemp {
+    fn new() -> Self {
+        let base = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        let temp = tempfile::tempdir_in(base).unwrap();
+        let media = temp.path().join("media");
+        let state = temp.path().join("state");
+        std::fs::create_dir(&media).unwrap();
+        std::fs::create_dir(&state).unwrap();
+        Self {
+            _temp: temp,
+            media,
+            state,
+        }
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.media
+    }
+    fn database(&self, name: &str) -> std::path::PathBuf {
+        self.state.join(name)
+    }
+}
+
+#[tokio::test]
+async fn renamed_nested_publication_survives_crash_after_collision() {
+    let fixture = fixture(vec![response("new")]).await;
+    let temp = OwnedTemp::new();
+    std::fs::create_dir(temp.path().join("nested")).unwrap();
+    std::fs::write(temp.path().join("nested/1.jpg"), b"original").unwrap();
+    let db = temp.database("db");
+    let engine = std::sync::Arc::new(Engine::open_test(&db, temp.path(), &fixture.origin).unwrap());
+    let mut value = intent("1", DuplicatePolicy::Rename);
+    value.relative = "nested/1.jpg".into();
+    engine.enqueue(value).unwrap();
+    // New hook: fail before the successful suffix rename, after the first refusal.
+    engine
+        .crash_at
+        .store(4, std::sync::atomic::Ordering::SeqCst);
+    let worker = engine.start().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if engine.jobs().unwrap()[0].error.is_some() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    let job = engine.jobs().unwrap().remove(0);
+    assert_eq!(job.state, State::Publishing);
+    assert_eq!(job.relative_path, "nested/1 (1).jpg");
+    assert!(
+        job.publication.is_some(),
+        "suffix lost publication identity/digest"
+    );
+    drop(engine);
+    let reopened = Engine::open(&db, temp.path()).unwrap();
+    assert_eq!(reopened.jobs().unwrap()[0].state, State::Completed);
+    assert_eq!(
+        std::fs::read(temp.path().join("nested/1.jpg")).unwrap(),
+        b"original"
+    );
+    assert_eq!(
+        std::fs::read(temp.path().join("nested/1 (1).jpg")).unwrap(),
+        b"new"
+    );
+}
+
+#[test]
+fn platform_adapter_atomic_publication_keeps_open_original_and_identity() {
+    use std::io::Write;
+    let temp = OwnedTemp::new();
+    let grant = crate::files::Grant::open(temp.path()).unwrap();
+    std::fs::write(temp.path().join("original.jpg"), b"original").unwrap();
+    let mut part = grant.part(91).unwrap();
+    part.write_all(b"replacement").unwrap();
+    part.sync_all().unwrap();
+    let identity = crate::files::identity(&part).unwrap();
+    let (parent, name) = grant.parent("original.jpg").unwrap();
+    assert_eq!(
+        grant
+            .publish(91, &part, &parent, &name, false)
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+    assert_eq!(
+        std::fs::read(temp.path().join("original.jpg")).unwrap(),
+        b"original"
+    );
+    let original = grant.destination("original.jpg").unwrap();
+    grant.publish(91, &part, &parent, &name, true).unwrap();
+    crate::files::sync_directory(&parent).unwrap();
+    crate::files::sync_directory(&grant.stage).unwrap();
+    assert_eq!(
+        crate::files::identity(&grant.destination("original.jpg").unwrap()).unwrap(),
+        identity
+    );
+    assert_ne!(crate::files::identity(&original).unwrap(), identity);
+    use std::io::Read;
+    let mut original_bytes = Vec::new();
+    (&original).read_to_end(&mut original_bytes).unwrap();
+    assert_eq!(original_bytes, b"original");
+    assert_eq!(
+        std::fs::read(temp.path().join("original.jpg")).unwrap(),
+        b"replacement"
+    );
+}
+
 use super::*;
+
+mod native;
+
+fn symlink(
+    source: impl AsRef<std::path::Path>,
+    target: impl AsRef<std::path::Path>,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(source, target)
+    }
+    #[cfg(windows)]
+    {
+        if source.as_ref().is_dir() {
+            std::os::windows::fs::symlink_dir(source, target)
+        } else {
+            std::os::windows::fs::symlink_file(source, target)
+        }
+    }
+}
+
+#[test]
+fn publication_receipts_read_legacy_unix_and_full_windows_identity() {
+    let legacy: crate::model::Publication = serde_json::from_str("[42,99,\"digest\"]").unwrap();
+    assert_eq!(
+        legacy.parts(),
+        (
+            crate::files::FileIdentity::Unix {
+                device: 42,
+                inode: 99
+            },
+            "digest".into()
+        )
+    );
+    let identity = crate::files::FileIdentity::Windows {
+        volume: u64::MAX,
+        file: [0xff; 16],
+    };
+    let receipt = crate::model::Publication::Native {
+        identity: identity.clone(),
+        digest: "hash".into(),
+    };
+    let decoded: crate::model::Publication =
+        serde_json::from_str(&serde_json::to_string(&receipt).unwrap()).unwrap();
+    assert_eq!(decoded.parts(), (identity, "hash".into()));
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn filesystem_case_alias_cannot_overwrite_database_or_companions() {
+    let temp = OwnedTemp::new();
+    std::fs::create_dir(temp.path().join("nested")).unwrap();
+    let db = temp.path().join("nested/jobs.db");
+    let engine = Engine::open(&db, temp.path()).unwrap();
+    for path in [
+        "nested/jobs.db",
+        "nested/jobs.db-wal",
+        "NESTED/JOBS.DB",
+        "NESTED/JOBS.DB-WAL",
+    ] {
+        let mut value = intent("1", DuplicatePolicy::Overwrite);
+        value.relative = path.into();
+        assert!(
+            engine.enqueue(value).is_err(),
+            "database alias admitted: {path}"
+        );
+    }
+}
+
+#[test]
+fn stage_alias_is_rejected_by_directory_identity_not_spelling() {
+    let temp = OwnedTemp::new();
+    let grant = crate::files::Grant::open(temp.path()).unwrap();
+    // Test the same opened staging object under a different logical root: the
+    // guard must use identity, not just reserved spelling. No symlink following.
+    let (parent, _) = grant.parent("normal/file.jpg").unwrap();
+    assert!(grant.ensure_media_directory(&parent).is_ok());
+    assert!(grant.ensure_media_directory(&grant.stage).is_err());
+}
+
+#[test]
+fn stage_substitution_never_follows_outside_objects() {
+    let temp = OwnedTemp::new();
+    let outside = temp.path().join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    let root = temp.path().join("root");
+    std::fs::create_dir(&root).unwrap();
+    symlink(&outside, root.join(".furchive-downloads")).unwrap();
+    assert!(Engine::open(temp.database("db"), &root).is_err());
+    assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+}
+
+#[test]
+fn staging_case_alias_cannot_be_enqueued() {
+    for path in [
+        ".FURCHIVE-DOWNLOADS/1.part",
+        ".Furchive-Downloads/database.identity",
+    ] {
+        assert!(crate::files::relative(path).is_err());
+    }
+}
 
 #[tokio::test]
 async fn rename_with_unfit_extension_fails_only_job_and_keeps_queue_reopenable() {
     let fixture = fixture(vec![response("new"), response("next")]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path().join("root");
     std::fs::create_dir(&root).unwrap();
-    let db = temp.path().join("jobs.sqlite");
+    let db = temp.database("jobs.sqlite");
     let name = format!("a.{}", "x".repeat(253));
     std::fs::write(root.join(&name), b"original").unwrap();
     let engine = std::sync::Arc::new(Engine::open_test(&db, &root, &fixture.origin).unwrap());
@@ -26,10 +242,10 @@ async fn rename_with_unfit_extension_fails_only_job_and_keeps_queue_reopenable()
 #[tokio::test]
 async fn maximum_length_rename_preserves_queue_reopen_and_next_job() {
     let fixture = fixture(vec![response("new"), response("next")]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path().join("root");
     std::fs::create_dir(&root).unwrap();
-    let db = temp.path().join("jobs.sqlite");
+    let db = temp.database("jobs.sqlite");
     let name = format!("{}.jpg", "a".repeat(251));
     assert_eq!(name.len(), 255);
     std::fs::write(root.join(&name), b"original").unwrap();
@@ -74,10 +290,10 @@ fn intent(id: &str, policy: DuplicatePolicy) -> Intent {
 
 #[test]
 fn production_rejects_foreign_credentials_and_noncanonical_urls() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path().join("root");
     std::fs::create_dir(&root).unwrap();
-    let engine = Engine::open(temp.path().join("db"), &root).unwrap();
+    let engine = Engine::open(temp.database("db"), &root).unwrap();
     for url in [
         "http://static1.e621.net/a",
         "https://evil.test/a",
@@ -96,15 +312,15 @@ fn production_rejects_foreign_credentials_and_noncanonical_urls() {
 
 #[test]
 fn grants_reject_symlinks_traversal_and_competing_owners() {
-    use std::os::unix::fs::symlink;
-    let temp = tempfile::tempdir().unwrap();
+    use crate::tests::symlink;
+    let temp = OwnedTemp::new();
     let root = temp.path().join("root");
     std::fs::create_dir(&root).unwrap();
-    let db = temp.path().join("db");
+    let db = temp.database("db");
     let engine = Engine::open(&db, &root).unwrap();
     assert!(Engine::open(&db, &root).is_err());
     symlink(&root, temp.path().join("alias")).unwrap();
-    assert!(Engine::open(temp.path().join("db2"), temp.path().join("alias")).is_err());
+    assert!(Engine::open(temp.database("db2"), temp.path().join("alias")).is_err());
     for path in [
         "../escape",
         "/absolute",
@@ -200,11 +416,11 @@ async fn terminal(engine: &Engine, id: i64) -> Job {
 #[tokio::test]
 async fn worker_downloads_real_bytes_then_atomically_publishes() {
     let fixture = fixture(vec![response("real bytes")]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path().join("root");
     std::fs::create_dir(&root).unwrap();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), &root, &fixture.origin).unwrap(),
+        Engine::open_test(temp.database("db"), &root, &fixture.origin).unwrap(),
     );
     let mut value = intent("1", DuplicatePolicy::Skip);
     value.size = Some(10);
@@ -221,9 +437,9 @@ async fn worker_downloads_real_bytes_then_atomically_publishes() {
 #[tokio::test]
 async fn pause_acknowledges_pending_headers_and_does_not_block_other_jobs() {
     let hanging = fixture(vec![String::new()]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &hanging.origin).unwrap(),
+        Engine::open_test(temp.database("db"), temp.path(), &hanging.origin).unwrap(),
     );
     let first = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     let second = engine.enqueue(intent("2", DuplicatePolicy::Skip)).unwrap();
@@ -252,10 +468,10 @@ async fn pause_acknowledges_pending_headers_and_does_not_block_other_jobs() {
 #[tokio::test]
 async fn cancelled_job_cannot_be_resumed_and_terminal_control_preserves_original() {
     let fixture = fixture(vec![response("new")]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     std::fs::write(temp.path().join("1.jpg"), b"good original").unwrap();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+        Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
     );
     let id = engine
         .enqueue(intent("1", DuplicatePolicy::Overwrite))
@@ -302,8 +518,8 @@ fn seed_partial(
 #[tokio::test]
 async fn restart_reconciles_running_and_resumes_only_committed_bytes_with_if_range() {
     let fixture = fixture(vec!["HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\ndef".into()]).await;
-    let temp = tempfile::tempdir().unwrap();
-    let db = temp.path().join("db");
+    let temp = OwnedTemp::new();
+    let db = temp.database("db");
     let engine = Engine::open_test(&db, temp.path(), &fixture.origin).unwrap();
     let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     seed_partial(
@@ -331,9 +547,9 @@ async fn restart_reconciles_running_and_resumes_only_committed_bytes_with_if_ran
 #[tokio::test]
 async fn valid_416_completes_only_with_matching_validator_total_and_local_size() {
     let fixture = fixture(vec!["HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nContent-Range: bytes */6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n".into()]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+        Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
     );
     let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     seed_partial(
@@ -362,9 +578,9 @@ async fn mismatched_ranges_and_validators_fail_closed_without_modifying_partial(
         "Content-Range: bytes 3-5/*\r\nETag: \"v1\"",
     ] {
         let fixture = fixture(vec![format!("HTTP/1.1 206 Partial Content\r\n{headers}\r\nContent-Length: 3\r\nConnection: close\r\n\r\ndef")]).await;
-        let temp = tempfile::tempdir().unwrap();
+        let temp = OwnedTemp::new();
         let engine = std::sync::Arc::new(
-            Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+            Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
         );
         let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
         seed_partial(
@@ -394,9 +610,9 @@ async fn mismatched_ranges_and_validators_fail_closed_without_modifying_partial(
 #[tokio::test]
 async fn ignored_range_200_replaces_partial_instead_of_appending() {
     let fixture = fixture(vec![response("UVWXYZ").replace("\"v1\"", "\"v2\"")]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+        Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
     );
     let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     seed_partial(
@@ -433,10 +649,10 @@ async fn hashes_and_sizes_validate_before_any_overwrite() {
         ),
     ] {
         let fixture = fixture(vec![response("abc")]).await;
-        let temp = tempfile::tempdir().unwrap();
+        let temp = OwnedTemp::new();
         std::fs::write(temp.path().join("1.jpg"), b"good original").unwrap();
         let engine = std::sync::Arc::new(
-            Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+            Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
         );
         let mut value = intent("1", DuplicatePolicy::Overwrite);
         value.size = size;
@@ -470,11 +686,11 @@ async fn duplicate_policies_skip_overwrite_and_rename_preserve_original_until_pu
         DuplicatePolicy::Rename,
     ] {
         let fixture = fixture(vec![response("new")]).await;
-        let temp = tempfile::tempdir().unwrap();
+        let temp = OwnedTemp::new();
         std::fs::write(temp.path().join("1.jpg"), b"original").unwrap();
         std::fs::write(temp.path().join("1 (1).jpg"), b"other").unwrap();
         let engine = std::sync::Arc::new(
-            Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+            Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
         );
         let id = engine.enqueue(intent("1", policy)).unwrap();
         assert_eq!(
@@ -518,8 +734,8 @@ async fn duplicate_policies_skip_overwrite_and_rename_preserve_original_until_pu
 async fn crash_windows_before_and_after_atomic_publication_reconcile_without_redownload() {
     for crash in [1, 2, 3] {
         let fixture = fixture(vec![response("durable")]).await;
-        let temp = tempfile::tempdir().unwrap();
-        let db = temp.path().join("db");
+        let temp = OwnedTemp::new();
+        let db = temp.database("db");
         let engine =
             std::sync::Arc::new(Engine::open_test(&db, temp.path(), &fixture.origin).unwrap());
         let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
@@ -574,10 +790,9 @@ async fn pause_mid_body_ack_freezes_bytes_and_resume_uses_real_range() {
         assert!(text.contains("if-range: \"v1\""));
         second.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\ndef").await.unwrap();
     });
-    let temp = tempfile::tempdir().unwrap();
-    let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &origin).unwrap(),
-    );
+    let temp = OwnedTemp::new();
+    let engine =
+        std::sync::Arc::new(Engine::open_test(temp.database("db"), temp.path(), &origin).unwrap());
     let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     let worker = engine.start().unwrap();
     got_headers.await.unwrap();
@@ -615,8 +830,8 @@ async fn redirects_are_not_followed_and_content_encodings_are_rejected() {
         "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc".to_owned(),
     ] {
         let fixture = fixture(vec![reply]).await;
-        let temp = tempfile::tempdir().unwrap();
-        let engine = std::sync::Arc::new(Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap());
+        let temp = OwnedTemp::new();
+        let engine = std::sync::Arc::new(Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap());
         let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
         let worker = engine.start().unwrap();
         assert_eq!(terminal(&engine, id).await.state, State::Failed);
@@ -627,14 +842,14 @@ async fn redirects_are_not_followed_and_content_encodings_are_rejected() {
 
 #[test]
 fn job_database_refuses_foreign_and_future_schemas() {
-    let temp = tempfile::tempdir().unwrap();
-    let foreign = temp.path().join("foreign.db");
+    let temp = OwnedTemp::new();
+    let foreign = temp.database("foreign.db");
     let db = rusqlite::Connection::open(&foreign).unwrap();
     db.execute_batch("CREATE TABLE unrelated(value TEXT); INSERT INTO unrelated VALUES ('keep');")
         .unwrap();
     drop(db);
     assert!(Engine::open(&foreign, temp.path()).is_err());
-    let future = temp.path().join("future.db");
+    let future = temp.database("future.db");
     drop(Engine::open(&future, temp.path()).unwrap());
     let db = rusqlite::Connection::open(&future).unwrap();
     db.pragma_update(None, "user_version", 99).unwrap();
@@ -646,8 +861,8 @@ fn job_database_refuses_foreign_and_future_schemas() {
 async fn publication_target_arriving_after_queue_is_never_clobbered_by_skip_or_rename() {
     for policy in [DuplicatePolicy::Skip, DuplicatePolicy::Rename] {
         let fixture = fixture(vec![response("new")]).await;
-        let temp = tempfile::tempdir().unwrap();
-        let db = temp.path().join("db");
+        let temp = OwnedTemp::new();
+        let db = temp.database("db");
         let engine =
             std::sync::Arc::new(Engine::open_test(&db, temp.path(), &fixture.origin).unwrap());
         engine.enqueue(intent("1", policy)).unwrap();
@@ -692,17 +907,17 @@ async fn publication_target_arriving_after_queue_is_never_clobbered_by_skip_or_r
 
 #[tokio::test]
 async fn writer_rejects_symlinked_parents_leaves_and_hardlinked_parts() {
-    use std::os::unix::fs::symlink;
+    use crate::tests::symlink;
     for mode in [0, 1, 2] {
         let fixture = fixture(vec![response("new")]).await;
-        let temp = tempfile::tempdir().unwrap();
+        let temp = OwnedTemp::new();
         let root = temp.path().join("root");
         std::fs::create_dir(&root).unwrap();
         let outside = temp.path().join("outside");
         std::fs::create_dir(&outside).unwrap();
         std::fs::write(outside.join("original"), b"outside good").unwrap();
         let engine = std::sync::Arc::new(
-            Engine::open_test(temp.path().join("db"), &root, &fixture.origin).unwrap(),
+            Engine::open_test(temp.database("db"), &root, &fixture.origin).unwrap(),
         );
         let mut value = intent("1", DuplicatePolicy::Skip);
         if mode == 0 {
@@ -774,9 +989,9 @@ async fn last_modified_resume_uses_date_if_range_and_unknown_validator_restarts(
             response("abcdef")
         };
         let fixture = fixture(vec![reply]).await;
-        let temp = tempfile::tempdir().unwrap();
+        let temp = OwnedTemp::new();
         let engine = std::sync::Arc::new(
-            Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+            Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
         );
         let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
         seed_partial(
@@ -816,8 +1031,8 @@ async fn invalid_416_and_short_bodies_never_publish() {
         "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 3-5/6\r\nETag: \"v1\"\r\nContent-Length: 3\r\nConnection: close\r\n\r\nd",
     ] {
         let fixture = fixture(vec![reply.into()]).await;
-        let temp = tempfile::tempdir().unwrap();
-        let engine = std::sync::Arc::new(Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap());
+        let temp = OwnedTemp::new();
+        let engine = std::sync::Arc::new(Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap());
         let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
         seed_partial(&engine, id, b"abc", 3, Some("etag:\"v1\""), Some(6), State::Queued);
         let worker = engine.start().unwrap();
@@ -834,7 +1049,9 @@ async fn process_crash_child() {
     };
     let origin = std::env::var("FURCHIVE_CRASH_CHILD_ORIGIN").unwrap();
     let root = std::path::Path::new(&base);
-    let engine = std::sync::Arc::new(Engine::open_test(root.join("db"), root, &origin).unwrap());
+    let engine = std::sync::Arc::new(
+        Engine::open_test(root.parent().unwrap().join("state/db"), root, &origin).unwrap(),
+    );
     engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     let _worker = engine.start().unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
@@ -865,11 +1082,14 @@ async fn real_process_death_releases_owner_and_resumes_durable_partial() {
             .contains("range: bytes=3-"));
         second.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\ndef").await.unwrap();
     });
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "tests::process_crash_child", "--nocapture"])
         .env("FURCHIVE_CRASH_CHILD_ROOT", temp.path())
         .env("FURCHIVE_CRASH_CHILD_ORIGIN", &origin)
+        // The parent checks exit77 and durable DB/bytes. Child harness banners
+        // must not splice the parent's named-test success line in native gates.
+        .stdout(std::process::Stdio::null())
         .spawn()
         .unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(8), async {
@@ -886,9 +1106,8 @@ async fn real_process_death_releases_owner_and_resumes_durable_partial() {
         let _ = child.kill();
         panic!("child timeout {e}")
     });
-    let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &origin).unwrap(),
-    );
+    let engine =
+        std::sync::Arc::new(Engine::open_test(temp.database("db"), temp.path(), &origin).unwrap());
     let job = engine.jobs().unwrap().remove(0);
     assert_eq!(job.state, State::Queued);
     assert_eq!(job.bytes, 3);
@@ -906,8 +1125,8 @@ async fn real_process_death_releases_owner_and_resumes_durable_partial() {
 #[test]
 fn persisted_jobs_reject_malformed_identity_paths_and_validators_before_worker() {
     for mutation in ["id", "key", "path", "validator", "bytes", "hash"] {
-        let temp = tempfile::tempdir().unwrap();
-        let db = temp.path().join("db");
+        let temp = OwnedTemp::new();
+        let db = temp.database("db");
         let engine = Engine::open(&db, temp.path()).unwrap();
         engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
         drop(engine);
@@ -952,11 +1171,10 @@ async fn cancel_during_stalled_headers_acknowledges_and_next_job_runs() {
         assert!(next.read(&mut buf).await.unwrap() > 0);
         next.write_all(response("next").as_bytes()).await.unwrap();
     });
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     std::fs::write(temp.path().join("1.jpg"), b"original").unwrap();
-    let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &origin).unwrap(),
-    );
+    let engine =
+        std::sync::Arc::new(Engine::open_test(temp.database("db"), temp.path(), &origin).unwrap());
     let first = engine
         .enqueue(intent("1", DuplicatePolicy::Overwrite))
         .unwrap();
@@ -985,9 +1203,9 @@ async fn cancel_during_stalled_headers_acknowledges_and_next_job_runs() {
 #[tokio::test]
 async fn concurrent_enqueues_run_in_persisted_id_order_without_duplicate_writers() {
     let fixture = fixture((0..12).map(|_| response("same")).collect()).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+        Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
     );
     let mut enqueues = Vec::new();
     for index in 0..12 {
@@ -1034,10 +1252,10 @@ async fn concurrent_enqueues_run_in_persisted_id_order_without_duplicate_writers
 
 #[test]
 fn different_job_databases_cannot_reuse_one_roots_staging_namespace() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path().join("root");
     std::fs::create_dir(&root).unwrap();
-    let first_db = temp.path().join("one.db");
+    let first_db = temp.database("one.db");
     let first = Engine::open(&first_db, &root).unwrap();
     first.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     seed_partial(
@@ -1050,7 +1268,7 @@ fn different_job_databases_cannot_reuse_one_roots_staging_namespace() {
         State::Paused,
     );
     drop(first);
-    assert!(Engine::open(temp.path().join("other.db"), &root).is_err());
+    assert!(Engine::open(temp.database("other.db"), &root).is_err());
     assert_eq!(
         std::fs::read(root.join(".furchive-downloads/1.part")).unwrap(),
         b"precious partial"
@@ -1060,8 +1278,8 @@ fn different_job_databases_cannot_reuse_one_roots_staging_namespace() {
 
 #[test]
 fn deserialize_cannot_bypass_portable_name_limits() {
-    let temp = tempfile::tempdir().unwrap();
-    let engine = Engine::open(temp.path().join("db"), temp.path()).unwrap();
+    let temp = OwnedTemp::new();
+    let engine = Engine::open(temp.database("db"), temp.path()).unwrap();
     for path in [
         "CON.jpg".to_owned(),
         "trailing. ".to_owned(),
@@ -1078,8 +1296,9 @@ fn deserialize_cannot_bypass_portable_name_limits() {
 }
 
 #[tokio::test]
+#[cfg(target_os = "linux")]
 async fn destination_cannot_overwrite_engine_database_or_sqlite_companions() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path();
     let db = root.join("jobs.db");
     let engine = Engine::open(&db, root).unwrap();
@@ -1096,8 +1315,8 @@ async fn destination_cannot_overwrite_engine_database_or_sqlite_companions() {
 
 #[tokio::test]
 async fn cannot_start_worker_without_runtime_and_can_restart_after_acknowledged_shutdown() {
-    let temp = tempfile::tempdir().unwrap();
-    let engine = std::sync::Arc::new(Engine::open(temp.path().join("db"), temp.path()).unwrap());
+    let temp = OwnedTemp::new();
+    let engine = std::sync::Arc::new(Engine::open(temp.database("db"), temp.path()).unwrap());
     let outside = engine.clone();
     std::thread::spawn(move || {
         assert!(outside.start().is_err());
@@ -1116,9 +1335,9 @@ async fn impossible_http_totals_fail_job_without_poisoning_queue() {
         "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 3-18446744073709551614/18446744073709551615\r\nETag: \"v1\"\r\nConnection: close\r\n\r\ndef".into(),
         response("next"),
     ]).await;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let engine = std::sync::Arc::new(
-        Engine::open_test(temp.path().join("db"), temp.path(), &fixture.origin).unwrap(),
+        Engine::open_test(temp.database("db"), temp.path(), &fixture.origin).unwrap(),
     );
     let first = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
     seed_partial(
@@ -1139,11 +1358,11 @@ async fn impossible_http_totals_fail_job_without_poisoning_queue() {
 
 #[test]
 fn durable_fifo_retains_core_identity_without_touching_originals() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = OwnedTemp::new();
     let root = temp.path().join("media");
     std::fs::create_dir(&root).unwrap();
     std::fs::write(root.join("1.jpg"), b"good original").unwrap();
-    let db = temp.path().join("jobs.db");
+    let db = temp.database("jobs.db");
     let engine = Engine::open(&db, &root).unwrap();
     let first = engine
         .enqueue(intent("1", DuplicatePolicy::Overwrite))

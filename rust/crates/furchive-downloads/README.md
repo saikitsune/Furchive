@@ -1,8 +1,10 @@
 # Furchive durable single-download core
 
-**Bounded implementation, Linux only. Not a product UI or a complete Furchive app.**
+**Bounded portable source milestone; native Windows/macOS acceptance pending.**
+Not a product UI or a complete Furchive app. See [native contracts](contracts/NATIVE.md)
+and the explicit per-platform [test inventory](contracts/test-inventory.json).
 This nested workspace intentionally does not edit the parent Cargo.toml/lockfile.
-The integrator owns workspace membership and the desktop/native platform roadmap.
+The integrator owns workspace membership and native Actions/runtime acceptance.
 
 ## Exact public interface
 
@@ -44,6 +46,7 @@ async fn download(db: &Path, root: &Path, media: &MediaItem) -> furchive_downloa
   the current domain MediaItem has no hash field. No network metadata discovery.
 - `Engine::open(db: impl AsRef<Path>, root: impl AsRef<Path>) -> Result<Engine>`.
   Root must already exist. DB parent must exist. Reconciles before returning.
+  Windows/macOS require the trusted DB outside the media grant; see native contract.
 - `Engine::{enqueue(Intent) -> Result<i64>, jobs() -> Result<Vec<Job>>}`.
 - `Engine::start(self: &Arc<Self>) -> Result<Worker>`.
 - `Worker::control(&self, id: i64, Control) -> impl Future<Output=Result<Job>>`.
@@ -61,7 +64,7 @@ async fn download(db: &Path, root: &Path, media: &MediaItem) -> furchive_downloa
   portable path, hash and identity. Do not expose serialized intents as a desktop
   arbitrary-URL IPC endpoint: the parent creates authorized MediaItem intents.
 
-## Guarantees on the supported Linux target
+## Shared durable semantics (runtime verified here on Linux)
 
 ### Ownership / persistence / controls
 
@@ -70,7 +73,7 @@ worker per Engine, one active transfer globally (therefore one writer per job).
 Concurrent enqueue commits are mutex-serialized, assigned SQLite AUTOINCREMENT
 IDs, and serviced in committed ID order. SQLite bundled, WAL, synchronous FULL,
 five-second busy timeout, application ID `0x4655444c`, schema 1. Foreign/nonempty
-unversioned/future databases rejected. Root device/inode is bound in DB; random
+unversioned/future databases rejected. Native root identity is bound in DB; random
 DB identity is bound in a durable private-root marker so a second DB cannot reuse
 job IDs/parts. Do not delete/replace the marker/lock while the engine is in use.
 A torn initial marker fails closed and needs explicit operator recovery.
@@ -124,8 +127,10 @@ Linux `openat2(BENEATH|NO_SYMLINKS|NO_MAGICLINKS)`, dirfd-relative operations,
 child parents, part paths are refused. No resolve-then-open media writer. Root DB
 and SQLite companion names are reserved if located under root. Template generated
 names are portable-validated even after deserialization. Internal staging name is
-reserved. Linux exact filesystem name semantics; no Unicode/case-fold equivalence
-or cross-platform collision claim.
+reserved (also by opened-directory identity, covering native short-name aliases).
+macOS traverses pinned directories with single-component `openat(O_NOFOLLOW)`;
+Windows uses single-component `NtCreateFile(RootDirectory)` with reparse rejection.
+Duplicate collisions use native filesystem semantics; no portable equivalence claim.
 
 `Skip`: existing regular file skips without network; publication races use atomic
 NOREPLACE. `Rename`: atomic NOREPLACE chooses `stem (N).ext` (1..9999), never
@@ -135,7 +140,7 @@ follows a leaf symlink. Only explicit Overwrite may replace a destination. Skip 
 a nonregular/symlink destination fails; overwrite may replace a symlink entry
 without touching its target. Directory symlink ancestors always fail.
 
-Full part fsync; persisted publication intent records path, device/inode, digest;
+Full part fsync; persisted publication intent records path, native identity, digest;
 rename, then source/destination directory fsync, then Completed commit. Reopen
 checks inode+size+hash and either finishes a still-present part or recognizes the
 published file. Changed/missing ambiguous files fail closed instead of falsely
@@ -146,10 +151,18 @@ This is process-crash evidence, **not** power-loss/filesystem fault-injection pr
 
 ## Explicit boundaries / missing work
 
-- **Linux only**: non-Linux `compile_error!`; requires kernel openat2/renameat2 and
-  local filesystem supporting atomic NOREPLACE, locking, directory fsync, SQLite
-  WAL. No Windows/macOS implementation or validation. Do not integrate this as a
-  Windows desktop download implementation without a platform capability backend.
+- Linux requires openat2/renameat2 and a local filesystem supporting atomic
+  NOREPLACE, locking, directory fsync and SQLite WAL. macOS and Windows now have
+  real native backends but have **not been executed on this Linux host**. Windows
+  is local NTFS/drive-letter only, rejects all reparse points; directory-flush
+  reopen and FileRenameInformationEx availability must pass native runtime gates.
+  Unsupported capability errors are fatal, never converted to successful sync.
+- Windows/macOS require DB outside the grant (object-identity ancestor check),
+  rather than unsafe lexical reservation for case/normalization/8.3 aliases.
+  Linux retains its existing in-grant DB reservation and adds ASCII case rejection.
+  New publication receipts retain full Windows64-bit volume +128-bit file ID or
+  Unix device/inode. Existing schema1 Unix tuple receipts are still readable;
+  older binaries do not understand new receipt objects (no downgrade claim).
 - Granted media root, ancestors, DB path, staging/lock/marker must not be actively
   renamed/replaced/mounted by a hostile same-user/admin process. Open dirfds pin
   authority but cannot prevent a separately privileged actor relocating a granted
@@ -169,7 +182,7 @@ This is process-crash evidence, **not** power-loss/filesystem fault-injection pr
   or missing/corrupt ambiguous publication requires explicit recovery, not repair.
 - Native playback sandbox gate and entire app acceptance remain separate/incomplete.
 
-## Reproduce checks and evidence
+## Historical Linux implementation receipts (preserved)
 
 From repository root:
 
@@ -198,7 +211,7 @@ subprocess environment; its real assertions are driven by the parent process tes
 No commits/staging/push, production, user media or sibling source changes.
 Codex CLI absent from this worker; direct implementation/test tooling used.
 
-Final receipts: `56-final-fmt.log`, `57-final-clippy.log`, `58-final-test.log`
+Original worker final receipts: `56-final-fmt.log`, `57-final-clippy.log`, `58-final-test.log`
 (**31 unit tests**, zero failed/ignored), `59-final-doc.log` (1 compiled README
 example). One unit test is the explicitly documented subprocess harness entry;
 its parent actually spawns it and requires exit77 plus durable resume. Runs50–52
@@ -208,3 +221,17 @@ behavior evidence. `python rust/crates/furchive-downloads/scripts/evidence.py`
 validates final receipts, checks unique named inventory, and emits source hashes
 in `test-artifacts/evidence.json`. These are implementation checks, not independent
 approval; the existing dependent verifier remains the next lane.
+
+## Historical verdict, owner repair, and current milestone
+
+The original independent **DL-01 BLOCK** remains preserved in
+`test-artifacts/verify-t_e10269a2-verdict.md`; it was not rewritten into a PASS.
+The owner subsequently repaired maximum-length Rename queue poisoning, then
+verified33 Linux tests at starting HEAD1367d403efe94799a4ae44ca643cfdd1fb6cb6f1
+(repository receipt: `rust/docs/download-DL01-repair.md`, outside this crate's scope).
+This task's new observed RED/GREEN receipts and exact commands/hashes are separate:
+see [contracts/NATIVE.md](contracts/NATIVE.md), `contracts/test-inventory.json`,
+and `contracts/source-manifest.json`. Neither repair nor portable source checks
+constitute independent approval, native certification, desktop integration or
+whole-app completion. Do not rerun the historical `scripts/evidence.py` as the
+current inventory: it deliberately describes the original31-test snapshot.

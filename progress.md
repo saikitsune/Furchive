@@ -27,4 +27,4 @@
 - Automatic continuation ran43093280146 at1367d40: all3 extracted payloads PASS. Owner verified downloaded package/executable hashes and native receipts, see rust/docs/extracted-package-milestone.md. No install/release/full app claim.
 
 ## Next active capability
-- Portable durable download backend worker t_d5d44259 and dependent native integration t_b8082b2d created, finite3600s caps and current Desktop notify+wake subscriptions read back. Existing profile model/provider preserved. Broader media acceptance and product UI still pending.
+- Portable durable download backend worker t_d5d44259 completed source-only; t_b8082b2d verified all24 frozen hashes, independently reran44 Linux tests+1doc/fmt/Clippy and3Python guard tests in an isolated exact-source copy. Sole download CI owner confirmed by live Desktop comment; current-only notify+wake binding read back. Existing workflow extended with a separate15minute three-OS native download matrix; native acceptance PENDING. See rust/docs/portable-downloads-verification.md. Existing profile model/provider preserved. Broader media acceptance and product UI still pending.

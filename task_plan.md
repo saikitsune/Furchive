@@ -10,7 +10,7 @@ Preserve old C# source, user data, art and history. No production/server changes
 - [complete] 0: Durable execution records and scoped tooling; unprivileged native SDK recovered (runtime sandbox remains blocked).
 - [in_progress] 1: Basic native image/video play+seek and10,000-item/40DOM gallery proof PASS on three hosted OS runners at b1e5b40. Extracted Debian/macOS.app/Windows portable payload proof also PASS at1367d40; animation/lifecycle/performance/platform breadth gates remain before full UI commitment.
 - [in_progress] 2: Domain/storage foundation 23 tests passes; e621 mapping/request foundation 3 tests passes. Full API behavior pending.
-- [in_progress] 3: Linux download core33tests owner-repaired; portable Windows/macOS backend t_d5d44259 active, dependent native integration t_b8082b2d. Full migration pending.
+- [in_progress] 3: Portable download source t_d5d44259 complete; t_b8082b2d independently reproduced44 Linux tests+1doc/fmt/Clippy and owns bounded three-OS native CI. Native Windows/macOS acceptance and desktop integration remain pending. Full migration pending.
 - [pending] 4: Product UI and IPC integration.
 - [pending] 5: Independent milestone review, native build/package matrix, release readiness (human release approval).
 

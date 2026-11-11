@@ -372,39 +372,42 @@ impl Engine {
         Ok(())
     }
     pub(crate) fn reconcile_publication(&self, job: &mut Job) -> Result<()> {
-        use std::os::unix::fs::MetadataExt;
-        let (dev, ino, digest) = job
+        let (identity, digest) = job
             .publication
             .clone()
-            .ok_or_else(|| Error::Invalid("missing publication receipt".into()))?;
+            .ok_or_else(|| Error::Invalid("missing publication receipt".into()))?
+            .parts();
         if self.grant.part_exists(job.id)? {
             let mut part = self.grant.part(job.id)?;
-            let meta = part.metadata()?;
-            if meta.dev() != dev || meta.ino() != ino || validate_file(&mut part, job)? != digest {
+            if crate::files::identity(&part)? != identity
+                || validate_file(&mut part, job)? != digest
+            {
                 return Err(Error::Invalid("publication part identity changed".into()));
             }
             job.error = None;
             return self.publish(job, &mut part);
         }
         let mut completed = self.grant.destination(&job.relative_path)?;
-        let meta = completed.metadata()?;
-        if meta.dev() != dev || meta.ino() != ino || validate_file(&mut completed, job)? != digest {
+        if crate::files::identity(&completed)? != identity
+            || validate_file(&mut completed, job)? != digest
+        {
             return Err(Error::Invalid(
                 "published destination identity changed".into(),
             ));
         }
         let (parent, _) = self.grant.parent(&job.relative_path)?;
-        parent.sync_all()?;
-        self.grant.stage.sync_all()?;
+        crate::files::sync_directory(&parent)?;
+        crate::files::sync_directory(&self.grant.stage)?;
         job.state = State::Completed;
         job.error = None;
         self.save(job)
     }
     fn publish(&self, job: &mut Job, part: &mut std::fs::File) -> Result<()> {
-        use std::os::unix::fs::MetadataExt;
         let sha = validate_file(part, job)?;
-        let metadata = part.metadata()?;
-        job.publication = Some((metadata.dev(), metadata.ino(), sha));
+        let publication = crate::model::Publication::Native {
+            identity: crate::files::identity(part)?,
+            digest: sha,
+        };
         let original = job.intent.relative.clone();
         for suffix in 0..10_000 {
             if suffix > 0 {
@@ -425,39 +428,40 @@ impl Engine {
                     cut -= 1;
                 }
                 let name = format!("{}{}{}", &stem[..cut], suffix_text, ext);
-                let candidate = path.with_file_name(name).to_string_lossy().into_owned();
+                let candidate = match original.rsplit_once('/') {
+                    Some((parent, _)) => format!("{parent}/{name}"),
+                    None => name,
+                };
                 crate::files::relative(&candidate)?;
                 self.check_destination(&candidate)?;
                 job.relative_path = candidate;
             }
             self.check_destination(&job.relative_path)?;
             let (dir, name) = self.grant.parent(&job.relative_path)?;
-            // Persist publication intent/inode/digest before the filesystem commit.
+            // Persist publication identity/digest anew for every collision candidate.
+            job.publication = Some(publication.clone());
             job.state = State::Publishing;
             self.save(job)?;
             #[cfg(test)]
-            if self.crash_at.load(Ordering::SeqCst) == 1 {
+            if self.crash_at.load(Ordering::SeqCst) == 1
+                || (suffix > 0 && self.crash_at.load(Ordering::SeqCst) == 4)
+            {
                 return Err(Error::Invalid("injected crash before rename".into()));
             }
-            let flags = if job.intent.policy == DuplicatePolicy::Overwrite {
-                rustix::fs::RenameFlags::empty()
-            } else {
-                rustix::fs::RenameFlags::NOREPLACE
-            };
-            match rustix::fs::renameat_with(
-                &self.grant.stage,
-                format!("{}.part", job.id),
+            match self.grant.publish(
+                job.id,
+                part,
                 &dir,
                 &name,
-                flags,
+                job.intent.policy == DuplicatePolicy::Overwrite,
             ) {
                 Ok(()) => {
                     #[cfg(test)]
                     if self.crash_at.load(Ordering::SeqCst) == 2 {
                         return Err(Error::Invalid("injected crash after rename".into()));
                     }
-                    dir.sync_all()?;
-                    self.grant.stage.sync_all()?;
+                    crate::files::sync_directory(&dir)?;
+                    crate::files::sync_directory(&self.grant.stage)?;
                     #[cfg(test)]
                     if self.crash_at.load(Ordering::SeqCst) == 3 {
                         return Err(Error::Invalid("injected crash after directory sync".into()));
@@ -466,7 +470,7 @@ impl Engine {
                     return self.save(job);
                 }
                 Err(e)
-                    if e == rustix::io::Errno::EXIST
+                    if e.kind() == std::io::ErrorKind::AlreadyExists
                         && job.intent.policy == DuplicatePolicy::Rename =>
                 {
                     // NOREPLACE refused before mutation: no ambiguous publication exists.
@@ -477,14 +481,14 @@ impl Engine {
                     continue;
                 }
                 Err(e)
-                    if e == rustix::io::Errno::EXIST
+                    if e.kind() == std::io::ErrorKind::AlreadyExists
                         && job.intent.policy == DuplicatePolicy::Skip =>
                 {
                     job.state = State::Skipped;
                     self.save(job)?;
                     return self.grant.remove_part(job.id);
                 }
-                Err(e) => return Err(Error::Io(e.into())),
+                Err(e) => return Err(Error::Io(e)),
             }
         }
         Err(Error::Invalid("rename collision limit reached".into()))

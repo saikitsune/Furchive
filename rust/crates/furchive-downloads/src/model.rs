@@ -125,7 +125,28 @@ pub struct Job {
     pub(crate) validator: Option<String>,
     pub(crate) total: Option<u64>,
     #[serde(default)]
-    pub(crate) publication: Option<(u64, u64, String)>,
+    pub(crate) publication: Option<Publication>,
+}
+
+// Read existing schema-1 Unix tuples, write complete platform-native receipts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum Publication {
+    Legacy((u64, u64, String)),
+    Native {
+        identity: crate::files::FileIdentity,
+        digest: String,
+    },
+}
+impl Publication {
+    pub(crate) fn parts(self) -> (crate::files::FileIdentity, String) {
+        match self {
+            Self::Legacy((device, inode, digest)) => {
+                (crate::files::FileIdentity::Unix { device, inode }, digest)
+            }
+            Self::Native { identity, digest } => (identity, digest),
+        }
+    }
 }
 
 pub struct Engine {
@@ -142,6 +163,11 @@ pub struct Engine {
 impl Engine {
     pub fn open(db: impl AsRef<Path>, root: impl AsRef<Path>) -> Result<Self> {
         let grant = crate::files::Grant::open(root.as_ref())?;
+        // Native case/normalization and NTFS 8.3 aliases cannot be fenced by a
+        // portable lexical name check. Keep trusted application DB outside the
+        // media grant on these targets; compare pinned ancestor identities.
+        #[cfg(any(windows, target_os = "macos"))]
+        crate::files::database_outside_grant(db.as_ref(), &grant)?;
         let connection = rusqlite::Connection::open(db.as_ref())?;
         let root_path = std::fs::canonicalize(root.as_ref())?;
         let db_path = std::fs::canonicalize(db.as_ref())?;
@@ -314,11 +340,12 @@ impl Engine {
         .collect()
     }
     pub(crate) fn check_destination(&self, relative: &str) -> Result<()> {
-        if self
-            .reserved_paths
-            .iter()
-            .any(|p| p == relative || relative.starts_with(&format!("{p}/")))
-        {
+        if self.reserved_paths.iter().any(|p| {
+            p.eq_ignore_ascii_case(relative)
+                || relative
+                    .to_ascii_lowercase()
+                    .starts_with(&format!("{}/", p.to_ascii_lowercase()))
+        }) {
             return Err(Error::Invalid(
                 "destination collides with job database".into(),
             ));

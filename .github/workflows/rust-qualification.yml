@@ -10,6 +10,44 @@ concurrency:
   group: furchive-rust-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  downloads:
+    name: Download contracts ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CARGO_BUILD_JOBS: 3
+      RUSTUP_AUTO_INSTALL: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve exact source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Verify native transcript guard
+        run: python rust/crates/furchive-downloads/scripts/test_native_check.py -v
+      - name: Exercise actual native download contracts
+        run: python rust/crates/furchive-downloads/scripts/native_check.py
+      - name: Verify checkout stayed unchanged
+        run: git diff --exit-code HEAD -- rust/crates/furchive-downloads rust/crates/furchive-domain
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: download-contracts-${{ runner.os }}
+          retention-days: 5
+          if-no-files-found: error
+          path: |
+            rust/crates/furchive-downloads/contracts/source-manifest.json
+            rust/crates/furchive-downloads/contracts/test-inventory.json
+            rust/crates/furchive-downloads/test-artifacts/native-*/*.json
+            rust/crates/furchive-downloads/test-artifacts/native-*/*.log
   native:
     name: Native ${{ matrix.os }}
     strategy:
@@ -44,12 +82,6 @@ jobs:
           cargo +1.99.1 fmt --manifest-path rust/Cargo.toml --all -- --check
           cargo +1.99.1 clippy --manifest-path rust/Cargo.toml --workspace --all-targets --locked -- -D warnings
           cargo +1.99.1 test --manifest-path rust/crates/furchive-catalog/Cargo.toml --locked
-      - name: Linux download integrity contracts
-        if: runner.os == 'Linux'
-        run: |
-          cargo +1.99.1 test --manifest-path rust/crates/furchive-downloads/Cargo.toml --all-targets --locked
-          cargo +1.99.1 test --manifest-path rust/crates/furchive-downloads/Cargo.toml --doc --locked
-          cargo +1.99.1 clippy --manifest-path rust/crates/furchive-downloads/Cargo.toml --all-targets --locked -- -D warnings
       - name: Frontend quality and production build
         run: |
           npm ci --prefix rust/apps/desktop

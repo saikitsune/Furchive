@@ -1,10 +1,28 @@
-//! Linux dirfd-relative I/O. No path canonicalize-then-open checks.
+//! Capability-relative filesystem adapter. Never resolve-then-open media paths.
 use crate::{Error, Result};
-use rustix::fs::{self, AtFlags, Mode, OFlags, ResolveFlags};
-use std::{
-    fs::File,
-    path::{Component, Path},
-};
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io, path::Path};
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[path = "files/unix.rs"]
+mod platform;
+#[cfg(windows)]
+#[path = "files/windows.rs"]
+mod platform;
+pub(crate) use platform::{identity, sync_directory};
+
+/// A receipt must retain the whole native identity, not a truncated Windows ID.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum FileIdentity {
+    Unix { device: u64, inode: u64 },
+    Windows { volume: u64, file: [u8; 16] },
+}
+#[derive(Clone, Copy)]
+enum Access {
+    Read,
+    Create,
+    Exclusive,
+}
 
 pub(crate) struct Grant {
     pub root: File,
@@ -12,12 +30,7 @@ pub(crate) struct Grant {
     _lock: File,
     pub identity: String,
 }
-fn io(e: rustix::io::Errno) -> Error {
-    Error::Io(e.into())
-}
-fn flags() -> OFlags {
-    OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
-}
+
 pub(crate) fn relative(path: &str) -> Result<()> {
     if path.is_empty()
         || path.contains('\\')
@@ -25,7 +38,7 @@ pub(crate) fn relative(path: &str) -> Result<()> {
             s.is_empty()
                 || s == "."
                 || s == ".."
-                || s == ".furchive-downloads"
+                || s.eq_ignore_ascii_case(".furchive-downloads")
                 || s.contains(':')
                 || s.chars().any(char::is_control)
         })
@@ -43,64 +56,53 @@ pub(crate) fn relative(path: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) fn database_outside_grant(path: &Path, grant: &Grant) -> Result<()> {
+    let full = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let parent = full
+        .parent()
+        .ok_or_else(|| Error::Invalid("database needs parent directory".into()))?;
+    let root_id = identity(&grant.root)?;
+    // Trusted application-state pathname, opened nofollow by the same root walker.
+    // Compare actual objects to cover native aliases, not canonicalized strings.
+    for ancestor in parent.ancestors() {
+        if identity(&platform::root(ancestor)?)? == root_id {
+            return Err(Error::Invalid(
+                "Windows/macOS require database outside granted media root (native aliases)".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 impl Grant {
     pub fn open(path: &Path) -> Result<Self> {
-        let mut dir = File::from(fs::open("/", flags(), Mode::empty()).map_err(io)?);
-        let full = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            std::env::current_dir()?.join(path)
+        let root = platform::root(path)?;
+        // Probe before creating staging or opening the database. Unsupported sync is
+        // an error, never a best-effort success. Native tests must exercise it.
+        sync_directory(&root)?;
+        let identity = match identity(&root)? {
+            FileIdentity::Unix { device, inode } => format!("{device}:{inode}"),
+            FileIdentity::Windows { volume, file } => format!("windows:{volume}:{file:02x?}"),
         };
-        for component in full.components() {
-            match component {
-                Component::RootDir => {}
-                Component::Normal(name) => {
-                    dir = File::from(fs::openat(&dir, name, flags(), Mode::empty()).map_err(io)?)
-                }
-                _ => {
-                    return Err(Error::Invalid(
-                        "root must have only normal components".into(),
-                    ))
-                }
-            }
+        match platform::mkdir(&root, ".furchive-downloads", true) {
+            Ok(()) => sync_directory(&root)?,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
         }
-        let stat = fs::fstat(&dir).map_err(io)?;
-        let identity = format!("{}:{}", stat.st_dev, stat.st_ino);
-        match fs::mkdirat(&dir, ".furchive-downloads", Mode::from_raw_mode(0o700)) {
-            Ok(()) => {}
-            Err(e) if e == rustix::io::Errno::EXIST => {}
-            Err(e) => return Err(io(e)),
-        }
-        let stage = File::from(
-            fs::openat2(
-                &dir,
-                ".furchive-downloads",
-                flags(),
-                Mode::empty(),
-                ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
-            )
-            .map_err(io)?,
-        );
-        dir.sync_all()?;
-        let lock = File::from(
-            fs::openat(
-                &stage,
-                "owner.lock",
-                OFlags::CREATE
-                    | OFlags::RDWR
-                    | OFlags::NOFOLLOW
-                    | OFlags::CLOEXEC
-                    | OFlags::NONBLOCK,
-                Mode::from_raw_mode(0o600),
-            )
-            .map_err(io)?,
-        );
-        if !lock.metadata()?.is_file() {
+        let stage = platform::directory(&root, ".furchive-downloads")?;
+        let lock = platform::file(&stage, "owner.lock", Access::Create)?;
+        if !platform::private(&lock)? {
             return Err(Error::Invalid("invalid ownership lock".into()));
         }
         lock.try_lock().map_err(|_| Error::Busy)?;
         Ok(Self {
-            root: dir,
+            root,
             stage,
             _lock: lock,
             identity,
@@ -108,30 +110,15 @@ impl Grant {
     }
     pub fn bind_database(&self, identity: &str) -> Result<()> {
         use std::io::{Read, Write};
-        let opened = fs::openat(
-            &self.stage,
-            "database.identity",
-            OFlags::CREATE | OFlags::EXCL | OFlags::WRONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::from_raw_mode(0o600),
-        );
-        match opened {
-            Ok(fd) => {
-                let mut marker = File::from(fd);
+        match platform::file(&self.stage, "database.identity", Access::Exclusive) {
+            Ok(mut marker) => {
                 marker.write_all(identity.as_bytes())?;
                 marker.sync_all()?;
-                self.stage.sync_all()?;
+                sync_directory(&self.stage)?;
             }
-            Err(e) if e == rustix::io::Errno::EXIST => {
-                let marker = File::from(
-                    fs::openat(
-                        &self.stage,
-                        "database.identity",
-                        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                        Mode::empty(),
-                    )
-                    .map_err(io)?,
-                );
-                if !marker.metadata()?.is_file() {
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                let marker = platform::file(&self.stage, "database.identity", Access::Read)?;
+                if !platform::private(&marker)? {
                     return Err(Error::Invalid("invalid database marker".into()));
                 }
                 let mut text = String::new();
@@ -142,78 +129,69 @@ impl Grant {
                     ));
                 }
             }
-            Err(e) => return Err(io(e)),
+            Err(e) => return Err(e.into()),
         }
         Ok(())
     }
     pub fn part(&self, id: i64) -> Result<File> {
-        let file = File::from(
-            fs::openat(
-                &self.stage,
-                format!("{id}.part"),
-                OFlags::CREATE
-                    | OFlags::RDWR
-                    | OFlags::NOFOLLOW
-                    | OFlags::CLOEXEC
-                    | OFlags::NONBLOCK,
-                Mode::from_raw_mode(0o600),
-            )
-            .map_err(io)?,
-        );
-        let meta = file.metadata()?;
-        use std::os::unix::fs::MetadataExt;
-        if !meta.is_file() || meta.nlink() != 1 {
+        let file = platform::file(&self.stage, &format!("{id}.part"), Access::Create)?;
+        if !platform::private(&file)? {
             return Err(Error::Invalid("part must be private regular file".into()));
         }
-        self.stage.sync_all()?;
+        sync_directory(&self.stage)?;
         Ok(file)
     }
     pub fn part_exists(&self, id: i64) -> Result<bool> {
-        match fs::statat(&self.stage, format!("{id}.part"), AtFlags::SYMLINK_NOFOLLOW) {
-            Ok(_) => Ok(true),
-            Err(e) if e == rustix::io::Errno::NOENT => Ok(false),
-            Err(e) => Err(io(e)),
-        }
+        Ok(platform::exists(&self.stage, &format!("{id}.part"))?.is_some())
     }
     pub fn remove_part(&self, id: i64) -> Result<()> {
-        match fs::unlinkat(&self.stage, format!("{id}.part"), AtFlags::empty()) {
+        match platform::unlink(&self.stage, &format!("{id}.part")) {
             Ok(()) => {
-                self.stage.sync_all()?;
+                sync_directory(&self.stage)?;
                 Ok(())
             }
-            Err(e) if e == rustix::io::Errno::NOENT => Ok(()),
-            Err(e) => Err(io(e)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
         }
     }
     pub fn exists(&self, path: &str) -> Result<bool> {
-        let (dir, name) = self.parent(path)?;
-        match fs::statat(&dir, &name, AtFlags::SYMLINK_NOFOLLOW) {
-            Ok(stat) => {
-                if fs::FileType::from_raw_mode(stat.st_mode) != fs::FileType::RegularFile {
-                    return Err(Error::Invalid("destination is not a regular file".into()));
-                }
-                Ok(true)
-            }
-            Err(e) if e == rustix::io::Errno::NOENT => Ok(false),
-            Err(e) => Err(io(e)),
+        let (parent, name) = self.parent(path)?;
+        match platform::exists(&parent, &name)? {
+            Some(true) => Ok(true),
+            None => Ok(false),
+            Some(false) => Err(Error::Invalid("destination is not a regular file".into())),
         }
     }
     pub fn destination(&self, path: &str) -> Result<File> {
         relative(path)?;
-        let file = File::from(
-            fs::openat2(
-                &self.root,
-                path,
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                Mode::empty(),
-                ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
-            )
-            .map_err(io)?,
-        );
+        // Resolve read-only: unlike parent(), reconciliation never creates ancestors.
+        let (parents, name) = path.rsplit_once('/').unwrap_or(("", path));
+        let mut parent = self.root.try_clone()?;
+        if !parents.is_empty() {
+            let mut prefix = String::new();
+            for piece in parents.split('/') {
+                if !prefix.is_empty() {
+                    prefix.push('/');
+                }
+                prefix.push_str(piece);
+                parent = platform::directory(&self.root, &prefix)?;
+                self.ensure_media_directory(&parent)?;
+            }
+        }
+        self.ensure_media_directory(&parent)?;
+        let file = platform::file(&parent, name, Access::Read)?;
         if !file.metadata()?.is_file() {
             return Err(Error::Invalid("destination is not regular".into()));
         }
         Ok(file)
+    }
+    pub fn ensure_media_directory(&self, dir: &File) -> Result<()> {
+        if identity(dir)? == identity(&self.stage)? {
+            return Err(Error::Invalid(
+                "destination aliases private staging directory".into(),
+            ));
+        }
+        Ok(())
     }
     pub fn parent(&self, path: &str) -> Result<(File, String)> {
         relative(path)?;
@@ -222,26 +200,35 @@ impl Grant {
         let mut prefix = String::new();
         let mut dir = self.root.try_clone()?;
         for piece in pieces {
-            match fs::mkdirat(&dir, piece, Mode::from_raw_mode(0o755)) {
-                Ok(()) => dir.sync_all()?,
-                Err(e) if e == rustix::io::Errno::EXIST => {}
-                Err(e) => return Err(io(e)),
+            match platform::mkdir(&dir, piece, false) {
+                Ok(()) => sync_directory(&dir)?,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e.into()),
             }
             if !prefix.is_empty() {
                 prefix.push('/');
             }
             prefix.push_str(piece);
-            dir = File::from(
-                fs::openat2(
-                    &self.root,
-                    &prefix,
-                    flags(),
-                    Mode::empty(),
-                    ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
-                )
-                .map_err(io)?,
-            );
+            dir = platform::directory(&self.root, &prefix)?;
+            self.ensure_media_directory(&dir)?;
         }
         Ok((dir, name))
+    }
+    pub fn publish(
+        &self,
+        id: i64,
+        part: &File,
+        dir: &File,
+        name: &str,
+        overwrite: bool,
+    ) -> io::Result<()> {
+        platform::publish(
+            &self.stage,
+            &format!("{id}.part"),
+            part,
+            dir,
+            name,
+            overwrite,
+        )
     }
 }

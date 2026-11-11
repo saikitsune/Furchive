@@ -1,0 +1,144 @@
+{
+  "base_head": "10c9e330a676541f32b2e7714053469d3f846aa6",
+  "scope": "rust/crates/furchive-downloads/",
+  "changed_paths": [
+    "rust/crates/furchive-downloads/Cargo.toml",
+    "rust/crates/furchive-downloads/README.md",
+    "rust/crates/furchive-downloads/contracts/NATIVE.md",
+    "rust/crates/furchive-downloads/contracts/source-manifest.json",
+    "rust/crates/furchive-downloads/contracts/test-inventory.json",
+    "rust/crates/furchive-downloads/scripts/milestone_evidence.py",
+    "rust/crates/furchive-downloads/scripts/native_check.py",
+    "rust/crates/furchive-downloads/scripts/preflight.py",
+    "rust/crates/furchive-downloads/scripts/test_native_check.py",
+    "rust/crates/furchive-downloads/scripts/windows_cfg_probe.py",
+    "rust/crates/furchive-downloads/scripts/windows_clippy_check.py",
+    "rust/crates/furchive-downloads/scripts/windows_crate_check.py",
+    "rust/crates/furchive-downloads/src/files.rs",
+    "rust/crates/furchive-downloads/src/files/unix.rs",
+    "rust/crates/furchive-downloads/src/files/windows.rs",
+    "rust/crates/furchive-downloads/src/lib.rs",
+    "rust/crates/furchive-downloads/src/model.rs",
+    "rust/crates/furchive-downloads/src/tests.rs",
+    "rust/crates/furchive-downloads/src/tests/native.rs",
+    "rust/crates/furchive-downloads/src/worker.rs"
+  ],
+  "files": {
+    ".gitignore": {
+      "sha256": "527aa03529b758f8f5e98f1e278d1c489d8f36d088addc1ba59c08557f483386",
+      "bytes": 17
+    },
+    "Cargo.toml": {
+      "sha256": "9e592c8ff4f7b4863d5fe404c4a65506a07562eddad969a76b6e82c9cd7f25a4",
+      "bytes": 843
+    },
+    "Cargo.lock": {
+      "sha256": "0fe532924fc5f4fcbea3b6205f75b04eec5766891fcaf6d8c1ab3cf8888fa9d7",
+      "bytes": 39745
+    },
+    "README.md": {
+      "sha256": "27a31c513f9825a7908c6baee96b4ef4aeed7f637101989db845d4dc5da90df3",
+      "bytes": 15403
+    },
+    "src/files/unix.rs": {
+      "sha256": "6d752eb1cd92e4f0443fcc218b83a125fe0c5892df98e15dc88e9d45701d1f1a",
+      "bytes": 4002
+    },
+    "src/files/windows.rs": {
+      "sha256": "6140394cebe1a2aff5c375f783a3747df49f006d1e81197da9c94c3512e1fcc0",
+      "bytes": 14649
+    },
+    "src/files.rs": {
+      "sha256": "bad22e2cb7a29cc9189f2a712cdc43b7fc4fcbc5fce3e7018ca747f5ebd366be",
+      "bytes": 8476
+    },
+    "src/lib.rs": {
+      "sha256": "926a5cd4186453f376637a04d4e28474a8ab1aedb0326f82d7223277ec347891",
+      "bytes": 395
+    },
+    "src/model.rs": {
+      "sha256": "4422875cd6d26a2b1ed9592c7db232f7e1b2deaa20908dd1c5b28c850865bee2",
+      "bytes": 12596
+    },
+    "src/tests/native.rs": {
+      "sha256": "bf3783377b7f77a5bb712178dcd0466e59be5cbb2a0ea90fe74be359338fbec2",
+      "bytes": 5380
+    },
+    "src/tests.rs": {
+      "sha256": "8408042218ae3688a44f3d6012eac22b27f3ac8036e2e2620b8592dbecc85f30",
+      "bytes": 51098
+    },
+    "src/worker.rs": {
+      "sha256": "67b881f9e06f0ce77e3ea73854a6e7fb29444e7699cac9000e28c3105632608e",
+      "bytes": 19678
+    },
+    "scripts/check.py": {
+      "sha256": "68b0240d9cdee14f4f537d0cce62f83ae25105b4fae91da85bc36327cc6a2107",
+      "bytes": 1134
+    },
+    "scripts/evidence.py": {
+      "sha256": "07db479c475f9f6fbf6ae3353cc71b8d6b4e6f4a7f7a1e2f06615b531d7f41f7",
+      "bytes": 1619
+    },
+    "scripts/milestone_evidence.py": {
+      "sha256": "bbd1a1fcf7f24132e56a89d7c0522bc1ab70efa4d357a267cb94eb7864923bd7",
+      "bytes": 2906
+    },
+    "scripts/native_check.py": {
+      "sha256": "79c35da2eb8452262c7f676fe719c1716d84d2c1b55fb4dab0007bae1b196ff6",
+      "bytes": 3921
+    },
+    "scripts/preflight.py": {
+      "sha256": "d9b998c061c06db2af5a74b45f00d72ce46c383592418234ba2a6930fb479e4c",
+      "bytes": 907
+    },
+    "scripts/repeat.py": {
+      "sha256": "d39a4532e0021643e7efdc34fe844e0c77a5cf26b84755cd41f05e61d3faa948",
+      "bytes": 425
+    },
+    "scripts/test_native_check.py": {
+      "sha256": "03486c05cf9e433f5d51ddc0d0e857bb4db9c867388d54ab9e1e031e848e40b3",
+      "bytes": 1149
+    },
+    "scripts/windows_cfg_probe.py": {
+      "sha256": "7c4895ba6202e0b0244f4a1ddb07011d8e594d481bc6ad149be712d4bc78d295",
+      "bytes": 1167
+    },
+    "scripts/windows_clippy_check.py": {
+      "sha256": "6e4604d57d63b8f350c34fd1269254163b9a82592386e29f31549483acf2f163",
+      "bytes": 912
+    },
+    "scripts/windows_crate_check.py": {
+      "sha256": "978063ad02c64b11893742b3b5124c5e7a7c14b1a7b16bcb2ac8da6aff9ee393",
+      "bytes": 884
+    },
+    "contracts/NATIVE.md": {
+      "sha256": "ff028dcf48b236707a30b868a733cf33f68a680bc74403aa5030cd6509ddb7bb",
+      "bytes": 12648
+    },
+    "contracts/test-inventory.json": {
+      "sha256": "d92fd87f4ad7eb9e391fa3cc34288ca598bcc8a8337d492676d1a50ac8d2855b",
+      "bytes": 10195
+    }
+  },
+  "inventory": {
+    "linux": {
+      "count": 44,
+      "sha256": "93a6355c3026e67d0c2358907853c8d2fb2296c381c79a093cce22c7a75489dd"
+    },
+    "darwin": {
+      "count": 43,
+      "sha256": "7ea979f09f46887dd05cb08ee5f8da68b665bfc569fbafc8812c7b95f1e2656f"
+    },
+    "win32": {
+      "count": 45,
+      "sha256": "9e18c731aa7599a8527bd4cc04cd2b2f60c7af3dd407f25479096b1fd56db5ef"
+    }
+  },
+  "verification": {
+    "linux": "native 44 tests +1 doctest, fmt, Clippy -Dwarnings PASS",
+    "windows": "GNU cfg check +Clippy all-targets PASS; runtime pending",
+    "macos": "missing Apple std/SDK; native build/runtime pending"
+  },
+  "native_receipt": "test-artifacts/native-linux/receipt.json"
+}
