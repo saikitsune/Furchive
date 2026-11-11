@@ -10,6 +10,8 @@
   let range=$derived(visibleRange(items.length,5,top,600,220,2));
   let rows=$derived(items.slice(range.start,range.end));
   let selected=$state('/fixtures/still.png');
+  let mediaBase=$state('');
+  function mediaUrl(value:string){return /\.(webm|mp4)$/.test(value)?mediaBase+value.split('/').pop():value;}
   const media=['still.jpg','still.png','animation.gif','animation.apng','still.webp','vp8.webm','vp9.webm','h264.mp4'];
   async function qualify() {
     const results:Record<string,unknown>={engine:navigator.userAgent,images:[],videos:[],gallery:{}};
@@ -40,7 +42,7 @@
             await new Promise(r=>setTimeout(r,250));
             clearTimeout(timer);resolve({name,ok:video.videoWidth>0&&!video.paused,time:video.currentTime,duration:video.duration,width:video.videoWidth,ready:video.readyState,played:true,seeked:true});
           }catch(e){clearTimeout(timer);resolve({name,ok:false,error:String(e)});}
-        }; video.src='/fixtures/'+name;
+        }; video.src=mediaBase+name;
       }); videos.push(result); video.pause();video.removeAttribute('src');video.load();video.remove();
     }
     results.videos=videos;
@@ -51,7 +53,8 @@
     await invoke('qualification_result',{result:results});
   }
   onMount(async()=>{
-    try {qualifying=await invoke<boolean>('qualification_mode');
+    try {mediaBase=await invoke<string>('qualification_media_base');
+      qualifying=await invoke<boolean>('qualification_mode');
       report=qualifying?'Running native WebKit media qualification…':'Native shell ready. Product integration in progress.';
       if(qualifying) await qualify();
     }catch(e){report=String(e);}
@@ -65,5 +68,5 @@
 <div style="height:440000px;position:relative"><div class="grid" style:top={(range.start/5)*220+'px'}>
 {#each rows as item(item.id)}<button data-tile><img src="/fixtures/still.webp" alt="Generated abstract test fixture"><b>{item.title}</b><small>Owned test fixture · no remote artwork</small></button>{/each}
 </div></div></div></section>
-<aside class="preview"><h2>Viewer</h2>{#if /\.(webm|mp4)$/.test(selected)}<video src={selected} controls muted loop playsinline></video>{:else}<img src={selected} alt="Generated media fixture">{/if}<p>JPEG · PNG · GIF · APNG · WebP · WebM · MP4</p></aside>
+<aside class="preview"><h2>Viewer</h2>{#if /\.(webm|mp4)$/.test(selected)}<video src={mediaUrl(selected)} controls muted loop playsinline></video>{:else}<img src={selected} alt="Generated media fixture">{/if}<p>JPEG · PNG · GIF · APNG · WebP · WebM · MP4</p></aside>
 </main>

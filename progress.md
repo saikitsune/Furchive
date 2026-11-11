@@ -17,3 +17,7 @@
 - Added bounded owned DB worker and tested shutdown/reopen user state; basic Tauri command wiring compiles, with explicit command permissions. Added read-only legacy saved-search preview that does not retain API keys or mutate old settings. Product UI remains qualification-only pending native media gate.
 - Download implementation worker t_179a90c5 active; ONLY rust/crates/furchive-downloads/**. Read-only return t_e10269a2 has notify+wake to live desktop. Do not overlap ownership.
 - Earlier push/Actions permission prompt timed out; Sai subsequently EXPLICITLY APPROVED rewrite/rust push + GitHub Actions. Accepted exact Furchive write invitation and verified push:true. CI admission details in rust/docs/ci-admission.md; no main/release/license authority.
+
+## Native CI attempt 1
+- Pushed6f9b390 to rewrite/rust; main untouched. Run43088440335 finished: macOS PASS including actual image/video play+seek and virtualized DOM; Windows missing required ICO; Linux custom-scheme video code4 while images/grid and all build/test gates pass.
+- Corrections and RED/GREEN evidence in rust/docs/native-ci-attempt-1.md. Linux transport correction requires new native CI evidence; no sandbox or gate weakening. Full application still incomplete.

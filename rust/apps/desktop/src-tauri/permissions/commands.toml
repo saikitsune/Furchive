@@ -3,6 +3,10 @@ identifier = "allow-qualification-mode"
 description = "Read the opt-in media qualification state"
 commands.allow = ["qualification_mode"]
 [[permission]]
+identifier = "allow-qualification-media-base"
+description = "Read the launch-scoped fixed-fixture media URL; no filesystem access"
+commands.allow = ["qualification_media_base"]
+[[permission]]
 identifier = "allow-qualification-result"
 description = "Submit results only to the opt-in test executable"
 commands.allow = ["qualification_result"]

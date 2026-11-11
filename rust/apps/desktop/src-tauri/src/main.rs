@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod commands;
+mod media_loopback;
 mod media_protocol;
 #[tauri::command]
 fn qualification_mode() -> bool {
@@ -25,8 +26,28 @@ fn qualification_result(app: tauri::AppHandle, result: serde_json::Value) -> Res
         Err("Qualification is not enabled in this build".into())
     }
 }
+#[tauri::command]
+fn qualification_media_base(state: tauri::State<'_, media_loopback::MediaServer>) -> String {
+    state.base_url()
+}
 fn main() {
+    // Permit only this launch's exact media origin, preserving the rest of the CSP.
+    let server = media_loopback::MediaServer::start().expect("fixture media transport");
+    let origin = format!("http://{}", server.address());
+    let mut context = tauri::generate_context!();
+    let security = &mut context.config_mut().app.security;
+    let policy = security.csp.take().expect("explicit bundled CSP");
+    let mut directives: std::collections::HashMap<
+        String,
+        tauri::utils::config::CspDirectiveSources,
+    > = policy.into();
+    directives
+        .get_mut("media-src")
+        .expect("explicit media policy")
+        .push(origin);
+    security.csp = Some(tauri::utils::config::Csp::DirectiveMap(directives));
     tauri::Builder::default()
+        .manage(server)
         .setup(commands::initialize)
         .register_asynchronous_uri_scheme_protocol("fixture", |_ctx, request, responder| {
             let name = request.uri().path().trim_start_matches('/');
@@ -88,6 +109,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             qualification_mode,
+            qualification_media_base,
             qualification_result,
             commands::search,
             commands::suggestions,
@@ -96,6 +118,6 @@ fn main() {
             commands::pinned_pools,
             commands::set_pin
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("Furchive desktop runtime");
 }

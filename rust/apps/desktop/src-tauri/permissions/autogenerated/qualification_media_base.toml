@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qualification-media-base"
+description = "Enables the qualification_media_base command without any pre-configured scope."
+commands.allow = ["qualification_media_base"]
+
+[[permission]]
+identifier = "deny-qualification-media-base"
+description = "Denies the qualification_media_base command without any pre-configured scope."
+commands.deny = ["qualification_media_base"]

@@ -1253,6 +1253,7 @@ dependencies = [
  "furchive-domain",
  "furchive-e621",
  "furchive-engine",
+ "getrandom 0.4.3",
  "serde",
  "serde_json",
  "tauri",

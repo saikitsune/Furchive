@@ -2,6 +2,7 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "qualification_mode",
+            "qualification_media_base",
             "qualification_result",
             "search",
             "suggestions",
