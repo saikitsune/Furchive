@@ -118,8 +118,26 @@ async fn reconciliation_rejects_same_bytes_in_replaced_destination_object() {
 fn invalid_root_with_parent_component_is_rejected_before_staging_creation() {
     let temp = OwnedTemp::new();
     std::fs::create_dir(temp.path().join("other")).unwrap();
-    assert!(crate::files::Grant::open(&temp.path().join("other/../")).is_err());
+    // OwnedTemp uses canonicalize, which yields a verbatim prefix on Windows.
+    // PathBuf::join normalizes `..` away for that prefix before Grant sees it.
+    // Append to OsString instead so the real native rejection boundary is tested.
+    let mut raw = temp.path().as_os_str().to_os_string();
+    raw.push(if cfg!(windows) {
+        r"\other\..\"
+    } else {
+        "/other/../"
+    });
+    let invalid = std::path::PathBuf::from(raw);
+    assert!(
+        invalid
+            .components()
+            .any(|c| c == std::path::Component::ParentDir),
+        "fixture lost its literal parent component: {invalid:?}"
+    );
+    assert!(crate::files::Grant::open(&invalid).is_err());
     assert!(!temp.path().join(".furchive-downloads").exists());
+    // Keep a normal-root positive control separate from the rejected input.
+    assert!(crate::files::Grant::open(temp.path()).is_ok());
 }
 
 #[test]
