@@ -8,9 +8,9 @@ Preserve old C# source, user data, art and history. No production/server changes
 
 ## Phases
 - [complete] 0: Durable execution records and scoped tooling; unprivileged native SDK recovered (runtime sandbox remains blocked).
-- [in_progress] 1: Basic native image/video play+seek and10,000-item/40DOM gallery proof PASS on three hosted OS runners at b1e5b40. Extracted-package, animation/lifecycle/performance/platform breadth gates remain before full UI commitment.
+- [in_progress] 1: Basic native image/video play+seek and10,000-item/40DOM gallery proof PASS on three hosted OS runners at b1e5b40. Extracted Debian/macOS.app/Windows portable payload proof also PASS at1367d40; animation/lifecycle/performance/platform breadth gates remain before full UI commitment.
 - [in_progress] 2: Domain/storage foundation 23 tests passes; e621 mapping/request foundation 3 tests passes. Full API behavior pending.
-- [pending] 3: Reliable downloads and old data migration.
+- [in_progress] 3: Linux download core33tests owner-repaired; portable Windows/macOS backend t_d5d44259 active, dependent native integration t_b8082b2d. Full migration pending.
 - [pending] 4: Product UI and IPC integration.
 - [pending] 5: Independent milestone review, native build/package matrix, release readiness (human release approval).
 
@@ -19,5 +19,5 @@ Reynard owns environment/native UI proof and integration. Specialists receive bo
 
 ## Errors / unresolved boundaries
 - Unprivileged GTK/WebKit SDK recovered and native package builds; container denies WebKit sandbox namespaces. Sai authorized rewrite branch push/native Actions to recover runtime proof.
-- Native hosted macOS/Windows/Linux basic runtime proof established by run43091317909. Signing/notarization, installers, extracted-package proof and broader media acceptance remain pending; no release authority inferred.
+- Native hosted macOS/Windows/Linux basic runtime proof established by run43091317909. Extracted package basic runtime proof established by run43093280146. Signing/notarization, installers and broader media acceptance remain pending; no release authority inferred.
 - Project LICENSE absent: leave license choice pending, not an implementation blocker.

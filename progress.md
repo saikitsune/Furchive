@@ -15,7 +15,7 @@
 - Scoped foundation return t_f73a945a completed read-only verification: all29 files and36 original receipts verified; independent23/23 tests/fmt/clippy pass. Parent owns root/e621/desktop.
 - e621 client expanded to11 named tests (account metadata safety, logout headers, suggestions/pool order, request identity, bounded metadata, retry429, raw pagination); live identified-UA smoke returned2 safe records.
 - Added bounded owned DB worker and tested shutdown/reopen user state; basic Tauri command wiring compiles, with explicit command permissions. Added read-only legacy saved-search preview that does not retain API keys or mutate old settings. Product UI remains qualification-only pending native media gate.
-- Download implementation worker t_179a90c5 active; ONLY rust/crates/furchive-downloads/**. Read-only return t_e10269a2 has notify+wake to live desktop. Do not overlap ownership.
+- Original download worker t_179a90c5 and verifier t_e10269a2 done. Original DL-01 BLOCK preserved; owner repair33Linux tests passes. New portable backend owner t_d5d44259 now owns ONLY rust/crates/furchive-downloads/** with dependent verifier t_b8082b2d; do not overlap ownership.
 - Earlier push/Actions permission prompt timed out; Sai subsequently EXPLICITLY APPROVED rewrite/rust push + GitHub Actions. Accepted exact Furchive write invitation and verified push:true. CI admission details in rust/docs/ci-admission.md; no main/release/license authority.
 
 ## Native CI attempt 1
@@ -24,4 +24,7 @@
 
 ## Native runtime attempt2
 - Run43091317909 at b1e5b40 PASS on all3 platforms; downloaded all3 receipts and independently validated. See rust/docs/native-runtime-milestone.md for exact scope/diagnostics. Basic runtime gate is not full packaged-app/media acceptance.
-- Automatic continuation extends native CI to re-extract and exercise Debian/macOS.app/Windows portable ZIP payloads, no install or release. Local Debian build/extract PASS; local runtime NOT RUN.
+- Automatic continuation ran43093280146 at1367d40: all3 extracted payloads PASS. Owner verified downloaded package/executable hashes and native receipts, see rust/docs/extracted-package-milestone.md. No install/release/full app claim.
+
+## Next active capability
+- Portable durable download backend worker t_d5d44259 and dependent native integration t_b8082b2d created, finite3600s caps and current Desktop notify+wake subscriptions read back. Existing profile model/provider preserved. Broader media acceptance and product UI still pending.
