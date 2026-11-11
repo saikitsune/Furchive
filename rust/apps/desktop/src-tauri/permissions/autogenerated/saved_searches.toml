@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-saved-searches"
+description = "Enables the saved_searches command without any pre-configured scope."
+commands.allow = ["saved_searches"]
+
+[[permission]]
+identifier = "deny-saved-searches"
+description = "Denies the saved_searches command without any pre-configured scope."
+commands.deny = ["saved_searches"]

@@ -1,4 +1,3 @@
-tests/
 **/installer/inno/output/*
 **/.vscode/*.md
 **/.vscode/*.jpg
@@ -62,6 +61,15 @@ TestResult.xml
 
 # Node (if any tooling pulls it in)
 node_modules/
+
+# Rust rewrite generated artifacts
+/rust/target/
+/rust/apps/desktop/src-tauri/target/
+/rust/apps/desktop/dist/
+/rust/apps/desktop/src-tauri/gen/
+**/test-artifacts/
+**/test-results/
+**/playwright-report/
 
 # OS-specific
 Thumbs.db

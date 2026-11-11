@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qualification-mode"
+description = "Enables the qualification_mode command without any pre-configured scope."
+commands.allow = ["qualification_mode"]
+
+[[permission]]
+identifier = "deny-qualification-mode"
+description = "Denies the qualification_mode command without any pre-configured scope."
+commands.deny = ["qualification_mode"]

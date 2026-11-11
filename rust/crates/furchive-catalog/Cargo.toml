@@ -1,0 +1,11 @@
+[package]
+name="furchive-catalog"
+version="0.1.0"
+edition="2024"
+publish=false
+[workspace]
+resolver="2"
+[dependencies]
+furchive-domain={path="../furchive-domain"}
+csv="1"
+flate2="1"

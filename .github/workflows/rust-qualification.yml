@@ -1,0 +1,80 @@
+name: Rust rewrite qualification
+on:
+  push:
+    branches: [rewrite/rust]
+    paths: ['rust/**', '.github/workflows/rust-qualification.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: furchive-rust-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    name: Native ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      CARGO_BUILD_JOBS: 3
+      RUSTUP_AUTO_INSTALL: '0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb xauth dbus-x11 gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+      - name: Core contracts and quality
+        run: |
+          cargo +1.99.1 test --manifest-path rust/Cargo.toml --workspace --locked
+          cargo +1.99.1 fmt --manifest-path rust/Cargo.toml --all -- --check
+          cargo +1.99.1 clippy --manifest-path rust/Cargo.toml --workspace --all-targets --locked -- -D warnings
+          cargo +1.99.1 test --manifest-path rust/crates/furchive-catalog/Cargo.toml --locked
+      - name: Linux download integrity contracts
+        if: runner.os == 'Linux'
+        run: |
+          cargo +1.99.1 test --manifest-path rust/crates/furchive-downloads/Cargo.toml --all-targets --locked
+          cargo +1.99.1 test --manifest-path rust/crates/furchive-downloads/Cargo.toml --doc --locked
+          cargo +1.99.1 clippy --manifest-path rust/crates/furchive-downloads/Cargo.toml --all-targets --locked -- -D warnings
+      - name: Frontend quality and production build
+        run: |
+          npm ci --prefix rust/apps/desktop
+          npm run --prefix rust/apps/desktop check
+          npm test --prefix rust/apps/desktop
+          npm run --prefix rust/apps/desktop build
+      - name: Native default and qualification quality
+        run: |
+          cargo +1.99.1 clippy --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+          cargo +1.99.1 test --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --features self-test,custom-protocol --locked
+          cargo +1.99.1 clippy --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --all-targets --features self-test,custom-protocol --locked -- -D warnings
+          cargo +1.99.1 build --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --features self-test,custom-protocol --locked
+      - name: Exercise native WebKitGTK
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dbus-run-session -- python3 rust/scripts/run-native-qualification.py rust/apps/desktop/src-tauri/target/debug/furchive-desktop --output rust/test-artifacts/ci-native-${{ runner.os }}.json
+      - name: Exercise native WebView2
+        if: runner.os == 'Windows'
+        run: python rust/scripts/run-native-qualification.py rust/apps/desktop/src-tauri/target/debug/furchive-desktop.exe --output rust/test-artifacts/ci-native-${{ runner.os }}.json
+      - name: Exercise native WKWebView
+        if: runner.os == 'macOS'
+        run: python3 rust/scripts/run-native-qualification.py rust/apps/desktop/src-tauri/target/debug/furchive-desktop --output rust/test-artifacts/ci-native-${{ runner.os }}.json
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: native-qualification-${{ runner.os }}
+          retention-days: 5
+          if-no-files-found: warn
+          path: |
+            rust/test-artifacts/ci-native-*.json
+            rust/test-artifacts/ci-native-*.log

@@ -1,0 +1,1 @@
+{"identifier":"main","description":"Bundled application only; no filesystem, shell or remote origins.","windows":["main"],"permissions":["core:default","allow-product-commands","allow-qualification-mode","allow-qualification-result"]}

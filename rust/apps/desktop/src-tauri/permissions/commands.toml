@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "allow-qualification-mode"
+description = "Read the opt-in media qualification state"
+commands.allow = ["qualification_mode"]
+[[permission]]
+identifier = "allow-qualification-result"
+description = "Submit results only to the opt-in test executable"
+commands.allow = ["qualification_result"]

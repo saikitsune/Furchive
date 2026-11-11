@@ -1,0 +1,4 @@
+[workspace]
+resolver = "2"
+members = ["crates/furchive-domain", "crates/furchive-engine", "crates/furchive-e621", "crates/furchive-app"]
+exclude = ["apps/desktop/src-tauri"]

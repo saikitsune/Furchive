@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pinned-pools"
+description = "Enables the pinned_pools command without any pre-configured scope."
+commands.allow = ["pinned_pools"]
+
+[[permission]]
+identifier = "deny-pinned-pools"
+description = "Denies the pinned_pools command without any pre-configured scope."
+commands.deny = ["pinned_pools"]

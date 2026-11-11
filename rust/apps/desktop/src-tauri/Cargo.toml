@@ -1,0 +1,18 @@
+[package]
+name = "furchive-desktop"
+version = "2.0.0-alpha.1"
+edition = "2024"
+publish = false
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+[dependencies]
+furchive-domain = {path="../../../crates/furchive-domain"}
+furchive-engine = {path="../../../crates/furchive-engine"}
+furchive-e621 = {path="../../../crates/furchive-e621"}
+furchive-app = {path="../../../crates/furchive-app"}
+tauri = { version = "=2.12.5", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+self-test = []
