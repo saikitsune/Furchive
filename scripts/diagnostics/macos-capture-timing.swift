@@ -2,6 +2,7 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import Darwin
 
 @main struct Probe {
     static func now() -> Double { ProcessInfo.processInfo.systemUptime * 1000 }
@@ -14,6 +15,18 @@ import AppKit
             samples.append(now() - start)
         }
         return ["label": label, "requestedMs": 80, "actualMs": samples]
+    }
+    static func machSleepSamples() -> [String: Any] {
+        var info = mach_timebase_info_data_t()
+        guard mach_timebase_info(&info) == KERN_SUCCESS else { fatalError("No Mach timebase") }
+        var samples: [Double] = []
+        for _ in 0..<8 {
+            let start = now()
+            let ticks = UInt64(80_000_000) * UInt64(info.denom) / UInt64(info.numer)
+            guard mach_wait_until(mach_absolute_time() + ticks) == KERN_SUCCESS else { fatalError("Mach wait refused") }
+            samples.append(now() - start)
+        }
+        return ["label": "mach-absolute-deadline", "requestedMs": 80, "actualMs": samples]
     }
     static func windowSamples(_ label: String, narrow: Bool, window: CGWindowID) -> [String: Any] {
         var samples: [Double] = []
@@ -45,6 +58,7 @@ import AppKit
         let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Bounded hosted capture timing diagnostic")
         defer { ProcessInfo.processInfo.endActivity(activity) }
         results.append(try await sleepSamples("active-default-sleep", precise: false))
+        results.append(machSleepSamples())
         results.append(try await sleepSamples("active-zero-tolerance-sleep", precise: true))
         let data = try JSONSerialization.data(withJSONObject: ["schema": 1, "results": results], options: [.prettyPrinted, .sortedKeys])
         print(String(decoding: data, as: UTF8.self))
