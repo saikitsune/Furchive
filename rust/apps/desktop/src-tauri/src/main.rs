@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod commands;
+mod media_geometry;
 mod media_loopback;
 mod media_protocol;
 mod media_test;

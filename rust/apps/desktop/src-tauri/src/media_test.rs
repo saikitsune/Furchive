@@ -115,6 +115,8 @@ pub async fn media_test_checkpoint(
             .map_err(|_| "cannot read owned scale")?;
         let offset = bounds.position.to_physical::<i32>(scale);
         let position = tauri::PhysicalPosition::new(position.x + offset.x, position.y + offset.y);
+        #[cfg(target_os = "macos")]
+        let (position, size) = macos_safe_client(&window, position, scale, &root)?;
         if (f64::from(size.width) - receipt.viewport.width * scale).abs() > 2.0
             || (f64::from(size.height) - receipt.viewport.height * scale).abs() > 2.0
             || (receipt.viewport.dpr - scale).abs() > 0.05
@@ -159,6 +161,36 @@ pub async fn media_test_checkpoint(
         Err("media test IPC disabled".into())
     }
 }
+#[cfg(all(feature = "self-test", target_os = "macos"))]
+fn macos_safe_client(
+    window: &tauri::WebviewWindow,
+    origin: tauri::PhysicalPosition<i32>,
+    scale: f64,
+    root: &std::path::Path,
+) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), String> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    window.with_webview(move|native|{
+        // SAFETY: Tauri's pinned macOS PlatformWebview contains the WKWebView
+        // instance (an NSView subclass), and invokes this closure on the main thread.
+        let view: &objc2_app_kit::NSView=unsafe{&*native.inner().cast()};
+        let bounds=view.bounds();let safe=view.safeAreaRect();
+        let crop=crate::media_geometry::safe_crop([bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height],[safe.origin.x,safe.origin.y,safe.size.width,safe.size.height],view.isFlipped(),scale);
+        let top=safe.origin.y-bounds.origin.y;let left=safe.origin.x-bounds.origin.x;
+        let geometry=serde_json::json!({"bounds":{"x":bounds.origin.x,"y":bounds.origin.y,"width":bounds.size.width,"height":bounds.size.height},"safe":{"x":safe.origin.x,"y":safe.origin.y,"width":safe.size.width,"height":safe.size.height},"flipped":view.isFlipped(),"top":top,"left":left,"scale":scale});
+        let value=crop.map(|c|(tauri::PhysicalPosition::new(origin.x+c[0].round() as i32,origin.y+c[1].round() as i32),tauri::PhysicalSize::new(c[2].round() as u32,c[3].round() as u32),geometry));
+        let _=tx.send(value);
+    }).map_err(|_|"cannot read native AppKit geometry")?;
+    let (position, size, geometry) = rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .map_err(|_| "AppKit geometry query timed out")??;
+    std::fs::write(
+        root.join("native-geometry.json"),
+        serde_json::to_vec_pretty(&geometry).map_err(|_| "cannot encode native geometry")?,
+    )
+    .map_err(|_| "cannot retain native geometry")?;
+    Ok((position, size))
+}
+
 #[tauri::command]
 pub fn media_test_result(app: tauri::AppHandle, result: serde_json::Value) -> Result<(), String> {
     if !media_test_mode() {
