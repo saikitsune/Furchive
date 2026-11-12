@@ -100,17 +100,38 @@ pub async fn media_test_checkpoint(
         let position = window
             .inner_position()
             .map_err(|_| "cannot locate owned client")?;
-        let size = window
+        let window_size = window
             .inner_size()
-            .map_err(|_| "cannot size owned client")?;
+            .map_err(|_| "cannot size owned window")?;
+        // Capture the actual webview client, not the outer window's content view.
+        // On macOS their bounds can differ (title/content-layout inset).
+        let webview: &tauri::Webview = window.as_ref();
+        let size = webview.size().map_err(|_| "cannot size owned webview")?;
+        let bounds = webview
+            .bounds()
+            .map_err(|_| "cannot locate owned webview bounds")?;
         let scale = window
             .scale_factor()
             .map_err(|_| "cannot read owned scale")?;
+        let offset = bounds.position.to_physical::<i32>(scale);
+        let position = tauri::PhysicalPosition::new(position.x + offset.x, position.y + offset.y);
         if (f64::from(size.width) - receipt.viewport.width * scale).abs() > 2.0
             || (f64::from(size.height) - receipt.viewport.height * scale).abs() > 2.0
             || (receipt.viewport.dpr - scale).abs() > 0.05
         {
-            return Err("webview/native geometry mismatch".into());
+            return Err(format!(
+                "webview/native geometry mismatch: CSS={}x{} DPR={} native={}x{} window={}x{} scale={} offset={},{}",
+                receipt.viewport.width,
+                receipt.viewport.height,
+                receipt.viewport.dpr,
+                size.width,
+                size.height,
+                window_size.width,
+                window_size.height,
+                scale,
+                offset.x,
+                offset.y
+            ));
         }
         let output = serde_json::json!({"pid":std::process::id(),"checkpoint":checkpoint,"request":receipt,
             "client":{"x":position.x,"y":position.y,"width":size.width,"height":size.height,"scale":scale}});

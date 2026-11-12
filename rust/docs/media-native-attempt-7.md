@@ -1,0 +1,13 @@
+# Native media attempt7 — macOS playback works; capture client bounds
+
+Candidateb28f3c7/run43292823183: allthree download jobs PASS; Linux and Windows native/package campaigns SUCCESS. macOS remains nonpass, but its real runtime receipt now verifies VP8/VP9/H264 play+seek at2x, mutedtrue and releasedtrue. Previous metadata-only playback boundary is corrected for the observed native run; no codec or playback-policy change was needed. Repeated20navigation loads also reached the first animation checkpoint.
+
+The actual remaining error is `webview/native geometry mismatch`, emitted BEFORE publishing a host capture request. This is not a new macOS decoder failure, and no animation acceptance is claimed yet.
+
+## Correction
+
+The checkpoint compared JavaScript viewport CSS*dpr with window.inner_size and took the window inner position. Capture coordinates belong to the webview, which can differ from the window content-layout view on macOS. Tauri2.12.5 explicitly offers Webview::size (physical webview client), bounds (webview client bounds) and AsRef<Webview> on WebviewWindow. Locked Wry0.57.2 macOS bounds reads WKWebView.frame, transforms flipped vertical relative position against parent.frame. Tauri-runtime-wry2.12.3 resolves those logical bounds at window.scale_factor.
+
+Use actual webview.size/bounds converted at unchanged native scale, add its relative offset to owned window inner screen position, and compare unchanged2pixel/0.05scale tolerances to JS viewport. Geometry rejection now includes exact CSS,dpr,webview physical/window size,scale and offset if it still fails. No screenshot rectangle chosen from frontend alone, no forced match/crop inferred from desired pixel colors, no broadened desktop capture, no tolerance widening. Host still verifies actual foreground PID/window every sample and strict raw dimensions/state progression. Native execution must validate the source-based correction.
+
+Local limitation discovered honestly: earlier unprivileged SDK was under24hour scratch and has been pruned; source compilation/type/strict Clippy passes from existing metadata, but native test relink fails missingGTK/WebKit libraries. This is an agent build-environment dependency gap, not a new product link error; no fabricated test PASS. Hosted native runner has the declared SDK and will perform actual tests/link/runtime. Both default/self-test strict Clippy and rustfmt PASS locally. Previous5native test campaign is historical, not counted as re-executed for this edit. Full media/platform/application acceptance remains incomplete until corrected actual macOS capture/remaining receipts pass.
