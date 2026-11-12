@@ -1,0 +1,26 @@
+name: macOS capture timing diagnostic
+on:
+  push:
+    branches: [rewrite/rust]
+    paths: ['scripts/diagnostics/macos-capture-timing.swift', '.github/workflows/macos-capture-timing.yml']
+permissions:
+  contents: read
+jobs:
+  timing:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Measure native timers and WindowServer enumeration, no pixels
+        shell: bash
+        run: |
+          mkdir -p diagnostic-output
+          swiftc -parse-as-library -target "$(uname -m)-apple-macosx14.0" scripts/diagnostics/macos-capture-timing.swift -o diagnostic-output/probe
+          diagnostic-output/probe > diagnostic-output/timing.json
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: macos-capture-timing
+          retention-days: 5
+          if-no-files-found: error
+          path: diagnostic-output/timing.json
