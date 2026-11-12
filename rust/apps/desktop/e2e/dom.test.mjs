@@ -86,6 +86,18 @@ test('rendered Viewer releases video on navigation, close and unmount; controls 
  await unmount(active);active=null;
 });
 
+test('rendered Viewer establishes persistent mute defaults before assigning a source',async()=>{
+ const Host=await viewerHost();const prototype=window.HTMLMediaElement.prototype;
+ const descriptor=Object.getOwnPropertyDescriptor(prototype,'src');assert.ok(descriptor?.set&&descriptor.get);
+ const observed=[];
+ Object.defineProperty(prototype,'src',{...descriptor,set(value){observed.push({muted:this.muted,defaultMuted:this.defaultMuted,attribute:this.hasAttribute('muted')});descriptor.set.call(this,value);this.muted=this.defaultMuted;}});
+ try{
+  active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
+  assert.deepEqual(observed,[{muted:true,defaultMuted:true,attribute:true}]);
+  assert.equal(document.querySelector('video').muted,true);
+ }finally{Object.defineProperty(prototype,'src',descriptor);if(active)await unmount(active);active=null;}
+});
+
 test('rendered Viewer surfaces the native play rejection rather than an unexplained timeout',async()=>{
  const Host=await viewerHost();
  const previous=window.HTMLMediaElement.prototype.play;

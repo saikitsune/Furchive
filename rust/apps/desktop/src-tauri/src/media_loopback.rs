@@ -37,7 +37,12 @@ impl MediaServer {
                 while !signal.load(Ordering::Acquire) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
-                            let _ = serve(&mut stream, address, &route);
+                            let result = serve(&mut stream, address, &route);
+                            #[cfg(feature = "self-test")]
+                            if let Err(error) = &result {
+                                eprintln!("fixture transport I/O: {:?}", error.kind());
+                            }
+                            let _ = result;
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             std::thread::sleep(Duration::from_millis(10))

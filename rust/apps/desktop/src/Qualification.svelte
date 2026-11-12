@@ -27,10 +27,10 @@
     results.images=imageResults;
     const videos:unknown[]=[];
     for(const name of media.slice(5)) {
-      const video=document.createElement('video'); video.muted=true; video.preload='auto'; document.body.append(video);
+      const video=document.createElement('video'); video.defaultMuted=true;video.setAttribute('muted','');video.muted=true; video.preload='auto'; document.body.append(video);
       const result=await new Promise(resolve=>{
         const timer=setTimeout(()=>resolve({name,ok:false,error:'timeout'}),12000);
-        video.onerror=()=>{clearTimeout(timer);resolve({name,ok:false,error:video.error?.message,code:video.error?.code});};
+        video.onerror=()=>{clearTimeout(timer);resolve({name,ok:false,error:video.error?.message,code:video.error?.code,ready:video.readyState,network:video.networkState,time:video.currentTime,muted:video.muted,defaultMuted:video.defaultMuted,src:video.currentSrc});};
         video.onloadeddata=async()=>{
           video.onloadeddata=null;
           try {
