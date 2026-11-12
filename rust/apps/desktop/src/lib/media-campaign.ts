@@ -3,6 +3,8 @@ import {validateMediaEvidence,type MediaEvidence} from './media-evidence';
 import manifest from '../../public/fixtures/viewer-manifest.json';
 
 export type Checkpoint='gif'|'apng'|'webp';
+export const campaignDiagnostics:Record<string,unknown>={stage:'starting',videos:[]};
+function videoState(v:HTMLVideoElement){return {src:v.currentSrc,paused:v.paused,ended:v.ended,ready:v.readyState,network:v.networkState,muted:v.muted,defaultMuted:v.defaultMuted,speed:v.playbackRate,time:v.currentTime,duration:v.duration,width:v.videoWidth,error:v.error?.code,errorMessage:v.error?.message,playbackMessage:document.querySelector('[data-viewer] [data-playback-message]')?.textContent};}
 export type CaptureRequest={fixture:string;fixtureSha256:string;rect:{x:number;y:number;width:number;height:number};viewport:{width:number;height:number;dpr:number};frames:number;intervalMs:number};
 const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
 const painted=async()=>{await tick();await frame();await frame();};
@@ -36,14 +38,18 @@ export async function runMediaCampaign(capture:(checkpoint:Checkpoint,request:Ca
  }
  const videos:MediaEvidence['videos']=[];
  for(const name of ['vp8.webm','vp9.webm','h264.mp4']){
+  campaignDiagnostics.stage='video '+name;
   await open(name);const video=currentMedia();demand(video instanceof HTMLVideoElement,'video element required');const v=video as HTMLVideoElement;
-  button('Play video').click();await until(()=>!v.paused&&v.currentTime>0.1,'video did not play');
+  campaignDiagnostics.beforePlay=videoState(v);
+  button('Play video').click();
+  try{await until(()=>!v.paused&&v.currentTime>0.1,'video did not play');}catch(e){campaignDiagnostics.failedVideo=videoState(v);throw e;}
   const played=!v.paused;
   const speed=demand(document.querySelector<HTMLSelectElement>('[aria-label="Playback speed"]'),'speed');speed.value='2';speed.dispatchEvent(new Event('change',{bubbles:true}));
   let seeked=false;v.addEventListener('seeked',()=>seeked=true,{once:true});
   const seek=demand(document.querySelector<HTMLInputElement>('[aria-label="Seek video"]'),'seek');seek.value='0.5';seek.dispatchEvent(new Event('input',{bubbles:true}));
   await until(()=>seeked&&v.currentTime>=0.45,'video seek did not complete');
-  const row={name,played,seeked,speed:v.playbackRate,muted:v.muted,time:v.currentTime,released:false};await close();row.released=released(v);videos.push(row);
+  const row={name,played,seeked,speed:v.playbackRate,muted:v.muted,time:v.currentTime,released:false};
+  campaignDiagnostics.afterSeek=videoState(v);await close();row.released=released(v);videos.push(row);campaignDiagnostics.videos=[...videos];
  }
  const lifecycle:MediaEvidence['lifecycle']=[];
  for(let cycle=0;cycle<20;cycle++){
@@ -62,5 +68,6 @@ export async function runMediaCampaign(capture:(checkpoint:Checkpoint,request:Ca
   await capture(checkpoint,request);animationCheckpoints.push(checkpoint);await close();
  }
  const result:MediaEvidence={schema:1,ok:true,engine:navigator.userAgent,dataset:{total:10000,unique:10000,rowHeight:184},gallery:{initialMs,samples,selected,focused},images,videos,lifecycle,animationCheckpoints};
+ campaignDiagnostics.runtime=result;
  validateMediaEvidence(result);return result;
 }

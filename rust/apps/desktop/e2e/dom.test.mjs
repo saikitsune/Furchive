@@ -86,6 +86,18 @@ test('rendered Viewer releases video on navigation, close and unmount; controls 
  await unmount(active);active=null;
 });
 
+test('rendered Viewer surfaces the native play rejection rather than an unexplained timeout',async()=>{
+ const Host=await viewerHost();
+ const previous=window.HTMLMediaElement.prototype.play;
+ window.HTMLMediaElement.prototype.play=async function(){throw new window.DOMException('Native gesture required','NotAllowedError')};
+ try{
+  active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
+  const video=document.querySelector('video');Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2},paused:{value:true}});video.dispatchEvent(new Event('loadedmetadata'));flushSync();
+  document.querySelector('[aria-label="Play video"]').click();await Promise.resolve();await Promise.resolve();flushSync();
+  assert.match(document.querySelector('[data-playback-message]').textContent,/NotAllowedError/);
+ }finally{window.HTMLMediaElement.prototype.play=previous;if(active)await unmount(active);active=null;}
+});
+
 test('rendered Viewer fit, 100 percent and bounded zoom reset operate on media transform',async()=>{
  const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'large',kind:'image',src:'/fixtures/large.png',title:'<b>literal</b>'}],grants:['/fixtures/large.png']}});flushSync();
  const img=document.querySelector('[data-viewer] img');Object.defineProperties(img,{naturalWidth:{value:1280},naturalHeight:{value:800}});img.dispatchEvent(new Event('load'));flushSync();

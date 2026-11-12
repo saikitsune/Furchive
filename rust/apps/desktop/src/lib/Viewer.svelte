@@ -69,7 +69,7 @@
  function pointerDown(event:PointerEvent){if(status!=='ready'||event.button!==0||!stage)return;stage.setPointerCapture(event.pointerId);drag={id:event.pointerId,x:event.clientX,y:event.clientY,px:transform.x,py:transform.y};}
  function pointerMove(event:PointerEvent){if(drag?.id!==event.pointerId)return;x=drag.px+event.clientX-drag.x;y=drag.py+event.clientY-drag.y;}
  function pointerEnd(){drag=null;}
- async function play(){const video=element;if(!(video instanceof HTMLVideoElement))return;if(!video.paused){video.pause();return;}try{await video.play();}catch{if(element===video){message='Playback was refused. Use Play again with a direct gesture.';}}}
+ async function play(){const video=element;if(!(video instanceof HTMLVideoElement))return;if(!video.paused){video.pause();return;}try{await video.play();}catch(error){if(element===video){const reason=error instanceof Error?error.name:'UnknownError';message=`Playback was refused (${reason}). Use Play again with a direct gesture.`;}}}
  function changeMute(){muted=!muted;if(element instanceof HTMLVideoElement)element.muted=muted;}
  function changeSpeed(event:Event){speed=Number((event.target as HTMLSelectElement).value);if(element instanceof HTMLVideoElement)element.playbackRate=speed;}
  function seek(event:Event){const value=Number((event.target as HTMLInputElement).value);if(element instanceof HTMLVideoElement&&Number.isFinite(value))element.currentTime=Math.max(0,Math.min(duration,value));}
@@ -84,7 +84,7 @@
   <div class="bar controls"><button onclick={reset}>Fit / reset</button><button onclick={()=>{fit=false;scale=1;x=0;y=0}}>100%</button><button aria-label="Zoom out" onclick={()=>zoom(1/1.25)}>−</button><button aria-label="Zoom in" onclick={()=>zoom(1.25)}>+</button></div>
   {#if item.kind==='video'}
    <div class="bar controls"><button aria-label={playing?'Pause video':'Play video'} disabled={status!=='ready'} onclick={play}>{playing?'Pause':'Play'}</button><button aria-label={muted?'Unmute video':'Mute video'} onclick={changeMute}>{muted?'Muted':'Sound on'}</button><label>Speed<select aria-label="Playback speed" value={speed} onchange={changeSpeed}>{#each [0.25,0.5,1,1.5,2] as rate}<option value={rate}>{rate}×</option>{/each}</select></label><input aria-label="Seek video" type="range" min="0" max={duration||1} step="0.01" value={time} oninput={seek} disabled={status!=='ready'}><span>{time.toFixed(1)} / {duration.toFixed(1)}s</span></div>
-   {#if message&&status!=='error'}<p role="status">{message}</p>{/if}
+   {#if message&&status!=='error'}<p role="status" data-playback-message>{message}</p>{/if}
   {/if}
  </div>
  </div>

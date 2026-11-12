@@ -4,7 +4,7 @@
  import Gallery from './lib/Gallery.svelte';
  import Viewer from './lib/Viewer.svelte';
  import {createCatalog,type MediaItem} from './lib/media';
- import {runMediaCampaign} from './lib/media-campaign';
+ import {runMediaCampaign,campaignDiagnostics} from './lib/media-campaign';
  const initialStart=performance.now();
  let {nativeTest=false}:{nativeTest?:boolean}=$props();
  const imageNames=['still.png','still.jpg','animation.gif','animation.apng','still.webp','viewer-animation.gif','viewer-animation.apng','viewer-animation.webp','viewer-large.png','viewer-oversized.png','viewer-corrupt.png','viewer-truncated.png'];
@@ -25,7 +25,7 @@
   try{mediaBase=await invoke<string>('qualification_media_base');}catch{note+=' Browser mode: video uses bundled fixtures, not the native capability transport.';mediaBase='/fixtures/';}
   if(nativeTest){
    try{await tick();const receipt=await runMediaCampaign(async(checkpoint,payload)=>invoke('media_test_checkpoint',{checkpoint,receipt:payload}),initialStart);await invoke('media_test_result',{result:receipt});}
-   catch(error){note=String(error);await invoke('media_test_result',{result:{schema:1,ok:false,error:String(error),engine:navigator.userAgent}});}
+   catch(error){note=String(error);await invoke('media_test_result',{result:{schema:1,ok:false,error:String(error),engine:navigator.userAgent,diagnostics:campaignDiagnostics}});}
   }
  });
 </script>
