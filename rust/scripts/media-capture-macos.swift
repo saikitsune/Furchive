@@ -4,6 +4,7 @@ import ScreenCaptureKit
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import Darwin
 
 struct Client: Decodable { let x: Int; let y: Int; let width: Int; let height: Int; let scale: Double }
 struct Request: Decodable { let pid: Int32; let checkpoint: String; let client: Client }
@@ -43,6 +44,11 @@ enum CaptureError: Error { case invalidInput, wrongWindow, foregroundChanged, ca
         guard crop.minX >= 0, crop.minY >= 0, crop.maxX <= Double(config.width), crop.maxY <= Double(config.height) else { throw CaptureError.captureSize }
         var captures: [(Double, Double, CGImage)] = []
         for _ in 0..<12 {
+            // Pace from the preceding *actual captured image*, never request start.
+            // Warmup latency must not produce a too-short second image interval.
+            if let previous = captures.last {
+                while ProcessInfo.processInfo.systemUptime * 1000 - previous.1 < 80 { usleep(1_000) }
+            }
             try foreground(request.pid, wid)
             let started = ProcessInfo.processInfo.systemUptime
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
@@ -52,8 +58,6 @@ enum CaptureError: Error { case invalidInput, wrongWindow, foregroundChanged, ca
                   let client = image.cropping(to: crop), client.width == request.client.width,
                   client.height == request.client.height else { throw CaptureError.captureSize }
             captures.append((started * 1000, captured * 1000, client))
-            let remaining = 0.08 - (ProcessInfo.processInfo.systemUptime - started)
-            if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }
         }
         var frames: [[String: Any]] = []
         for (index, capture) in captures.enumerated() {
