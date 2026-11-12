@@ -25,8 +25,8 @@
   ],
   "files": {
     ".gitignore": {
-      "sha256": "527aa03529b758f8f5e98f1e278d1c489d8f36d088addc1ba59c08557f483386",
-      "bytes": 17
+      "sha256": "dc5adb4bf99b793a4f0cba94a552dd9b86e933c40f60d5d73b40cf98d378477c",
+      "bytes": 26
     },
     "Cargo.toml": {
       "sha256": "85108b9c36ecbc2f871704a3e6f3703ded31d54c992ff3ebf707725aea06b556",
