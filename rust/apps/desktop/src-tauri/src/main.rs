@@ -2,6 +2,7 @@
 mod commands;
 mod media_loopback;
 mod media_protocol;
+mod media_test;
 #[tauri::command]
 fn qualification_mode() -> bool {
     cfg!(feature = "self-test")
@@ -108,6 +109,9 @@ fn main() {
             );
         })
         .invoke_handler(tauri::generate_handler![
+            media_test::media_test_mode,
+            media_test::media_test_checkpoint,
+            media_test::media_test_result,
             qualification_mode,
             qualification_media_base,
             qualification_result,

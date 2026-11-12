@@ -75,7 +75,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb xauth dbus-x11 gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb xauth dbus-x11 xdotool openbox gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
       - name: Core contracts and quality
         run: |
           cargo +1.99.1 test --manifest-path rust/Cargo.toml --workspace --locked
@@ -87,6 +87,7 @@ jobs:
           npm ci --prefix rust/apps/desktop
           npm run --prefix rust/apps/desktop check
           npm test --prefix rust/apps/desktop
+          npm run --prefix rust/apps/desktop test:components
           npm run --prefix rust/apps/desktop build
       - name: Native default and qualification quality
         run: |
@@ -103,6 +104,13 @@ jobs:
       - name: Exercise native WKWebView
         if: runner.os == 'macOS'
         run: python3 rust/scripts/run-native-qualification.py rust/apps/desktop/src-tauri/target/debug/furchive-desktop --output rust/test-artifacts/ci-native-${{ runner.os }}.json
+      - name: Isolated native capture dependencies
+        run: |
+          python -m venv rust/test-artifacts/capture-env
+          if [ "$RUNNER_OS" = "Windows" ]; then P="$PWD/rust/test-artifacts/capture-env/Scripts"; else P="$PWD/rust/test-artifacts/capture-env/bin"; fi
+          "$P/python" -m pip install pillow==12.0.0 mss==10.1.0
+          if [ "$RUNNER_OS" = "macOS" ]; then "$P/python" -m pip install pyobjc-framework-Quartz==12.0; fi
+          printf '%s\n' "$P" >> "$GITHUB_PATH"
       - name: Package layout contracts
         run: python rust/scripts/test-package-qualification.py -v
       - name: Build Debian qualification payload
@@ -115,13 +123,13 @@ jobs:
         run: npm run tauri -- build --debug --features self-test --bundles app --ci --no-sign -- --locked
       - name: Exercise extracted Debian payload
         if: runner.os == 'Linux'
-        run: xvfb-run -a dbus-run-session -- python3 rust/scripts/qualify-package.py --output rust/test-artifacts/package-${{ runner.os }}
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -c 'openbox > rust/test-artifacts/openbox.log 2>&1 & WM=$!; trap "kill $WM 2>/dev/null || true" EXIT; python rust/scripts/qualify-package.py --media-campaign --output rust/test-artifacts/package-Linux'
       - name: Exercise extracted portable Windows payload
         if: runner.os == 'Windows'
-        run: python rust/scripts/qualify-package.py --output rust/test-artifacts/package-${{ runner.os }}
+        run: python rust/scripts/qualify-package.py --media-campaign --output rust/test-artifacts/package-${{ runner.os }}
       - name: Exercise extracted macOS app payload
         if: runner.os == 'macOS'
-        run: python3 rust/scripts/qualify-package.py --output rust/test-artifacts/package-${{ runner.os }}
+        run: python3 rust/scripts/qualify-package.py --media-campaign --output rust/test-artifacts/package-${{ runner.os }}
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:
@@ -137,3 +145,6 @@ jobs:
             rust/test-artifacts/package-*/*.deb
             rust/test-artifacts/package-*/*.zip
             rust/test-artifacts/package-*/*.tar.gz
+            rust/test-artifacts/package-*/media/*.json
+            rust/test-artifacts/package-*/media/*.png
+            rust/test-artifacts/package-*/media/*.log

@@ -1,4 +1,8 @@
 [[permission]]
+identifier = "allow-media-tests"
+description = "Fixed generated-media checkpoints; disabled unless self-test build and host opt-in"
+commands.allow = ["media_test_mode","media_test_checkpoint","media_test_result"]
+[[permission]]
 identifier = "allow-qualification-mode"
 description = "Read the opt-in media qualification state"
 commands.allow = ["qualification_mode"]

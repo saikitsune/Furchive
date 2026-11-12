@@ -1,0 +1,19 @@
+# Gallery/viewer milestone — direct owner recovery
+
+The two Bram media workers lost their gateway owner transport (EOF/owner silence), not a demonstrated application crash. Both task t_3b58f344 and unused dependent t_7a9f8319 were archived through supported CLI, read back archived, and original workers confirmed stopped. No raised retry guards, provider/model changes or duplicate workers. All partial source/corpus preserved; Reynard directly owns completion.
+
+## Real recovered components
+
+Reusable Gallery.svelte handles responsive virtualization10,000ID corpus, keyboard stable selection and bounded DOM. Viewer.svelte supports fit/100%/zoom/pan, previous/next, image/video errors, playback speed/mute/seek, generation-fenced loads and release on navigation/close/unmount. Engineering.svelte uses those real components with fixed original fixture media. Original Qualification.svelte preserved unchanged as separate mode. These remain an explicitly labeled engineering harness, not full product UI or search/download/settings integration.
+
+## Owner debugging and local results
+
+The recovered fourth DOM test hung after dispatching Tab because modal focus handling was missing; an assertion rejected before active Svelte teardown, masking the underlying missing focus wrap as pending Promise. Preserved timed-out50s/15s probes, instrumented a temporary exact test copy to locate failure, added bounded Tab/Shift-Tab wrap using existing enabled controls (no force enabling), and removed temporary probe. All4 compiled Svelte DOM tests now PASS in under1second; all12 unit tests PASS. Svelte0errors/0warnings and Vite production build PASS. Real native Rust4tests PASS; strict Clippy both default and self-test/custom-protocol feature combinations PASS; native binary compiled. Python corpus1/parser1/package-layout1 tests PASS; synthetic frame/parser tests are NOT native animation evidence.
+
+Added opt-in media_test_mode/checkpoint/result commands with bounded fixed-corpus requests, compile+self-test plus host-environment admission, no caller filesystem path or screenshot authority. Native server writes fixed checkpoint JSON in host-selected test root, binds actual client position/size/scale/PID, focuses own test window, waits bounded12seconds for capture acknowledgment. Normal builds refuse test writes. Existing CSP/sandbox unchanged. Host driver verifies foreground PID/window, captures twelve actual client screenshots per GIF/APNG/WebP, checks fixture pixel state progression, runtime lifecycle/timing inventory and exact binary/source identities; no canvas or synthetic image as native proof.100second whole campaign and12second checkpoint budgets preserved.
+
+## Native acceptance status
+
+PENDING: hosted Windows/macOS/Linux execution and extracted-package campaign must verify real animation progression, corruption/oversize refusal,20navigation/close cleanup cycles and measured gallery bounds (initial<=1000ms, each6scroll<=250ms,<=108mounted nodes). Linux X11 uses private Xvfb+Openbox; no sandbox disabling. Windows/macOS foreground/capture permissions and scale handling require actual CI, not assumed. All raw capture frames/receipts retained5days in CI and owner project artifacts. Audible output/GPU/Wayland/fullscreen/allarchitectures/install/signing/fullapp remain separate.
+
+Happy-dom21.0.4 and playwright1.65.0 are pinned dev dependencies; browser runtime sandbox prevents local Chromium use, no --no-sandbox. npm audit reports two LOW dev-tool advisories via deepmerge/vite-plugin-svelte, no available fixed dependency reported; no silent audit suppression. Native screenshot deps in CI-only venv pinned Pillow12.0.0/mss10.1.0, macOS Quartz12.0. No real artwork/credentials used. Full application remains incomplete; no main merge/release/license/provider/profile changes.

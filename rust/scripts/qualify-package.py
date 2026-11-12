@@ -92,6 +92,7 @@ def main()->None:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--prepare-only',action='store_true',help='prepare bytes only; explicitly NOT a runtime pass')
+    parser.add_argument('--media-campaign',action='store_true',help='exercise viewer lifecycle and actual rendered animation frames')
     args=parser.parse_args();output=args.output.resolve()
     if output.exists():raise SystemExit('Refusing stale package evidence directory')
     output.mkdir(parents=True)
@@ -105,6 +106,9 @@ def main()->None:
         print(json.dumps(record,indent=2));print('PACKAGE PREPARED ONLY — NOT native runtime acceptance');return
     subprocess.run([sys.executable,str(Path(__file__).with_name('run-native-qualification.py')),
                     str(binary),'--output',str(output/'native.json')],check=True,timeout=120)
+    if args.media_campaign:
+        subprocess.run([sys.executable,str(Path(__file__).with_name('media-run-native.py')),str(binary),'--output',str(output/'media')],check=True,timeout=120)
+        record['viewer_campaign']='PASS: actual native frames, lifecycle and bounded gallery observations'
     record['native_runtime']='PASS: extracted payload image decode/video playback+seek/virtualized DOM only'
     receipt.write_text(json.dumps(record,indent=2));print(json.dumps(record,indent=2))
 

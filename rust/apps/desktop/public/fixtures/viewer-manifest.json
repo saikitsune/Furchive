@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "ownership": "original generated geometric pixels; no user media",
+  "animation": {
+    "width": 320,
+    "height": 200,
+    "frame_ms": 240,
+    "frames": 3,
+    "colors": [
+      [
+        224,
+        48,
+        64
+      ],
+      [
+        32,
+        192,
+        96
+      ],
+      [
+        48,
+        96,
+        224
+      ]
+    ],
+    "sample_normalized": [
+      0.5,
+      0.5
+    ]
+  },
+  "files": [
+    {
+      "name": "viewer-animation.gif",
+      "bytes": 1752,
+      "sha256": "93139005652f4a24f3ce9574cf7cf2de19865c0d211a8d33f926bf4f515bf3aa"
+    },
+    {
+      "name": "viewer-animation.apng",
+      "bytes": 2149,
+      "sha256": "ab7da791f0dad5a069564fc280d65959b1c5965532ba3aed8b6873ae7c89ad94"
+    },
+    {
+      "name": "viewer-animation.webp",
+      "bytes": 2666,
+      "sha256": "ea482e1df55c957bb301e4d2010c326a5aa61660d3c3218ef235ffb846465b30"
+    },
+    {
+      "name": "viewer-large.png",
+      "bytes": 44228,
+      "sha256": "71f148b656c412c965fcc2ea990daa5c3d64283a2d8f27f58487ed4ed0016680"
+    },
+    {
+      "name": "viewer-oversized.png",
+      "bytes": 102970,
+      "sha256": "bd9ccde3192c5e432fe596b4f38ab2b74f1162f0ebfe657dbc978953c5e8f9f0"
+    },
+    {
+      "name": "viewer-corrupt.png",
+      "bytes": 43,
+      "sha256": "b1284f3a3e040481436dc533a73534912126a7d0484b5cd1e9408d44082bae94"
+    },
+    {
+      "name": "viewer-truncated.png",
+      "bytes": 18,
+      "sha256": "30188ad79779aa1ccbd6d9c05106cbc6a42919a5b8c54e28d70eb7ca23388a6a"
+    }
+  ]
+}

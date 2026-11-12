@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-media-test-result"
+description = "Enables the media_test_result command without any pre-configured scope."
+commands.allow = ["media_test_result"]
+
+[[permission]]
+identifier = "deny-media-test-result"
+description = "Denies the media_test_result command without any pre-configured scope."
+commands.deny = ["media_test_result"]

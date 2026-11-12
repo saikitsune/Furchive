@@ -15,7 +15,7 @@ Preserve old C# source, user data, art and history. No production/server changes
 - [pending] 5: Independent milestone review, native build/package matrix, release readiness (human release approval).
 
 ## Current ownership
-Reynard owns Rust desktop/permissions/manifest/CI integration. Active media/gallery implementation t_3b58f344 owns frontend/components/tests/corpus only; dependent native verifier t_7a9f8319. Current-only Desktop notify+wake both read back. No overlapping file ownership; full media gate before full product UI, whole application incomplete.
+Reynard directly owns media/gallery and native capture integration after two worker gateway-EOF failures. Old t_3b58f344 and t_7a9f8319 both archived/read back; no live duplicate worker.12unit+4compiled DOM+4Rust tests and strict frontend/native gates pass locally; extracted native campaign pending. Full application incomplete.
 
 ## Errors / unresolved boundaries
 - Unprivileged GTK/WebKit SDK recovered and native package builds; container denies WebKit sandbox namespaces. Sai authorized rewrite branch push/native Actions to recover runtime proof.

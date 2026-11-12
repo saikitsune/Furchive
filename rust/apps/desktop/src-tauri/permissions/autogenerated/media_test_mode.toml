@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-media-test-mode"
+description = "Enables the media_test_mode command without any pre-configured scope."
+commands.allow = ["media_test_mode"]
+
+[[permission]]
+identifier = "deny-media-test-mode"
+description = "Denies the media_test_mode command without any pre-configured scope."
+commands.deny = ["media_test_mode"]

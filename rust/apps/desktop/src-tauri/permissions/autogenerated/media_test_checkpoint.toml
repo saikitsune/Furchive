@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-media-test-checkpoint"
+description = "Enables the media_test_checkpoint command without any pre-configured scope."
+commands.allow = ["media_test_checkpoint"]
+
+[[permission]]
+identifier = "deny-media-test-checkpoint"
+description = "Denies the media_test_checkpoint command without any pre-configured scope."
+commands.deny = ["media_test_checkpoint"]
