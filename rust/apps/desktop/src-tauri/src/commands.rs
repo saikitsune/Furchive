@@ -11,6 +11,7 @@ pub struct AppState {
     pub browser: Browser<E621Client>,
     pub db: Database,
     pub settings: SettingsStore,
+    pub downloads: furchive_app::downloads::Downloads,
     pub legacy: furchive_app::legacy_session::LegacySession,
 }
 pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -31,7 +32,16 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     } else {
         api
     };
+    let downloads = furchive_app::downloads::Downloads::new(root.join("downloads.sqlite"));
+    #[cfg(feature = "self-test")]
+    let downloads = if let Ok(origin) = std::env::var("FURCHIVE_BROWSE_FIXTURE_ORIGIN") {
+        furchive_app::downloads::Downloads::fixture(root.join("downloads.sqlite"), origin)
+            .map_err(std::io::Error::other)?
+    } else {
+        downloads
+    };
     app.manage(AppState {
+        downloads,
         browser: Browser::new(api, db.clone()),
         settings: SettingsStore::open(&root.join("settings.json"))
             .map_err(std::io::Error::other)?,
@@ -106,6 +116,57 @@ pub async fn legacy_confirm(
 ) -> Result<furchive_app::legacy::ImportReport, String> {
     let confirmed = state.legacy.confirmed(&digest, search_ids, pool_ids)?;
     state.db.import_legacy(confirmed).await
+}
+#[tauri::command]
+pub async fn choose_download_directory(state: State<'_, AppState>) -> Result<bool, String> {
+    #[cfg(feature = "self-test")]
+    if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("FURCHIVE_TEST_DATA_ROOT").ok_or("missing test root")?,
+        );
+        let root = root
+            .parent()
+            .ok_or("missing fixture parent")?
+            .join("downloads-fixture");
+        std::fs::create_dir_all(&root).map_err(|_| "cannot create test download root")?;
+        state.downloads.select_root(&root).await?;
+        return Ok(true);
+    }
+    let Some(folder) = rfd::AsyncFileDialog::new()
+        .set_title("Choose Furchive download directory")
+        .pick_folder()
+        .await
+    else {
+        return Ok(false);
+    };
+    state.downloads.select_root(folder.path()).await?;
+    Ok(true)
+}
+#[tauri::command]
+pub async fn queue_download(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<i64, String> {
+    let post = state_cache(&app).authorized_post(&id)?;
+    state
+        .downloads
+        .enqueue(&post, &state.settings.current()?)
+        .await
+}
+#[tauri::command]
+pub async fn download_jobs(
+    state: State<'_, AppState>,
+) -> Result<Vec<furchive_app::downloads::JobView>, String> {
+    state.downloads.jobs().await
+}
+#[tauri::command]
+pub async fn download_control(
+    state: State<'_, AppState>,
+    id: i64,
+    verb: String,
+) -> Result<(), String> {
+    state.downloads.control(id, &verb).await
 }
 #[tauri::command]
 pub fn preferences(state: State<'_, AppState>) -> Result<Preferences, String> {

@@ -52,6 +52,8 @@ def run():
     # still run actual Tokio tasks/threads/processes internally.
     output = command('tests', ['cargo', 'test', '--all-targets', '--locked', '--', '--test-threads=1'])
     validate_tests(output, expected)
+    feature_output=command('fixture-tests',['cargo','test','--all-targets','--features','fixture-http','--locked','--','--test-threads=1'])
+    validate_tests(feature_output,expected+['tests::explicit_fixture_engine_downloads_real_bytes_and_refuses_nonloopback_origin'])
     doc = command('doc', ['cargo', 'test', '--doc', '--locked'])
     if '1 passed; 0 failed; 0 ignored' not in doc:
         raise ValueError('README doctest missing')

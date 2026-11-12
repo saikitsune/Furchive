@@ -17,7 +17,7 @@ getrandom = "0.4"
 rfd = { version = "=0.18.0", default-features = false, features = ["xdg-portal"] }
 [features]
 custom-protocol = ["tauri/custom-protocol"]
-self-test = ["furchive-e621/fixture-api","furchive-app/fixture-media"]
+self-test = ["furchive-e621/fixture-api","furchive-app/fixture-media","furchive-app/fixture-downloads"]
 cache-test-contract = ["furchive-app/cache-test-contract"]
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSView", "NSResponder", "NSWindow"] }

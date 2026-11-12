@@ -9,6 +9,7 @@ export type Suggestion={name:string;category:unknown;post_count:number};
 export type Preferences={filename_template:string;pool_filename_template:string;concurrent_downloads:number;duplicates:'skip'|'overwrite'|'rename';gallery_scale:number;cache_limit_bytes:number;restore_session:boolean;save_metadata:boolean;start_muted:boolean};
 export type LegacyPreview={digest:string;searches:SavedSearch[];pins:{key:{source:string;id:string};name:string;post_count:number}[];warnings:string[];queue:unknown};
 export type ImportReport={imported_searches:number;imported_pins:number;skipped_searches:number;skipped_pins:number};
+export type DownloadJob={id:number;post_id:string;state:string;bytes:number;relative_path:string;error:string|null};
 export type Invoke=<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class BrowserBridge {
  private invoke:Invoke;
@@ -22,6 +23,10 @@ export class BrowserBridge {
  prepare(id:string,variant:'preview'|'full'){return this.invoke<{id:string;kind:'image'|'video';src:string;title:string}>('prepare_media',{id,variant});}
  legacyPreview(){return this.invoke<LegacyPreview|null>('legacy_preview');}
  legacyConfirm(digest:string,searchIds:string[],poolIds:string[]){return this.invoke<ImportReport>('legacy_confirm',{digest,searchIds,poolIds});}
+ chooseDownloads(){return this.invoke<boolean>('choose_download_directory');}
+ queue(id:string){return this.invoke<number>('queue_download',{id});}
+ jobs(){return this.invoke<DownloadJob[]>('download_jobs');}
+ control(id:number,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_control',{id,verb});}
  searches(){return this.invoke<SavedSearch[]>('saved_searches');}
  save(search:SavedSearch){return this.invoke<void>('save_search',{search});}
  delete(id:string){return this.invoke<void>('delete_search',{id});}

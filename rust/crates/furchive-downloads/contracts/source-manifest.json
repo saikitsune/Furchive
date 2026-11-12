@@ -29,12 +29,12 @@
       "bytes": 17
     },
     "Cargo.toml": {
-      "sha256": "9e592c8ff4f7b4863d5fe404c4a65506a07562eddad969a76b6e82c9cd7f25a4",
-      "bytes": 843
+      "sha256": "85108b9c36ecbc2f871704a3e6f3703ded31d54c992ff3ebf707725aea06b556",
+      "bytes": 870
     },
     "Cargo.lock": {
-      "sha256": "0fe532924fc5f4fcbea3b6205f75b04eec5766891fcaf6d8c1ab3cf8888fa9d7",
-      "bytes": 39745
+      "sha256": "ade22d3f389d39454be5fd36c2e804f4801ef4ccbb05dc3d9025520c3cc9923a",
+      "bytes": 38861
     },
     "README.md": {
       "sha256": "27a31c513f9825a7908c6baee96b4ef4aeed7f637101989db845d4dc5da90df3",
@@ -57,20 +57,20 @@
       "bytes": 395
     },
     "src/model.rs": {
-      "sha256": "4422875cd6d26a2b1ed9592c7db232f7e1b2deaa20908dd1c5b28c850865bee2",
-      "bytes": 12596
+      "sha256": "dbb0195ebdd2968227ce66938d74b9b56f3d673bdf4d420ce11841929569dcce",
+      "bytes": 14135
     },
     "src/tests/native.rs": {
       "sha256": "62e394c8657cdfc7ab8212bc9459bac78b1aa5cb36f87a1f708c92b89a341929",
       "bytes": 6128
     },
     "src/tests.rs": {
-      "sha256": "8408042218ae3688a44f3d6012eac22b27f3ac8036e2e2620b8592dbecc85f30",
-      "bytes": 51098
+      "sha256": "f8f44af882326493387043423134ab4e0388bec25c6ff43699ebb2b2fa853157",
+      "bytes": 53165
     },
     "src/worker.rs": {
-      "sha256": "67b881f9e06f0ce77e3ea73854a6e7fb29444e7699cac9000e28c3105632608e",
-      "bytes": 19678
+      "sha256": "18e15d7e3ace6f2163de003d237a351e6989caf4d980dd5478d1723803f715e8",
+      "bytes": 19709
     },
     "scripts/check.py": {
       "sha256": "68b0240d9cdee14f4f537d0cce62f83ae25105b4fae91da85bc36327cc6a2107",
@@ -85,8 +85,8 @@
       "bytes": 2906
     },
     "scripts/native_check.py": {
-      "sha256": "79c35da2eb8452262c7f676fe719c1716d84d2c1b55fb4dab0007bae1b196ff6",
-      "bytes": 3921
+      "sha256": "ed6b26c83a3024857adc13220225efa553964e832b32dda42181f04c0749364c",
+      "bytes": 4192
     },
     "scripts/preflight.py": {
       "sha256": "d9b998c061c06db2af5a74b45f00d72ce46c383592418234ba2a6930fb479e4c",
@@ -117,28 +117,30 @@
       "bytes": 12648
     },
     "contracts/test-inventory.json": {
-      "sha256": "d92fd87f4ad7eb9e391fa3cc34288ca598bcc8a8337d492676d1a50ac8d2855b",
-      "bytes": 10195
+      "sha256": "610e9c78ad108a0bcfe732e51cb13e537bb216c51a39942a6b55826ebcfaf8ea",
+      "bytes": 10633
     }
   },
   "inventory": {
     "linux": {
-      "count": 44,
-      "sha256": "93a6355c3026e67d0c2358907853c8d2fb2296c381c79a093cce22c7a75489dd"
+      "count": 46,
+      "sha256": "11474fb4ea6287969115b608360efa6e3abfdb3f5e217c4549b88812b5c541bb"
     },
     "darwin": {
-      "count": 43,
-      "sha256": "7ea979f09f46887dd05cb08ee5f8da68b665bfc569fbafc8812c7b95f1e2656f"
+      "count": 45,
+      "sha256": "1603f0776857219a0c94b5f949f12773e5bbbb8dc4f1d923311662883588c129"
     },
     "win32": {
-      "count": 45,
-      "sha256": "9e18c731aa7599a8527bd4cc04cd2b2f60c7af3dd407f25479096b1fd56db5ef"
+      "count": 47,
+      "sha256": "6e53867c85a73d89deb6e1fbba26f73da44c9824c7d7cab42421694b12e0736e"
     }
   },
   "verification": {
-    "linux": "native 44 tests +1 doctest, fmt, Clippy -Dwarnings PASS",
-    "windows": "GNU cfg check +Clippy all-targets PASS; runtime pending",
-    "macos": "missing Apple std/SDK; native build/runtime pending"
+    "linux": "integration candidate pending new default+feature suites",
+    "windows": "new integration candidate native runtime pending",
+    "macos": "new integration candidate native runtime pending"
   },
-  "native_receipt": "test-artifacts/native-linux/receipt.json"
+  "native_receipt": "test-artifacts/native-linux/receipt.json",
+  "previous_manifest_sha256": "d43e24246e5d06b621614a020343c162eb7c9a9eb870f8542ebf27bb3d40ec5e",
+  "integration_base": "1b816f3607ca21945fc7445d3dbe9d5500cc897f"
 }

@@ -1,3 +1,62 @@
+#[cfg(feature = "fixture-http")]
+#[tokio::test]
+async fn explicit_fixture_engine_downloads_real_bytes_and_refuses_nonloopback_origin() {
+    let server = fixture(vec![response("owned fixture")]).await;
+    let temp = OwnedTemp::new();
+    for origin in [
+        "http://evil.invalid:31337/",
+        "https://127.0.0.1:31337/",
+        "http://127.0.0.1/",
+        "http://user@127.0.0.1:31337/",
+        "http://127.0.0.1:31337/path",
+    ] {
+        assert!(Engine::fixture_http(temp.database("reject"), temp.path(), origin).is_err());
+    }
+    let engine = std::sync::Arc::new(
+        Engine::fixture_http(
+            temp.database("queue"),
+            temp.path(),
+            &format!("{}/", server.origin),
+        )
+        .unwrap(),
+    );
+    engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
+    let worker = engine.start().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if engine.jobs().unwrap()[0].state == State::Completed {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    assert_eq!(
+        std::fs::read(temp.path().join("1.jpg")).unwrap(),
+        b"owned fixture"
+    );
+}
+
+#[test]
+fn restored_jobs_can_be_held_before_start_without_network_authority() {
+    let temp = OwnedTemp::new();
+    let engine = Engine::open(temp.database("queue"), temp.path()).unwrap();
+    engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
+    engine.hold_restored().unwrap();
+    assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
+}
+#[test]
+fn paused_intent_is_durable_before_any_worker_can_fetch() {
+    let temp = OwnedTemp::new();
+    let engine = Engine::open(temp.database("queue"), temp.path()).unwrap();
+    let id = engine
+        .enqueue_paused(intent("1", DuplicatePolicy::Skip))
+        .unwrap();
+    assert_eq!(engine.jobs().unwrap()[0].id, id);
+    assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
+}
 struct OwnedTemp {
     _temp: tempfile::TempDir,
     media: std::path::PathBuf,

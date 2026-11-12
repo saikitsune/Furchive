@@ -3,7 +3,7 @@
  import Viewer from './Viewer.svelte';
  import Gallery from './Gallery.svelte';
  import {type MediaItem,createCatalog} from './media';
- import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview} from './browser-bridge';
+ import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview,type DownloadJob} from './browser-bridge';
  let {bridge}:{bridge:BrowserBridge}=$props();
  let include=$state<string[]>([]),exclude=$state<string[]>([]),includeInput=$state(''),excludeInput=$state('');
  let safe=$state(true),questionable=$state(false),explicit=$state(false),sort=$state<Query['sort']>('newest');
@@ -13,6 +13,7 @@
  let legacy=$state<LegacyPreview|null>(null),importSearches=$state<string[]>([]),importPools=$state<string[]>([]),importNotice=$state('');
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
  let thumbnails=$state<Record<string,MediaItem>>({});
+ let jobs=$state<DownloadJob[]>([]),downloadGranted=$state(false);
  let generation=0,suggestionGeneration=0,mediaGeneration=0;
  const requestedPreviews=new Set<string>();
  const placeholder='/placeholder.svg';
@@ -36,6 +37,11 @@
   else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
+ async function chooseDownloads(){try{downloadGranted=await bridge.chooseDownloads();if(downloadGranted)jobs=await bridge.jobs();}catch(e){error=String(e);}}
+ $effect(()=>{if(!downloadGranted)return;let active=true,inflight=false;const timer=setInterval(async()=>{if(inflight)return;inflight=true;try{const rows=await bridge.jobs();if(active)jobs=rows;}catch(e){if(active)error=String(e);}finally{inflight=false;}},500);return ()=>{active=false;clearInterval(timer);};});
+ async function refreshJobs(){try{jobs=await bridge.jobs();}catch(e){error=String(e);}}
+ async function queueDownload(id:string){try{await bridge.queue(id);await refreshJobs();}catch(e){error=String(e);}}
+ async function control(id:number,verb:'pause'|'resume'|'cancel'){try{await bridge.control(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
  async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
  async function loadPreferences(){try{preferences=await bridge.preferences();preferenceNotice='';}catch(e){error=String(e);}}
@@ -46,7 +52,7 @@
  function restore(s:SavedSearch){include=[...s.query.include];exclude=[...s.query.exclude];sort=s.query.sort;safe=s.query.ratings==='any'||s.query.ratings.only.includes('safe');questionable=s.query.ratings==='any'||s.query.ratings.only.includes('questionable');explicit=s.query.ratings==='any'||s.query.ratings.only.includes('explicit');}
 </script>
 <section class="browser" aria-label="Furchive artwork browser">
- <header><strong>Furchive</strong><small>RUST ALPHA · e621</small><span>Artwork browser · scoped media cache · downloads in progress</span></header>
+ <header><strong>Furchive</strong><small>RUST ALPHA · e621</small><span>Artwork browser · scoped media cache · durable download queue</span></header>
  <div class="layout">
   <aside>
    <h2>Search</h2>
@@ -69,6 +75,10 @@
     <p>Directory grants, account keys and automatic session restoration are not edited here. Download/cache/gallery controls will be enabled when their product integration is ready.</p>
     <button onclick={savePreferences}>Save preferences</button>{#if preferenceNotice}<p role="status">{preferenceNotice}</p>{/if}
    {/if}
+   <h2>Downloads</h2><button onclick={chooseDownloads}>Choose download directory</button><button onclick={refreshJobs}>Refresh downloads</button><p>New jobs start paused. Resume explicitly starts transfer. Reselect the same directory after restart to recover history.</p>
+   {#each jobs as job}<div data-job-id={job.id} data-job-bytes={job.bytes}><b>Post {job.post_id} · {job.state}</b><p>{job.bytes} bytes · {job.relative_path}</p>{#if job.error}<p>{job.error}</p>{/if}
+    <button disabled={!['Paused','Failed'].includes(job.state)} onclick={()=>control(job.id,'resume')}>Resume</button><button disabled={!['Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'pause')}>Pause</button><button disabled={!['Paused','Failed','Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'cancel')}>Cancel</button>
+   </div>{/each}
    <h2>Recover old data</h2><p>Choose the old Furchive data folder in the system picker. Preview first; artwork, keys, settings and queued downloads are never imported automatically.</p><button onclick={previewLegacy}>Preview legacy data</button>
    {#if legacy}<div aria-label="Legacy import preview"><p>Preview digest: <code>{legacy.digest}</code></p>{#each legacy.warnings as warning}<p>{warning}</p>{/each}
     {#each legacy.searches as search}<label class="import-row"><input type="checkbox" aria-label={'Import search '+search.name} bind:group={importSearches} value={search.id}>{search.name}</label>{/each}
@@ -81,10 +91,10 @@
    {#if error}<p role="alert">{error}</p>{/if}
    {#if busy}<p role="status">Loading…</p>{/if}
    {#if pool}<h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button>
-    <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button>{/if}</li>{/each}</ol>
+    <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(e.id)}>Queue download</button>{/if}</li>{/each}</ol>
     {#if pool.next_offset!==null}<button disabled={busy} onclick={()=>run('pool',1,pool?.next_offset??0,true)}>Next pool page</button>{/if}
    {:else if result}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{mode==='favorites'?'Favorites':'Search results'} · page {page}</h1><p>{result.items.length} visible posts from {result.raw_count} upstream records. Account filters remain respected.</p>
-    <ol class="posts">{#each result.items as p}<li data-post-id={p.key.id}><b>{p.title}</b><button onclick={()=>view(p.key.id)}>View artwork</button><p>{p.artists.join(', ')||'No artist supplied'} · {p.rating} · score {p.score}</p><details><summary>Tags &amp; description</summary><p>{p.description}</p>{#each Object.entries(p.tags) as [category,tags]}<p><b>{category}:</b> {tags.join(' ')}</p>{/each}</details></li>{/each}</ol>
+    <ol class="posts">{#each result.items as p}<li data-post-id={p.key.id}><b>{p.title}</b><button onclick={()=>view(p.key.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(p.key.id)}>Queue download</button><p>{p.artists.join(', ')||'No artist supplied'} · {p.rating} · score {p.score}</p><details><summary>Tags &amp; description</summary><p>{p.description}</p>{#each Object.entries(p.tags) as [category,tags]}<p><b>{category}:</b> {tags.join(' ')}</p>{/each}</details></li>{/each}</ol>
     <nav><button disabled={busy||page===1} onclick={()=>run(mode,page-1,0,true)}>Previous page</button><button disabled={busy||result.next_page===null} onclick={()=>run(mode,result?.next_page??1,0,true)}>Next page</button></nav>
    {:else}<h1>Your collection starts with a search.</h1><p>No network request is made until you search, browse favorites, request suggestions, or open a pool. Safe-only is the initial rating selection. Open a returned post to view validated media through the scoped Rust cache. Downloads and full gallery integration are still in progress.</p>{/if}
   </div>

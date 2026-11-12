@@ -184,6 +184,15 @@ impl MediaCache {
             url: raw.clone(),
         })
     }
+    pub fn authorized_post(&self, id: &str) -> Result<MediaItem, String> {
+        self.inner
+            .lock()
+            .map_err(|_| "media cache poisoned")?
+            .authorized
+            .get(id)
+            .cloned()
+            .ok_or("post not in current authorized results".into())
+    }
     pub async fn prepare(&self, id: &str, variant: Variant) -> Result<String, String> {
         let grant = self.grant(id, variant)?;
         let _permit = self

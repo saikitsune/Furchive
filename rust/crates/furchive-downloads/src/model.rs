@@ -155,7 +155,7 @@ pub struct Engine {
     reserved_paths: Vec<String>,
     pub(crate) started: std::sync::atomic::AtomicBool,
     pub(crate) wake: tokio::sync::Notify,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixture-http"))]
     pub(crate) loopback: Option<String>,
     #[cfg(test)]
     pub(crate) crash_at: std::sync::atomic::AtomicU8,
@@ -233,7 +233,7 @@ impl Engine {
             reserved_paths,
             started: std::sync::atomic::AtomicBool::new(false),
             wake: tokio::sync::Notify::new(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "fixture-http"))]
             loopback: None,
             #[cfg(test)]
             crash_at: std::sync::atomic::AtomicU8::new(0),
@@ -250,6 +250,31 @@ impl Engine {
                 engine.grant.remove_part(job.id)?;
             }
         }
+        Ok(engine)
+    }
+    #[cfg(feature = "fixture-http")]
+    pub fn fixture_http(
+        db: impl AsRef<Path>,
+        root: impl AsRef<Path>,
+        origin: &str,
+    ) -> Result<Self> {
+        let url =
+            url::Url::parse(origin).map_err(|_| Error::Invalid("invalid fixture origin".into()))?;
+        if url.scheme() != "http"
+            || url.host_str() != Some("127.0.0.1")
+            || url.port().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(Error::Invalid(
+                "fixture origin must be exact IPv4 loopback".into(),
+            ));
+        }
+        let mut engine = Self::open(db, root)?;
+        engine.loopback = Some(origin.trim_end_matches('/').into());
         Ok(engine)
     }
     #[cfg(test)]
@@ -274,14 +299,30 @@ impl Engine {
         )?;
         Ok(())
     }
+    /// Restore a queue without automatic network effects after the next host grant.
+    pub fn hold_restored(&self) -> Result<()> {
+        for mut job in self.jobs()? {
+            if matches!(job.state, State::Queued | State::Running) {
+                job.state = State::Paused;
+                self.save(&job)?;
+            }
+        }
+        Ok(())
+    }
     pub fn enqueue(&self, intent: Intent) -> Result<i64> {
+        self.enqueue_as(intent, State::Queued)
+    }
+    pub fn enqueue_paused(&self, intent: Intent) -> Result<i64> {
+        self.enqueue_as(intent, State::Paused)
+    }
+    fn enqueue_as(&self, intent: Intent, state: State) -> Result<i64> {
         intent.validate()?;
         self.check_destination(&intent.relative)?;
         let db = self.db.lock().unwrap();
         let mut job = Job {
             id: 0,
             key: intent.key.clone(),
-            state: State::Queued,
+            state,
             bytes: 0,
             relative_path: intent.relative.clone(),
             error: None,

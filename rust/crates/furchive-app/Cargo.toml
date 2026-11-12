@@ -6,6 +6,7 @@ publish=false
 [features]
 cache-test-contract=[]
 fixture-media=[]
+fixture-downloads=["furchive-downloads/fixture-http"]
 [dependencies]
 serde_json="1"
 reqwest={version="0.13",default-features=false,features=["rustls"]}
@@ -20,6 +21,7 @@ sha2="0.10"
 furchive-domain={path="../furchive-domain"}
 furchive-engine={path="../furchive-engine"}
 furchive-e621={path="../furchive-e621"}
+furchive-downloads={path="../furchive-downloads"}
 tokio={version="1",features=["sync","rt-multi-thread","macros"]}
 [target.'cfg(target_os="linux")'.dependencies]
 zbus-secret-service-keyring-store={version="1.0.1",features=["crypto-rust"]}

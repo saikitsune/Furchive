@@ -3,8 +3,8 @@ No live artwork, accounts, browser surrogate, installs or sandbox changes.
 """
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
-import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3
-CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete']}
+import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3,time
+CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm','download-pause-ack','download-complete','download-cancel',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart']}
 def validate(receipt,phase):
  if receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase]):raise ValueError('missing or invalid native browsing receipt')
  return True
@@ -16,15 +16,25 @@ def main():
  legacy=out/'legacy-fixture';legacy.mkdir();(legacy/'artwork.bin').write_bytes(b'owned harmless preservation sentinel')
  (legacy/'settings.json').write_text(json.dumps({'SavedSearches':json.dumps([{'Name':'Migrated fixture search','IncludeTags':['fox'],'ExcludeTags':[],'RatingFilterIndex':3}]),'E621ApiKey':'synthetic-key-must-not-import'}))
  legacy_hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in legacy.iterdir()}
+ downloads=out/'downloads-fixture';downloads.mkdir();(downloads/'existing-art.bin').write_bytes(b'owned existing download must survive')
  class Handler(BaseHTTPRequestHandler):
   def log_message(self,format,*args):pass
   def do_GET(self):
-   url=urllib.parse.urlparse(self.path);pairs=urllib.parse.parse_qs(url.query);requests.append({'path':url.path,'query':pairs,'authorization':self.headers.get('Authorization') is not None,'userAgent':self.headers.get('User-Agent','')})
+   url=urllib.parse.urlparse(self.path);pairs=urllib.parse.parse_qs(url.query);requests.append({'path':url.path,'query':pairs,'authorization':self.headers.get('Authorization') is not None,'userAgent':self.headers.get('User-Agent',''),'range':self.headers.get('Range'),'ifRange':self.headers.get('If-Range'),'identity':self.headers.get('Accept-Encoding')=='identity'})
    if 'filter_id' in pairs or self.headers.get('Authorization'):self.send_error(403);return
    if url.path.startswith('/data/aa/bb/aabb0000000000000000000000000000.'):
     ext=url.path.rsplit('.',1)[-1];fixture={'png':'still.png','gif':'viewer-animation.gif','apng':'viewer-animation.apng','webp':'viewer-animation.webp','webm':'vp8.webm','mp4':'h264.mp4'}.get(ext)
     if fixture is None:self.send_error(404);return
-    data=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures'/fixture).read_bytes();self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
+    data=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures'/fixture).read_bytes()
+    if self.headers.get('Accept-Encoding')=='identity':
+     start=int(self.headers.get('Range','bytes=0-').removeprefix('bytes=').split('-')[0]);part=data[start:];self.send_response(206 if start else 200);self.send_header('Content-Length',str(len(part)));self.send_header('ETag','"owned-v1"')
+     if start:self.send_header('Content-Range',f'bytes {start}-{len(data)-1}/{len(data)}')
+     self.end_headers()
+     try:
+      half=max(1,len(part)//2);self.wfile.write(part[:half]);self.wfile.flush();time.sleep(1.5);self.wfile.write(part[half:])
+     except (BrokenPipeError,ConnectionResetError):pass
+     return
+    self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
    def post(id):
     ext={100:'png',101:'gif',102:'apng',103:'webp',104:'webm',105:'mp4'}.get(id,'png')
     return {'id':id,'rating':'s','tags':{'artist':['local_fixture']},'description':'Harmless metadata only','preview':{'url':'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png'},'file':{'url':f'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.{ext}','ext':ext},'score':{'total':1}}
@@ -46,6 +56,9 @@ def main():
   with sqlite3.connect(out/'profile/state.sqlite') as db:
    if db.execute('SELECT count(*) FROM saved_searches').fetchone()[0]!=0 or db.execute('SELECT count(*) FROM pinned_pools').fetchone()[0]!=0:raise ValueError('actual restart cleanup not persisted')
   if {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in legacy.iterdir()}!=legacy_hashes:raise ValueError('legacy source or owned artwork changed')
+  if not any(q['identity'] and q['range'] and q['ifRange']=='"owned-v1"' for q in requests):raise ValueError('native pause/resume never issued validated Range request')
+  expected=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures/still.png').read_bytes()
+  if (downloads/'e621/local_fixture/100.png').read_bytes()!=expected or (downloads/'existing-art.bin').read_bytes()!=b'owned existing download must survive':raise ValueError('download artifact/preservation mismatch')
   tags=[q['query'].get('tags',[''])[0] for q in requests if q['path']=='/posts.json'];required=['fox -comic rating:s order:id_desc','fox fav:fixture_user -comic rating:s order:id_desc','id:10,2,30']
   if not all(t in tags for t in required) or any(q['authorization'] or 'filter_id' in q['query'] or not q['userAgent'].startswith('Furchive/') for q in requests):raise ValueError('native HTTP/query policy mismatch')
   (out/'accepted.json').write_text(json.dumps({'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':[1,2],'requests':requests,'scope':'native metadata browsing and restart only','full_app_complete':False},indent=2))

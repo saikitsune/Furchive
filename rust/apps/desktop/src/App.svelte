@@ -21,6 +21,6 @@
 <svelte:head><title>Furchive · Rust Alpha</title></svelte:head>
 {#if mode==='qualification'}<Qualification/>{:else if mode==='engineering'}<Engineering {nativeTest}/>{:else}
  <BrowsePanel {bridge}/>
- <footer><button onclick={()=>mode='engineering'}>Harmless media test gallery</button><small>Alpha: durable download controls, full gallery, account settings and migration UI still pending integration.</small></footer>
+ <footer><button onclick={()=>mode='engineering'}>Harmless media test gallery</button><small>Alpha: download groups/concurrency, account settings and broader platform acceptance still in progress.</small></footer>
 {/if}
 <style>footer{padding:16px;display:flex;align-items:center;gap:12px}button{background:#293a49;color:#f0e5da;border:1px solid #677888;border-radius:5px;padding:12px;margin:8px 8px 8px 0}</style>

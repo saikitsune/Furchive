@@ -249,7 +249,7 @@ impl Engine {
             return self.grant.remove_part(job.id);
         }
         let url = crate::model::validate_url(&job.intent.url)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "fixture-http"))]
         let url = if let Some(origin) = &self.loopback {
             url::Url::parse(&format!("{origin}{}", url.path())).unwrap()
         } else {

@@ -1,5 +1,6 @@
 pub mod browse;
 pub mod credentials;
+pub mod downloads;
 pub mod legacy;
 pub mod legacy_session;
 pub mod media_cache;

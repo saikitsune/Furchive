@@ -145,6 +145,10 @@ fn main() {
             browse_test_phase,
             qualification_media_base,
             qualification_result,
+            commands::choose_download_directory,
+            commands::queue_download,
+            commands::download_jobs,
+            commands::download_control,
             commands::legacy_preview,
             commands::legacy_confirm,
             commands::prepare_media,
@@ -160,6 +164,16 @@ fn main() {
             commands::pinned_pools,
             commands::set_pin
         ])
-        .run(context)
-        .expect("Furchive desktop runtime");
+        .build(context)
+        .expect("Furchive desktop runtime")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                use tauri::Manager;
+                let state = app.state::<commands::AppState>();
+                tauri::async_runtime::block_on(async {
+                    let _ = state.downloads.shutdown().await;
+                    let _ = state.db.shutdown().await;
+                });
+            }
+        });
 }
