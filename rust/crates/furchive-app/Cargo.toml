@@ -3,8 +3,15 @@ name="furchive-app"
 version="0.1.0"
 edition="2024"
 publish=false
+[features]
+cache-test-contract=[]
+fixture-media=[]
 [dependencies]
 serde_json="1"
+reqwest={version="0.13",default-features=false,features=["rustls"]}
+url="2"
+getrandom="0.4"
+image={version="0.25",default-features=false,features=["png","jpeg","gif","webp"]}
 keyring-core="1.0.1"
 serde={version="1",features=["derive"]}
 tempfile="3"

@@ -46,7 +46,18 @@ fn qualification_media_base(state: tauri::State<'_, media_loopback::MediaServer>
 }
 fn main() {
     // Permit only this launch's exact media origin, preserving the rest of the CSP.
-    let server = media_loopback::MediaServer::start().expect("fixture media transport");
+    let cache =
+        furchive_app::media_cache::MediaCache::new(128 * 1024 * 1024).expect("bounded media cache");
+    #[cfg(feature = "self-test")]
+    let cache = if let Ok(origin) = std::env::var("FURCHIVE_BROWSE_FIXTURE_ORIGIN") {
+        furchive_app::media_cache::MediaCache::local_fixture(128 * 1024 * 1024, &origin)
+            .expect("paired test media origin")
+    } else {
+        cache
+    };
+    let cache = std::sync::Arc::new(cache);
+    let server =
+        media_loopback::MediaServer::with_cache(cache.clone()).expect("scoped media transport");
     let origin = format!("http://{}", server.address());
     let mut context = tauri::generate_context!();
     let security = &mut context.config_mut().app.security;
@@ -58,9 +69,14 @@ fn main() {
     directives
         .get_mut("media-src")
         .expect("explicit media policy")
+        .push(origin.clone());
+    directives
+        .get_mut("img-src")
+        .expect("explicit image policy")
         .push(origin);
     security.csp = Some(tauri::utils::config::Csp::DirectiveMap(directives));
     tauri::Builder::default()
+        .manage(cache)
         .manage(server)
         .setup(commands::initialize)
         .register_asynchronous_uri_scheme_protocol("fixture", |_ctx, request, responder| {
@@ -129,6 +145,7 @@ fn main() {
             browse_test_phase,
             qualification_media_base,
             qualification_result,
+            commands::prepare_media,
             commands::preferences,
             commands::save_preferences,
             commands::search,

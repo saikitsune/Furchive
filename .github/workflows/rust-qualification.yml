@@ -92,8 +92,8 @@ jobs:
       - name: Native default and qualification quality
         run: |
           cargo +1.99.1 clippy --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-          cargo +1.99.1 test --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --features self-test,custom-protocol --locked
-          cargo +1.99.1 clippy --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --all-targets --features self-test,custom-protocol --locked -- -D warnings
+          cargo +1.99.1 test --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --all-features --locked
+          cargo +1.99.1 clippy --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
           cargo +1.99.1 build --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --features self-test,custom-protocol --locked
       - name: Exercise native WebKitGTK
         if: runner.os == 'Linux'

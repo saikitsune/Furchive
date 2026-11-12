@@ -38,6 +38,39 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     });
     Ok(())
 }
+fn state_cache(app: &tauri::AppHandle) -> std::sync::Arc<furchive_app::media_cache::MediaCache> {
+    app.state::<std::sync::Arc<furchive_app::media_cache::MediaCache>>()
+        .inner()
+        .clone()
+}
+#[derive(serde::Serialize)]
+pub struct PreparedMedia {
+    id: String,
+    kind: String,
+    src: String,
+    title: String,
+}
+#[tauri::command]
+pub async fn prepare_media(
+    app: tauri::AppHandle,
+    id: String,
+    variant: furchive_app::media_cache::Variant,
+) -> Result<PreparedMedia, String> {
+    let cache = state_cache(&app);
+    let handle = cache.prepare(&id, variant).await?;
+    let value = cache.get(&handle).ok_or("media was evicted")?;
+    let server = app.state::<crate::media_loopback::MediaServer>();
+    Ok(PreparedMedia {
+        id: id.clone(),
+        kind: if value.mime.starts_with("video/") {
+            "video".into()
+        } else {
+            "image".into()
+        },
+        src: format!("{}media/{handle}", server.base_url()),
+        title: format!("Post {id}"),
+    })
+}
 #[tauri::command]
 pub fn preferences(state: State<'_, AppState>) -> Result<Preferences, String> {
     Ok(state.settings.current()?.into())
@@ -51,11 +84,16 @@ pub async fn save_preferences(
 }
 #[tauri::command]
 pub async fn search(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     query: SearchQuery,
     page: u32,
 ) -> Result<SearchPage, String> {
-    state.browser.search(&query, page).await
+    let cache = state_cache(&app);
+    let generation = cache.begin_page()?;
+    let result = state.browser.search(&query, page).await?;
+    cache.authorize_page(generation, &result.items)?;
+    Ok(result)
 }
 #[tauri::command]
 pub async fn suggestions(
@@ -66,22 +104,39 @@ pub async fn suggestions(
 }
 #[tauri::command]
 pub async fn favorites(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     query: SearchQuery,
     username: String,
     page: u32,
 ) -> Result<SearchPage, String> {
-    state.browser.favorites(&query, &username, page).await
+    let cache = state_cache(&app);
+    let generation = cache.begin_page()?;
+    let result = state.browser.favorites(&query, &username, page).await?;
+    cache.authorize_page(generation, &result.items)?;
+    Ok(result)
 }
 #[tauri::command]
 pub async fn pool_page(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     id: u64,
     offset: usize,
     limit: usize,
     ratings: RatingFilter,
 ) -> Result<PoolPage, String> {
-    state.browser.pool_page(id, offset, limit, &ratings).await
+    let cache = state_cache(&app);
+    let generation = cache.begin_page()?;
+    let result = state.browser.pool_page(id, offset, limit, &ratings).await?;
+    cache.authorize_page(
+        generation,
+        &result
+            .entries
+            .iter()
+            .filter_map(|e| e.post.clone())
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(result)
 }
 #[tauri::command]
 pub async fn delete_search(state: State<'_, AppState>, id: String) -> Result<(), String> {

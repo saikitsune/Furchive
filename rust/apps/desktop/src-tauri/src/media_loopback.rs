@@ -1,4 +1,5 @@
-//! Loopback transport contract: fixed qualification media only, never a filesystem server.
+//! Loopback transport: fixed fixtures and opaque current-page cached media handles.
+//! No arbitrary path/URL fetch, proxy, credentials or filesystem serving.
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{
@@ -8,7 +9,8 @@ use std::sync::{
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-/// Only embedded, harmless fixture bytes are reachable. No user paths, remote proxy or IPC.
+/// Only embedded fixtures and explicitly prepared current-result media are reachable.
+/// No caller paths, arbitrary remote proxy or credential forwarding.
 /// A new 256-bit capability and ephemeral IPv4 loopback port are generated each launch.
 pub struct MediaServer {
     address: SocketAddr,
@@ -17,7 +19,14 @@ pub struct MediaServer {
     worker: Option<JoinHandle<()>>,
 }
 impl MediaServer {
+    #[cfg(test)]
     pub fn start() -> std::io::Result<Self> {
+        Self::with_cache(Arc::new(
+            furchive_app::media_cache::MediaCache::new(128 * 1024 * 1024)
+                .map_err(std::io::Error::other)?,
+        ))
+    }
+    pub fn with_cache(cache: Arc<furchive_app::media_cache::MediaCache>) -> std::io::Result<Self> {
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
@@ -37,7 +46,7 @@ impl MediaServer {
                 while !signal.load(Ordering::Acquire) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
-                            let result = serve(&mut stream, address, &route);
+                            let result = serve_cached(&mut stream, address, &route, Some(&cache));
                             #[cfg(feature = "self-test")]
                             if let Err(error) = &result {
                                 eprintln!("fixture transport I/O: {:?}", error.kind());
@@ -73,7 +82,16 @@ impl Drop for MediaServer {
         }
     }
 }
+#[cfg(test)]
 fn serve(stream: &mut TcpStream, address: SocketAddr, prefix: &str) -> std::io::Result<()> {
+    serve_cached(stream, address, prefix, None)
+}
+fn serve_cached(
+    stream: &mut TcpStream,
+    address: SocketAddr,
+    prefix: &str,
+    cache: Option<&furchive_app::media_cache::MediaCache>,
+) -> std::io::Result<()> {
     // Accepted sockets may inherit O_NONBLOCK on BSD/macOS; deadlines alone do
     // not change that flag. Normalize this owned connection before bounded I/O.
     stream.set_nonblocking(false)?;
@@ -150,20 +168,32 @@ fn serve(stream: &mut TcpStream, address: SocketAddr, prefix: &str) -> std::io::
         return empty(stream, 405);
     }
     let name = parts[1].strip_prefix(prefix).unwrap_or("");
-    let (data, mime): (&[u8], &str) = match name {
-        "vp8.webm" => (
-            include_bytes!("../../public/fixtures/vp8.webm"),
-            "video/webm",
-        ),
-        "vp9.webm" => (
-            include_bytes!("../../public/fixtures/vp9.webm"),
-            "video/webm",
-        ),
-        "h264.mp4" => (
-            include_bytes!("../../public/fixtures/h264.mp4"),
-            "video/mp4",
-        ),
-        _ => return empty(stream, 404),
+    let cached = if let Some(handle) = name.strip_prefix("media/") {
+        match cache.and_then(|c| c.get(handle)) {
+            Some(value) => Some(value),
+            None => return empty(stream, 404),
+        }
+    } else {
+        None
+    };
+    let (data, mime): (&[u8], &str) = if let Some(value) = &cached {
+        (value.bytes.as_slice(), value.mime.as_str())
+    } else {
+        match name {
+            "vp8.webm" => (
+                include_bytes!("../../public/fixtures/vp8.webm"),
+                "video/webm",
+            ),
+            "vp9.webm" => (
+                include_bytes!("../../public/fixtures/vp9.webm"),
+                "video/webm",
+            ),
+            "h264.mp4" => (
+                include_bytes!("../../public/fixtures/h264.mp4"),
+                "video/mp4",
+            ),
+            _ => return empty(stream, 404),
+        }
     };
     match crate::media_protocol::select_range(headers.get("range").copied(), data.len()) {
         Ok((status, start, end)) => {
@@ -248,6 +278,44 @@ mod tests {
         assert!(serve(&mut socket, addr, "/cap/").is_ok());
         drop(socket);
         assert!(peer.join().unwrap().starts_with(b"HTTP/1.1 200"));
+    }
+    #[cfg(feature = "cache-test-contract")]
+    #[test]
+    fn cached_product_handles_range_without_url_or_filesystem_access() {
+        let cache = std::sync::Arc::new(furchive_app::media_cache::MediaCache::new(1024).unwrap());
+        let mut p =
+            furchive_domain::MediaItem::new(furchive_domain::PostKey::new("e621", "1").unwrap());
+        p.full_url =
+            Some("https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png".into());
+        cache.authorize(&[p]).unwrap();
+        let grant = cache
+            .grant_for_test("1", furchive_app::media_cache::Variant::Full)
+            .unwrap();
+        let handle = cache
+            .publish_for_test(grant, b"owned media".to_vec(), "image/png")
+            .unwrap();
+        let server = MediaServer::with_cache(cache.clone()).unwrap();
+        let prefix = server
+            .base_url()
+            .split_once(&server.address().to_string())
+            .unwrap()
+            .1
+            .to_owned();
+        let path = format!("{prefix}media/{handle}");
+        let reply = request(&server, &path, "Range: bytes=2-5\r\n", "GET");
+        assert!(reply.starts_with(b"HTTP/1.1 206"));
+        assert!(reply.ends_with(b"ned "));
+        assert!(
+            request(
+                &server,
+                &format!("{prefix}media/https://evil.invalid"),
+                "",
+                "GET"
+            )
+            .starts_with(b"HTTP/1.1 404")
+        );
+        cache.authorize(&[]).unwrap();
+        assert!(request(&server, &path, "", "GET").starts_with(b"HTTP/1.1 404"));
     }
     #[test]
     fn fixed_media_streams_exact_ranges_and_head_without_filesystem_scope() {

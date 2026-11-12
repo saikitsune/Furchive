@@ -4,7 +4,7 @@ export type MediaItem = Readonly<{id:string; kind:'image'|'video'; src:string; t
 const validatedCatalogs=new WeakMap<readonly MediaItem[],string>();
 
 /** Exact URL grants are supplied by the trusted caller, not discovered by this UI.
- * Only bundled absolute paths and the existing tokenized loopback fixture seam are supported.
+ * Only bundled absolute paths and exact launch-scoped loopback media handles are supported.
  * This is a presentation boundary, not a replacement for host CSP/IPC authorization. */
 export function createCatalog(input: readonly MediaItem[], grants: readonly string[]): readonly MediaItem[] {
   const grantSignature=JSON.stringify(grants);
@@ -14,7 +14,7 @@ export function createCatalog(input: readonly MediaItem[], grants: readonly stri
   function checkUrl(value:unknown): asserts value is string {
     if(typeof value !== 'string' || value.length > 4096 || /[\\\s%?#]/.test(value) || value.split('/').includes('..') || value.split('/').includes('.')) throw new Error('invalid media URL');
     const bundled = /^\/(?!\/)[a-zA-Z0-9_./-]+$/.test(value);
-    const loopback = /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}\/[a-f0-9]{64}\/(?:vp8\.webm|vp9\.webm|h264\.mp4)$/.test(value);
+    const loopback = /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}\/[a-f0-9]{64}\/(?:vp8\.webm|vp9\.webm|h264\.mp4|media\/[a-f0-9]{64})$/.test(value);
     if(!bundled && !loopback) throw new Error('unsupported media URL');
     if(loopback && Number(new URL(value).port)>65535) throw new Error('invalid media URL port');
     if(!allowed.has(value)) throw new Error('missing exact URL grant');

@@ -17,6 +17,7 @@ export class BrowserBridge {
  suggestions(prefix:string){return this.invoke<Suggestion[]>('suggestions',{prefix});}
  preferences(){return this.invoke<Preferences>('preferences');}
  savePreferences(preferences:Preferences){return this.invoke<Preferences>('save_preferences',{preferences});}
+ prepare(id:string,variant:'preview'|'full'){return this.invoke<{id:string;kind:'image'|'video';src:string;title:string}>('prepare_media',{id,variant});}
  searches(){return this.invoke<SavedSearch[]>('saved_searches');}
  save(search:SavedSearch){return this.invoke<void>('save_search',{search});}
  delete(id:string){return this.invoke<void>('delete_search',{id});}

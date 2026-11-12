@@ -18,6 +18,12 @@ test('catalog refuses authority-bearing URLs, duplicate IDs and ungranted resour
  assert.equal(media.createCatalog([{...one,src:'http://127.0.0.1:12345/'+ 'a'.repeat(64) +'/h264.mp4',kind:'video'}],['http://127.0.0.1:12345/'+ 'a'.repeat(64) +'/h264.mp4']).length,1);
 });
 
+test('catalog accepts only exactly granted opaque product media handles, never CDN or path authority',()=>{
+ const src='http://127.0.0.1:43123/'+'a'.repeat(64)+'/media/'+'b'.repeat(64);
+ assert.equal(media.createCatalog([{id:'post-1',kind:'image',src,title:'Post'}],[src])[0].src,src);
+ for(const candidate of [src+'?url=https://evil.test',src+'/../secret',src.replace('media/','other/'),src.replace('127.0.0.1','localhost')])assert.throws(()=>media.createCatalog([{id:'1',kind:'image',src:candidate,title:'Post'}],[candidate]));
+});
+
 test('validated immutable catalog is reused only while exact grants remain unchanged',()=>{
  const item={id:'one',kind:'image',src:'/fixtures/still.png',title:'One'};
  const grants=[item.src];const catalog=media.createCatalog([item],grants);

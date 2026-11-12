@@ -4,11 +4,15 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {Window} from 'happy-dom';
 const window=new Window({url:'http://localhost'});
-for(const key of ['window','document','navigator','HTMLElement','Element','Node','Text','Comment','Event','MouseEvent','KeyboardEvent','CustomEvent','MutationObserver','getComputedStyle'])Object.defineProperty(globalThis,key,{value:key==='getComputedStyle'?window.getComputedStyle.bind(window):window[key],configurable:true});
+for(const key of ['window','document','navigator','HTMLElement','Element','Node','Text','Comment','Event','MouseEvent','KeyboardEvent','CustomEvent','MutationObserver','HTMLMediaElement','HTMLVideoElement','HTMLImageElement','getComputedStyle'])Object.defineProperty(globalThis,key,{value:key==='getComputedStyle'?window.getComputedStyle.bind(window):window[key],configurable:true});
+globalThis.ResizeObserver=class{observe(){}disconnect(){}};
 const {compile}=await import('svelte/compiler');const {mount,unmount,flushSync}=await import('svelte');
 const output=new URL('../../../test-artifacts/browser-components/',import.meta.url);await mkdir(output,{recursive:true});
+let viewerCode=compile(await readFile(new URL('../src/lib/Viewer.svelte',import.meta.url),'utf8'),{filename:'Viewer.svelte',generate:'client',dev:true}).js.code;
+viewerCode=viewerCode.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>`from '${new URL('../src/lib/'+spec.slice(2)+'.ts',import.meta.url)}'`);
+await writeFile(new URL('Viewer.mjs',output),viewerCode);
 let source=compile(await readFile(new URL('../src/lib/BrowsePanel.svelte',import.meta.url),'utf8'),{filename:'BrowsePanel.svelte',generate:'client',dev:true}).js.code;
-source=source.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>`from '${new URL('../src/lib/'+spec.slice(2)+'.ts',import.meta.url)}'`);
+source=source.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>`from '${(spec.endsWith('.svelte')?new URL('Viewer.mjs',output):new URL('../src/lib/'+spec.slice(2)+'.ts',import.meta.url))}'`);
 const file=new URL('BrowsePanel.mjs',output);await writeFile(file,source);const Component=(await import(file.href)).default;
 const {BrowserBridge}=await import('../src/lib/browser-bridge.ts');
 async function settle(){await new Promise(r=>setTimeout(r,0));flushSync();}
@@ -34,6 +38,13 @@ test('rendered product search preserves chips ratings favorites and pool holes t
  }finally{await unmount(app);window.happyDOM.abort();}
 });
 
+test('product selection fetches only the current post key and exposes granted media to the reusable viewer',async()=>{
+ const calls=[];const bridge=new BrowserBridge(async(command,args)=>{calls.push({command,args});if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='search')return {items:[{key:{source:'e621',id:'100'},title:'Local image',artists:[],tags:{},description:'fixture',rating:'safe',score:1}],raw_count:1,next_page:null};if(command==='prepare_media')return {id:'100',kind:'image',title:'Post 100',src:'http://127.0.0.1:43123/'+'a'.repeat(64)+'/media/'+'b'.repeat(64)};throw Error(command);});
+ const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{
+  click('Search');await settle();click('View artwork');await settle();assert.deepEqual(calls.find(c=>c.command==='prepare_media').args,{id:'100',variant:'full'});assert.equal(document.querySelector('[data-viewer]')?.dataset.id,'100');assert.match(document.querySelector('[data-viewer] [data-media]').getAttribute('src'),/\/media\/[a-f0-9]{64}$/);
+ }finally{await unmount(app);window.happyDOM.abort();}
+});
+
 test('preferences controls send only non-secret non-directory preferences and show acknowledged persistence',async()=>{
  let value={filename_template:'{source}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};let saved;
  const bridge=new BrowserBridge(async(command,args)=>{if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='preferences')return structuredClone(value);if(command==='save_preferences'){saved=structuredClone(args.preferences);value=saved;return structuredClone(value);}throw Error(command);});
@@ -44,8 +55,13 @@ test('preferences controls send only non-secret non-directory preferences and sh
 });
 
 test('native campaign driver reaches both rendered phases with labeled in-memory provider double',async()=>{
+ const imageSrc=Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype,'src');const videoSrc=Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype,'src');const oldPlay=window.HTMLMediaElement.prototype.play;const oldPause=window.HTMLMediaElement.prototype.pause;const oldLoad=window.HTMLMediaElement.prototype.load;
+ Object.defineProperty(window.HTMLImageElement.prototype,'src',{...imageSrc,set(value){imageSrc.set.call(this,value);Object.defineProperties(this,{naturalWidth:{value:320,configurable:true},naturalHeight:{value:200,configurable:true}});queueMicrotask(()=>this.dispatchEvent(new Event('load')));}});
+ Object.defineProperty(window.HTMLMediaElement.prototype,'src',{...videoSrc,set(value){videoSrc.set.call(this,value);Object.defineProperties(this,{videoWidth:{value:320,configurable:true},videoHeight:{value:200,configurable:true},duration:{value:2,configurable:true},paused:{value:true,writable:true,configurable:true},currentTime:{value:0,writable:true,configurable:true}});queueMicrotask(()=>this.dispatchEvent(new Event('loadeddata')));}});
+ window.HTMLMediaElement.prototype.play=async function(){this.paused=false;this.currentTime=.5;this.dispatchEvent(new Event('play'));};window.HTMLMediaElement.prototype.pause=function(){this.paused=true;};window.HTMLMediaElement.prototype.load=function(){};
  const {runBrowseCampaign}=await import('../src/lib/browse-campaign.ts');let searches=[],pins=[];let preferences={filename_template:'{source}/{artist}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};
  const bridge=new BrowserBridge(async(command,args)=>{
+  if(command==='prepare_media')return {id:args.id,kind:Number(args.id)>=104?'video':'image',title:'Local fixture',src:'http://127.0.0.1:43123/'+'a'.repeat(64)+'/media/'+('b'.repeat(62)+args.id.slice(-2))};
   if(command==='preferences')return structuredClone(preferences);if(command==='save_preferences'){preferences=structuredClone(args.preferences);return preferences;}
   if(command==='saved_searches')return structuredClone(searches);if(command==='pinned_pools')return structuredClone(pins);
   if(command==='save_search'){searches=[args.search];return;}if(command==='delete_search'){searches=[];return;}
@@ -55,6 +71,6 @@ test('native campaign driver reaches both rendered phases with labeled in-memory
   if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Native fixture pool',post_ids:['10','2','30']},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{title:'Post2'}},{id:'30',position:2,post:null}],total:3,next_offset:null};
   throw Error('unexpected command '+command);
  });
- for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?8:4);}finally{await unmount(app);}}
- assert.deepEqual(searches,[]);assert.deepEqual(pins,[]);window.happyDOM.abort();
+ for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?14:4);}finally{await unmount(app);}}
+ assert.deepEqual(searches,[]);assert.deepEqual(pins,[]);Object.defineProperty(window.HTMLImageElement.prototype,'src',imageSrc);Object.defineProperty(window.HTMLMediaElement.prototype,'src',videoSrc);window.HTMLMediaElement.prototype.play=oldPlay;window.HTMLMediaElement.prototype.pause=oldPause;window.HTMLMediaElement.prototype.load=oldLoad;window.happyDOM.abort();
 });

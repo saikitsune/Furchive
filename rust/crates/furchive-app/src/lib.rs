@@ -1,6 +1,7 @@
 pub mod browse;
 pub mod credentials;
 pub mod legacy;
+pub mod media_cache;
 pub mod settings;
 use furchive_engine::storage::{CacheStore, SavedSearch, StateStore};
 use std::path::Path;
