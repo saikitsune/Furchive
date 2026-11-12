@@ -1,6 +1,7 @@
 // Hosted CI-only timing probe. Does not capture pixels or log window metadata.
 import Foundation
 import CoreGraphics
+import AppKit
 
 @main struct Probe {
     static func now() -> Double { ProcessInfo.processInfo.systemUptime * 1000 }
@@ -24,7 +25,15 @@ import CoreGraphics
         }
         return ["label": label, "actualMs": samples]
     }
-    static func main() async throws {
+    @MainActor static func main() async throws {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        let owned = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 320, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        owned.title = "Furchive timing probe (no media)"
+        owned.makeKeyAndOrderFront(nil)
+        app.activate(ignoringOtherApps: true)
+        try await Task.sleep(for: .milliseconds(300), tolerance: .zero)
+        defer { owned.orderOut(nil) }
         guard let rows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]],
               let first = rows.first(where: { ($0[kCGWindowLayer as String] as? Int) == 0 && ($0[kCGWindowAlpha as String] as? Double ?? 0) > 0 }),
               let window = first[kCGWindowNumber as String] as? UInt32 else { fatalError("No foreground normal window") }
