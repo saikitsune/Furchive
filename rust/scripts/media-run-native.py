@@ -61,6 +61,18 @@ def capture_pixels(screen,rect,verify,now=time.monotonic,sleep=time.sleep):
         sleep(max(0,.08-(now()-before)))
     return samples
 
+def read_native_frames(path,root,pid,window_id,checkpoint):
+    receipt=json.loads(path.read_text())
+    if receipt.get('pid')!=pid or receipt.get('windowId')!=str(window_id) or receipt.get('checkpoint')!=checkpoint or receipt.get('captureAPI')!='ScreenCaptureKit.SCScreenshotManager.desktopIndependentWindow':raise ValueError('native frame child identity mismatch')
+    frames=receipt.get('frames',[])
+    if len(frames)!=12:raise ValueError('native frame inventory mismatch')
+    result=[]
+    for i,row in enumerate(frames):
+        leaf=f'{checkpoint}-{i}.png'
+        if row.get('file')!=leaf or not (root/leaf).is_file() or (root/leaf).is_symlink():raise ValueError('native frame namespace mismatch')
+        result.append({'file':leaf,'sha256':hashlib.sha256((root/leaf).read_bytes()).hexdigest(),'monotonicMs':row['monotonicMs']})
+    return result
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('binary',type=Path)
@@ -68,12 +80,16 @@ def main():
     args=parser.parse_args();binary=args.binary.resolve();output=args.output.resolve()
     if output.exists():raise SystemExit('refusing stale native campaign evidence')
     output.mkdir(parents=True)
+    campaign_deadline=time.monotonic()+100
     if sys.platform=='win32':ctypes.windll.user32.SetProcessDPIAware()
     binary_hash=hashlib.sha256(binary.read_bytes()).hexdigest()
     head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT.parent,text=True).strip()
     candidate=hashlib.sha256(head.encode()).hexdigest()
     files=sorted((ROOT/'apps/desktop/src').rglob('*'))
     source_hash=hashlib.sha256(b''.join(str(f.relative_to(ROOT)).encode()+b'\0'+f.read_bytes()+b'\0' for f in files if f.is_file())).hexdigest()
+    if sys.platform=='darwin':
+        helper=output/'capture-owned-window'
+        subprocess.run(['swiftc','-parse-as-library','-target',platform.machine()+'-apple-macosx14.0',str(ROOT/'scripts/media-capture-macos.swift'),'-o',str(helper)],check=True,timeout=min(45,max(1,campaign_deadline-time.monotonic())))
     system=platform.system();native={'Linux':('linux','WebKitGTK','X11'),'Windows':('windows','WebView2','Windows desktop'),'Darwin':('macos','WKWebView','macOS WindowServer')}[system]
     report={'schema':1,'platform':native[0],'engine':native[1],'display':native[2],'candidateSha256':candidate,'executableSha256':binary_hash,'sourceSha256':source_hash,'sourceCommit':head,'captures':[]}
     env=dict(os.environ,FURCHIVE_MEDIA_TEST_ROOT=str(output),FURCHIVE_TEST_DATA_ROOT=str(output/'profile'))
@@ -84,7 +100,7 @@ def main():
         try:
             import mss
             from PIL import Image
-            deadline=time.monotonic()+100
+            deadline=campaign_deadline
             for checkpoint in ('gif','apng','webp'):
                 request=output/f'{checkpoint}.request.json'
                 while not request.exists():
@@ -101,14 +117,15 @@ def main():
                 def verify_foreground():
                     if window_identity(child.pid)!=wid:raise ValueError('foreground window changed during capture')
                 if sys.platform=='darwin':
-                    import Quartz
-                    capture_context=QuartzWindowScreen(Quartz,wid)
-                else:capture_context=mss.mss()
-                with capture_context as screen:
-                    samples=capture_pixels(screen,rect,verify_foreground)
-                for i,(timestamp,size,pixels) in enumerate(samples):
-                    path=output/f'{checkpoint}-{i}.png';Image.frombytes('RGB',size,pixels).save(path,compress_level=1)
-                    capture['frames'].append({'file':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'monotonicMs':timestamp})
+                    subprocess.run([str(helper),str(request),wid,str(output)],check=True,timeout=10)
+                    capture['frames']=read_native_frames(output/f'{checkpoint}.native-frames.json',output,child.pid,wid,checkpoint)
+                    verify_foreground()
+                else:
+                    with mss.mss() as screen:
+                        samples=capture_pixels(screen,rect,verify_foreground)
+                    for i,(timestamp,size,pixels) in enumerate(samples):
+                        path=output/f'{checkpoint}-{i}.png';Image.frombytes('RGB',size,pixels).save(path,compress_level=1)
+                        capture['frames'].append({'file':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'monotonicMs':timestamp})
                 report['captures'].append(capture)
                 (output/'capture.json').write_text(json.dumps(report,indent=2))
                 (output/f'{checkpoint}.ack').write_bytes(b'OK')

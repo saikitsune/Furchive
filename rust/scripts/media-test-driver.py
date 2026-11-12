@@ -24,6 +24,21 @@ class CaptureSchedule(unittest.TestCase):
         self.assertEqual(calls,[((10,20,1,1),8,42,16)])
         self.assertEqual(shot.size,(1,1));self.assertEqual(shot.rgb,b'\x01\x02\x03')
 
+    def test_native_stream_receipt_refuses_missing_or_reordered_frames(self):
+        import tempfile,json,hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);rows=[]
+            for i in range(12):
+                path=root/f'gif-{i}.png';path.write_bytes(b'owned parser double');rows.append({'file':path.name,'monotonicMs':1000+i*80})
+            receipt={'pid':123,'windowId':'42','checkpoint':'gif','captureAPI':'ScreenCaptureKit.SCScreenshotManager.desktopIndependentWindow','frames':rows}
+            path=root/'gif.native-frames.json';path.write_text(json.dumps(receipt))
+            frames=module.read_native_frames(path,root,123,'42','gif')
+            self.assertEqual(len(frames),12);self.assertEqual(frames[0]['sha256'],hashlib.sha256(b'owned parser double').hexdigest())
+            receipt['frames']=list(reversed(rows));path.write_text(json.dumps(receipt))
+            with self.assertRaises(ValueError):module.read_native_frames(path,root,123,'42','gif')
+            receipt['frames']=rows;receipt['pid']=999;path.write_text(json.dumps(receipt))
+            with self.assertRaises(ValueError):module.read_native_frames(path,root,123,'42','gif')
+
     def test_png_encoding_is_outside_the_frame_sampling_schedule(self):
         clock=[0.0];events=[]
         class Shot:
