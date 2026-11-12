@@ -4,6 +4,7 @@ version="0.1.0"
 edition="2024"
 publish=false
 [features]
+native-vault-test=[]
 cache-test-contract=[]
 fixture-media=["furchive-e621/fixture-api"]
 fixture-downloads=["furchive-downloads/fixture-http"]
@@ -29,4 +30,7 @@ zbus-secret-service-keyring-store={version="1.0.1",features=["crypto-rust"]}
 windows-native-keyring-store={version="1.1.0",default-features=false}
 [target.'cfg(target_os="macos")'.dependencies]
 apple-native-keyring-store={version="1.0.2",features=["keychain"]}
+[[example]]
+name="native_vault_probe"
+required-features=["native-vault-test"]
 [dev-dependencies]

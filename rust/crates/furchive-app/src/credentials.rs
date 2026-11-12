@@ -70,7 +70,33 @@ impl Vault {
         }
         Self::with_store(Memory::default())
     }
+    #[cfg(feature = "native-vault-test")]
+    pub fn qualification_matches(&self, user: &str, key: &str) -> Result<bool, String> {
+        let Some(payload) = self.store.read()? else {
+            return Ok(false);
+        };
+        let actual: (String, String) =
+            serde_json::from_str(&payload).map_err(|_| "invalid qualification entry")?;
+        Ok(actual.0 == user && actual.1 == key)
+    }
     pub fn native() -> Result<Self, String> {
+        Self::native_entry("active-account")
+    }
+    #[cfg(feature = "native-vault-test")]
+    pub fn native_qualification(scope: &str) -> Result<Self, String> {
+        let suffix = scope
+            .strip_prefix("qualification-")
+            .ok_or("invalid native qualification namespace")?;
+        if suffix.len() != 32
+            || !suffix
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err("invalid native qualification namespace".into());
+        }
+        Self::native_entry(scope)
+    }
+    fn native_entry(account: &str) -> Result<Self, String> {
         #[cfg(target_os = "linux")]
         let store = zbus_secret_service_keyring_store::Store::new();
         #[cfg(target_os = "windows")]
@@ -81,7 +107,7 @@ impl Vault {
         {
             let entry = store
                 .map_err(|_| "native credential store unavailable")?
-                .build("dev.furchive.desktop.alpha.e621", "active-account", None)
+                .build("dev.furchive.desktop.alpha.e621", account, None)
                 .map_err(|_| "cannot open native credential entry")?;
             Ok(Self::with_store(NativeStore {
                 entry: Mutex::new(entry),

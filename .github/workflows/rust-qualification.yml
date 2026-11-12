@@ -48,6 +48,50 @@ jobs:
             rust/crates/furchive-downloads/contracts/test-inventory.json
             rust/crates/furchive-downloads/test-artifacts/native-*/*.json
             rust/crates/furchive-downloads/test-artifacts/native-*/*.log
+  vault:
+    name: Native vault ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Native vault receipt guard
+        run: python rust/scripts/native-vault-test.py -v
+      - name: Compile isolated native vault probe
+        run: cargo +1.99.1 build --manifest-path rust/Cargo.toml -p furchive-app --example native_vault_probe --features native-vault-test --locked
+      - name: Private Linux Secret Service prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gnome-keyring dbus-x11 libglib2.0-bin
+      - name: Exercise isolated real Secret Service
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- python rust/scripts/native-vault-linux.py rust/target/debug/examples/native_vault_probe --output rust/test-artifacts/native-vault-Linux
+      - name: Exercise real Windows Credential Manager
+        if: runner.os == 'Windows'
+        run: python rust/scripts/native-vault-run.py rust/target/debug/examples/native_vault_probe.exe --output rust/test-artifacts/native-vault-Windows
+      - name: Exercise real macOS Keychain
+        if: runner.os == 'macOS'
+        run: python rust/scripts/native-vault-run.py rust/target/debug/examples/native_vault_probe --output rust/test-artifacts/native-vault-macOS
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: native-vault-${{ runner.os }}
+          retention-days: 5
+          if-no-files-found: warn
+          path: |
+            rust/test-artifacts/native-vault-*/*.json
+            rust/test-artifacts/native-vault-*/*.log
+            rust/test-artifacts/native-vault-*/receipts/*.json
+            rust/test-artifacts/native-vault-*/receipts/*.log
   native:
     name: Native ${{ matrix.os }}
     strategy:
