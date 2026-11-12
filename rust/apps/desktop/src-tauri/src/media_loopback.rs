@@ -120,9 +120,20 @@ fn serve(stream: &mut TcpStream, address: SocketAddr, prefix: &str) -> std::io::
             .insert(key.to_ascii_lowercase(), value.trim())
             .is_some()
         {
+            #[cfg(feature = "self-test")]
+            eprintln!("fixture duplicate header refused");
             return empty(stream, 400);
         }
     }
+    #[cfg(feature = "self-test")]
+    eprintln!(
+        "fixture request: verb={} version={} header_count={} range={:?} origin={:?}",
+        parts[0],
+        parts[2],
+        headers.len(),
+        headers.get("range"),
+        headers.get("origin")
+    );
     if headers.get("host").copied() != Some(address.to_string().as_str()) {
         return empty(stream, 403);
     }
@@ -156,6 +167,12 @@ fn serve(stream: &mut TcpStream, address: SocketAddr, prefix: &str) -> std::io::
     };
     match crate::media_protocol::select_range(headers.get("range").copied(), data.len()) {
         Ok((status, start, end)) => {
+            #[cfg(feature = "self-test")]
+            eprintln!(
+                "fixture response: verb={} status={status} span={start}-{end} total={}",
+                parts[0],
+                data.len()
+            );
             write!(
                 stream,
                 "HTTP/1.1 {status} OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n",
@@ -184,6 +201,8 @@ fn serve(stream: &mut TcpStream, address: SocketAddr, prefix: &str) -> std::io::
     }
 }
 fn empty(stream: &mut TcpStream, status: u16) -> std::io::Result<()> {
+    #[cfg(feature = "self-test")]
+    eprintln!("fixture response refused: status={status}");
     write!(
         stream,
         "HTTP/1.1 {status} Refused\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
