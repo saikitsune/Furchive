@@ -30,7 +30,7 @@
    });
    function on(name:string,handler:()=>void){events.push([name,handler]);media.addEventListener(name,handler);}
    let failed=false;
-   function fail(reason:string){token.commit(()=>{failed=true;clearTimeout(timer);status='error';message=reason;media.style.visibility='hidden';if(media instanceof HTMLVideoElement)releaseVideo(media);else media.removeAttribute('src');});}
+   function fail(reason:string){if(failed)return;token.commit(()=>{media.dataset.failureState=JSON.stringify({reason,ready:media instanceof HTMLVideoElement?media.readyState:null,network:media instanceof HTMLVideoElement?media.networkState:null,error:media instanceof HTMLVideoElement?media.error?.code:null,nativeMessage:media instanceof HTMLVideoElement?media.error?.message:null});failed=true;clearTimeout(timer);status='error';message=reason;media.style.visibility='hidden';if(media instanceof HTMLVideoElement)releaseVideo(media);else media.removeAttribute('src');});}
    function ready(){if(failed)return;token.commit(()=>{
     const width=media instanceof HTMLVideoElement?media.videoWidth:media.naturalWidth,height=media instanceof HTMLVideoElement?media.videoHeight:media.naturalHeight;
     if(!imageAllowed(width,height)){fail('Media refused: invalid dimensions or exceeds 32 megapixels / 16384 pixels per edge.');return;}
@@ -41,7 +41,7 @@
    media.setAttribute('data-media',selected.kind);
    if(media instanceof HTMLVideoElement){media.preload='metadata';media.defaultMuted=true;media.setAttribute('muted','');media.muted=true;media.playsInline=true;on('loadedmetadata',ready);on('timeupdate',()=>token.commit(()=>time=media.currentTime));on('seeked',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('volumechange',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('play',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;playing=true;}));on('pause',()=>token.commit(()=>playing=false));on('ended',()=>token.commit(()=>playing=false));}
    else{media.alt=selected.title;media.draggable=false;on('load',ready);}
-   on('error',()=>fail('Media could not be decoded (corrupt, truncated or unsupported).'));
+   on('error',()=>{const native=media instanceof HTMLVideoElement?media.error:null;fail(native?`Media error ${native.code}: ${native.message||'native decoder failure'}`:'Media could not be decoded (corrupt, truncated or unsupported).');});
    element=media;container.append(media);timer=setTimeout(()=>fail('Media load timed out.'),8000);media.src=selected.src;dialog?.focus();
    return ()=>scope.close();
   });
@@ -69,7 +69,7 @@
  function pointerDown(event:PointerEvent){if(status!=='ready'||event.button!==0||!stage)return;stage.setPointerCapture(event.pointerId);drag={id:event.pointerId,x:event.clientX,y:event.clientY,px:transform.x,py:transform.y};}
  function pointerMove(event:PointerEvent){if(drag?.id!==event.pointerId)return;x=drag.px+event.clientX-drag.x;y=drag.py+event.clientY-drag.y;}
  function pointerEnd(){drag=null;}
- async function play(){const video=element;if(!(video instanceof HTMLVideoElement))return;if(!video.paused){video.pause();return;}try{await video.play();}catch(error){if(element===video){const reason=error instanceof Error?error.name:'UnknownError';message=`Playback was refused (${reason}). Use Play again with a direct gesture.`;}}}
+ async function play(){const video=element;if(!(video instanceof HTMLVideoElement))return;if(!video.paused){video.pause();return;}try{await video.play();}catch(error){if(element===video&&status!=='error'){const reason=error instanceof Error?error.name:'UnknownError';message=`Playback was refused (${reason}). Use Play again with a direct gesture.`;}}}
  function changeMute(){muted=!muted;if(element instanceof HTMLVideoElement)element.muted=muted;}
  function changeSpeed(event:Event){speed=Number((event.target as HTMLSelectElement).value);if(element instanceof HTMLVideoElement)element.playbackRate=speed;}
  function seek(event:Event){const value=Number((event.target as HTMLInputElement).value);if(element instanceof HTMLVideoElement&&Number.isFinite(value))element.currentTime=Math.max(0,Math.min(duration,value));}

@@ -4,7 +4,7 @@ import manifest from '../../public/fixtures/viewer-manifest.json';
 
 export type Checkpoint='gif'|'apng'|'webp';
 export const campaignDiagnostics:Record<string,unknown>={stage:'starting',videos:[]};
-function videoState(v:HTMLVideoElement){return {src:v.currentSrc,paused:v.paused,ended:v.ended,ready:v.readyState,network:v.networkState,muted:v.muted,defaultMuted:v.defaultMuted,speed:v.playbackRate,time:v.currentTime,duration:v.duration,width:v.videoWidth,error:v.error?.code,errorMessage:v.error?.message,status:viewer()?.dataset.status,message:document.querySelector('[data-viewer] .status')?.textContent,playbackMessage:document.querySelector('[data-viewer] [data-playback-message]')?.textContent};}
+function videoState(v:HTMLVideoElement){return {src:v.currentSrc,paused:v.paused,ended:v.ended,ready:v.readyState,network:v.networkState,muted:v.muted,defaultMuted:v.defaultMuted,speed:v.playbackRate,time:v.currentTime,duration:v.duration,width:v.videoWidth,error:v.error?.code,errorMessage:v.error?.message,failureState:v.dataset.failureState,status:viewer()?.dataset.status,message:document.querySelector('[data-viewer] .status')?.textContent,playbackMessage:document.querySelector('[data-viewer] [data-playback-message]')?.textContent};}
 export type CaptureRequest={fixture:string;fixtureSha256:string;rect:{x:number;y:number;width:number;height:number};viewport:{width:number;height:number;dpr:number};frames:number;intervalMs:number};
 const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
 const painted=async()=>{await tick();await frame();await frame();};

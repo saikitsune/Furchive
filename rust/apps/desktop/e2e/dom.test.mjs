@@ -120,6 +120,22 @@ test('rendered Viewer surfaces the native play rejection rather than an unexplai
  }finally{window.HTMLMediaElement.prototype.play=previous;if(active)await unmount(active);active=null;}
 });
 
+test('rendered Viewer preserves the original decode failure when pending play is then aborted',async()=>{
+ const Host=await viewerHost();const previous=window.HTMLMediaElement.prototype.play;let rejectPlay;
+ window.HTMLMediaElement.prototype.play=function(){return new Promise((resolve,reject)=>rejectPlay=reject)};
+ try{
+  active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
+  const video=document.querySelector('video');Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2},paused:{value:true},error:{value:{code:3,message:'native decoder refused frame'},configurable:true}});video.dispatchEvent(new Event('loadedmetadata'));flushSync();
+  document.querySelector('[aria-label="Play video"]').click();video.dispatchEvent(new Event('error'));flushSync();
+  rejectPlay(new window.DOMException('source removed','AbortError'));await Promise.resolve();await Promise.resolve();flushSync();
+  assert.match(document.querySelector('[data-viewer] .status').textContent,/Media error 3/);
+  assert.doesNotMatch(document.querySelector('[data-viewer] .status').textContent,/Playback was refused/);
+  assert.equal(video.hasAttribute('src'),false);
+  Object.defineProperty(video,'error',{value:{code:4,message:'secondary source reset'},configurable:true});video.dispatchEvent(new Event('error'));flushSync();
+  assert.match(document.querySelector('[data-viewer] .status').textContent,/Media error 3/,'cleanup must preserve first failure');
+ }finally{window.HTMLMediaElement.prototype.play=previous;if(active)await unmount(active);active=null;}
+});
+
 test('rendered Viewer fit, 100 percent and bounded zoom reset operate on media transform',async()=>{
  const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'large',kind:'image',src:'/fixtures/large.png',title:'<b>literal</b>'}],grants:['/fixtures/large.png']}});flushSync();
  const img=document.querySelector('[data-viewer] img');Object.defineProperties(img,{naturalWidth:{value:1280},naturalHeight:{value:800}});img.dispatchEvent(new Event('load'));flushSync();

@@ -1,0 +1,11 @@
+# Native media attempt4 — Linux and Windows verified; macOS initiating failure retained
+
+Candidate1a5afea/run43287107688. Native Windows and Linux jobs now SUCCESS, all3download jobs SUCCESS. macOS package campaign remains FAIL. Previous nonblocking socket regression now passes native macOS, so do not keep attributing the remaining playback failure to that repaired boundary.
+
+Owner downloaded exact artifact ZIPs and independently reran actual host-frame and runtime validators for Windows AND Linux. Each has36raw frames proving GIF/APNG/WebP progression, accepted20release/stale-event cycles, all3video play+seek+2x+muted contracts, and gallery bounds. Observed initial render41.8msWindows/318msLinux; measured scroll45–58msLinux/27–32msWindows. No hardware-audio/GPU or fullapp claim.
+
+macOS: beforePlay has320px metadata, ready1, muted/defaultMutedtrue. Then statuserror, source cleared and Play promise AbortError. Source inspection reveals the initiating failure is masked: fail() releases the source, which aborts pending play; catch then overwrites the original error with generic AbortError guidance. A later cleanup error can overwrite it again. Therefore current native capture does not yet reveal whether native decode, dimensions, duration or load budget actually initiated refusal. It is not proof user gesture is missing.
+
+Added actual compiled-component regression: native MediaError3 arrives during pending play, source release then AbortError, then secondary MediaError4. Observed RED generic abort overwrite, then RED secondary-error overwrite. Corrected fail to latch once, retain MediaError code/message and precleanup ready/network, and play rejection to leave existing terminal error intact. Assertion remains rejection and source release, never swallowed success. Diagnostic next execution must expose macOS initiating error before proposing codec/timeout/design changes. All old failed receipts remain preserved.
+
+Local12unit+8compiled Svelte DOM tests,0Svelteerrors/warnings,Vite production build pass. No deadline, sandbox/CSP, codec, test-scope or native playback policy change. Full product UI/full media gate/application remain incomplete; live owner continues same exact authorized milestone without new worker graph.
