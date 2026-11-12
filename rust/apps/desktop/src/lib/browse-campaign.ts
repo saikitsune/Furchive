@@ -19,8 +19,10 @@ export async function runBrowseCampaign(phase:number){
   const rows=[...document.querySelectorAll<HTMLElement>('[data-post-id]')];if(rows.map(r=>r.dataset.postId).join(',')!=='10,2,30'||rows.filter(r=>r.textContent?.includes('Unavailable or filtered')).length!==2)throw Error('native ordered pool projection mismatch');checks.push('ordered-pool-holes');
   button('Pin pool');await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Unpin pool'));checks.push('pin-persist');
   input('Saved search name','Native fixture search');await tick();button('Save search');await wait(()=>document.querySelector('[aria-label="Delete Native fixture search"]')!==null);checks.push('saved-search-persist');
+  button('Load preferences');await wait(()=>document.querySelector('[aria-label="Filename template"]')!==null);input('Filename template','{source}/{id}.{ext}');await tick();button('Save preferences');await wait(()=>document.body.textContent?.includes('Preferences saved')===true);checks.push('preferences-save');
  }else if(phase===2){
   await wait(()=>document.querySelector('[aria-label="Delete Native fixture search"]')!==null&&[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Pool 3'));checks.push('restart-state');
+  button('Load preferences');await wait(()=>document.querySelector<HTMLInputElement>('[aria-label="Filename template"]')?.value==='{source}/{id}.{ext}');checks.push('preferences-restart');
   document.querySelector<HTMLButtonElement>('[aria-label="Delete Native fixture search"]')!.click();await wait(()=>document.querySelector('[aria-label="Delete Native fixture search"]')===null);checks.push('saved-search-delete');
   button('Pool 3');await wait(()=>idle()&&[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Unpin pool'));button('Unpin pool');await wait(()=>![...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Pool 3'));checks.push('unpin');
  }else throw Error('unknown native browse phase');

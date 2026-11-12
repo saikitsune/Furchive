@@ -129,6 +129,8 @@ fn main() {
             browse_test_phase,
             qualification_media_base,
             qualification_result,
+            commands::preferences,
+            commands::save_preferences,
             commands::search,
             commands::favorites,
             commands::pool_page,

@@ -1,11 +1,12 @@
 <script lang="ts">
  import {onMount} from 'svelte';
- import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion} from './browser-bridge';
+ import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences} from './browser-bridge';
  let {bridge}:{bridge:BrowserBridge}=$props();
  let include=$state<string[]>([]),exclude=$state<string[]>([]),includeInput=$state(''),excludeInput=$state('');
  let safe=$state(true),questionable=$state(false),explicit=$state(false),sort=$state<Query['sort']>('newest');
  let username=$state(''),poolId=$state(''),name=$state(''),saved=$state<SavedSearch[]>([]),pins=$state<{source:string;id:string}[]>([]),suggestions=$state<Suggestion[]>([]);
  let result=$state<SearchPage|null>(null),pool=$state<PoolPage|null>(null),error=$state(''),busy=$state(false),page=$state(1),mode=$state<'search'|'favorites'|'pool'>('search');
+ let preferences=$state<Preferences|null>(null),preferenceNotice=$state('');
  let generation=0,suggestionGeneration=0;
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
@@ -23,6 +24,8 @@
   else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
+ async function loadPreferences(){try{preferences=await bridge.preferences();preferenceNotice='';}catch(e){error=String(e);}}
+ async function savePreferences(){if(!preferences)return;try{preferences=await bridge.savePreferences($state.snapshot(preferences));preferenceNotice='Preferences saved';}catch(e){error=String(e);}}
  async function save(){error='';try{const value=name.trim();if(!value)throw Error('Name this search first.');await bridge.save({id:crypto.randomUUID(),name:value,query:query()});name='';await refresh();}catch(e){error=String(e);}}
  async function remove(id:string){try{await bridge.delete(id);await refresh();}catch(e){error=String(e);}}
  async function pin(){if(!pool)return;const id=Number(pool.pool.key.id);try{await bridge.pin(id,!pins.some(p=>p.id===String(id)));await refresh();}catch(e){error=String(e);}}
@@ -45,6 +48,13 @@
    <label>Pool ID<input aria-label="Pool ID" inputmode="numeric" bind:value={poolId}></label><button disabled={busy} onclick={()=>run('pool')}>Open pool</button>
    <h2>Saved searches</h2><label>Search name<input aria-label="Saved search name" bind:value={name}></label><button onclick={save}>Save search</button>
    {#each saved as s}<div class="saved"><button onclick={()=>restore(s)}>{s.name}</button><button aria-label={'Delete '+s.name} onclick={()=>remove(s.id)}>×</button></div>{/each}
+   <h2>Preferences</h2><button onclick={loadPreferences}>Load preferences</button>
+   {#if preferences}
+    <label>Filename template<input aria-label="Filename template" bind:value={preferences.filename_template}></label>
+    <label>Pool filename template<input aria-label="Pool filename template" bind:value={preferences.pool_filename_template}></label>
+    <p>Directory grants, account keys and automatic session restoration are not edited here. Download/cache/gallery controls will be enabled when their product integration is ready.</p>
+    <button onclick={savePreferences}>Save preferences</button>{#if preferenceNotice}<p role="status">{preferenceNotice}</p>{/if}
+   {/if}
    <h2>Pinned pools</h2>{#each pins as p}<button onclick={()=>{poolId=p.id;void run('pool');}}>Pool {p.id}</button>{/each}
   </aside>
   <div class="results" aria-busy={busy}>

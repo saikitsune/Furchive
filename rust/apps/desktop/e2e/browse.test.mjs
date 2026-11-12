@@ -16,7 +16,8 @@ function input(label,value){const e=document.querySelector(`[aria-label="${label
 function click(text){const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===text);assert.ok(b,text);b.click();flushSync();}
 test('rendered product search preserves chips ratings favorites and pool holes through the real thin bridge',async()=>{
  const calls=[];let poolCalls=0;
- const bridge=new BrowserBridge(async(command,args)=>{
+  const bridge=new BrowserBridge(async(command,args)=>{
+  if(command==='preferences')return {filename_template:'{source}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};
   calls.push({command,args});if(command==='saved_searches'||command==='pinned_pools'||command==='suggestions')return [];
   if(command==='search'||command==='favorites')return {items:[],raw_count:50,next_page:2};
   if(command==='pool_page'){poolCalls++;return {pool:{key:{source:'e621',id:'3'},name:'Fixture pool',post_ids:['10','2','30'],description:null},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{key:{source:'e621',id:'2'},title:'Fixture'}},{id:'30',position:2,post:null}],total:3,next_offset:null};}
@@ -33,9 +34,19 @@ test('rendered product search preserves chips ratings favorites and pool holes t
  }finally{await unmount(app);window.happyDOM.abort();}
 });
 
+test('preferences controls send only non-secret non-directory preferences and show acknowledged persistence',async()=>{
+ let value={filename_template:'{source}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};let saved;
+ const bridge=new BrowserBridge(async(command,args)=>{if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='preferences')return structuredClone(value);if(command==='save_preferences'){saved=structuredClone(args.preferences);value=saved;return structuredClone(value);}throw Error(command);});
+ const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{
+  click('Load preferences');await settle();input('Filename template','{source}/{artist}/{id}.{ext}');click('Save preferences');await settle();
+  assert.equal(saved.filename_template,'{source}/{artist}/{id}.{ext}');assert.equal('download_directory'in saved,false);assert.equal('api_key'in saved,false);assert.match(document.body.textContent,/Preferences saved/);
+ }finally{await unmount(app);window.happyDOM.abort();}
+});
+
 test('native campaign driver reaches both rendered phases with labeled in-memory provider double',async()=>{
- const {runBrowseCampaign}=await import('../src/lib/browse-campaign.ts');let searches=[],pins=[];
+ const {runBrowseCampaign}=await import('../src/lib/browse-campaign.ts');let searches=[],pins=[];let preferences={filename_template:'{source}/{artist}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};
  const bridge=new BrowserBridge(async(command,args)=>{
+  if(command==='preferences')return structuredClone(preferences);if(command==='save_preferences'){preferences=structuredClone(args.preferences);return preferences;}
   if(command==='saved_searches')return structuredClone(searches);if(command==='pinned_pools')return structuredClone(pins);
   if(command==='save_search'){searches=[args.search];return;}if(command==='delete_search'){searches=[];return;}
   if(command==='set_pin'){pins=args.pinned?[{source:'e621',id:String(args.id)}]:[];return;}
@@ -44,6 +55,6 @@ test('native campaign driver reaches both rendered phases with labeled in-memory
   if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Native fixture pool',post_ids:['10','2','30']},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{title:'Post2'}},{id:'30',position:2,post:null}],total:3,next_offset:null};
   throw Error('unexpected command '+command);
  });
- for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?7:3);}finally{await unmount(app);}}
+ for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?8:4);}finally{await unmount(app);}}
  assert.deepEqual(searches,[]);assert.deepEqual(pins,[]);window.happyDOM.abort();
 });

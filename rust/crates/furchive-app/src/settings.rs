@@ -43,6 +43,73 @@ impl Default for Settings {
         }
     }
 }
+/// Browser-editable non-secret preferences deliberately exclude directory grants.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Preferences {
+    pub filename_template: String,
+    pub pool_filename_template: String,
+    pub concurrent_downloads: u8,
+    pub duplicates: DuplicatePolicy,
+    pub gallery_scale: f64,
+    pub cache_limit_bytes: u64,
+    pub restore_session: bool,
+    pub save_metadata: bool,
+    pub start_muted: bool,
+}
+impl From<Settings> for Preferences {
+    fn from(s: Settings) -> Self {
+        Self {
+            filename_template: s.filename_template,
+            pool_filename_template: s.pool_filename_template,
+            concurrent_downloads: s.concurrent_downloads,
+            duplicates: s.duplicates,
+            gallery_scale: s.gallery_scale,
+            cache_limit_bytes: s.cache_limit_bytes,
+            restore_session: s.restore_session,
+            save_metadata: s.save_metadata,
+            start_muted: s.start_muted,
+        }
+    }
+}
+pub struct SettingsStore {
+    path: PathBuf,
+    value: std::sync::Mutex<Settings>,
+}
+impl SettingsStore {
+    pub fn open(path: &Path) -> Result<Self, String> {
+        Ok(Self {
+            path: path.to_owned(),
+            value: std::sync::Mutex::new(Settings::load(path)?),
+        })
+    }
+    pub fn current(&self) -> Result<Settings, String> {
+        self.value
+            .lock()
+            .map(|s| s.clone())
+            .map_err(|_| "settings lock poisoned".into())
+    }
+    pub fn apply(&self, p: Preferences) -> Result<Settings, String> {
+        let mut current = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        let next = Settings {
+            version: current.version,
+            download_directory: current.download_directory.clone(),
+            filename_template: p.filename_template,
+            pool_filename_template: p.pool_filename_template,
+            concurrent_downloads: p.concurrent_downloads,
+            duplicates: p.duplicates,
+            gallery_scale: p.gallery_scale,
+            cache_limit_bytes: p.cache_limit_bytes,
+            restore_session: p.restore_session,
+            save_metadata: p.save_metadata,
+            start_muted: p.start_muted,
+        };
+        next.save(&self.path)?;
+        *current = next.clone();
+        Ok(next)
+    }
+}
+
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
         if self.version != 1 {

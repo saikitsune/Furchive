@@ -1,6 +1,7 @@
 use furchive_app::{
     Database,
     browse::{Browser, PoolPage},
+    settings::{Preferences, SettingsStore},
 };
 use furchive_domain::{PoolKey, RatingFilter, SearchQuery};
 use furchive_e621::{E621Client, SearchPage, TagSuggestion};
@@ -9,6 +10,7 @@ use tauri::{Manager, State};
 pub struct AppState {
     pub browser: Browser<E621Client>,
     pub db: Database,
+    pub settings: SettingsStore,
 }
 pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let root = app.path().app_data_dir()?;
@@ -30,9 +32,22 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     };
     app.manage(AppState {
         browser: Browser::new(api, db.clone()),
+        settings: SettingsStore::open(&root.join("settings.json"))
+            .map_err(std::io::Error::other)?,
         db,
     });
     Ok(())
+}
+#[tauri::command]
+pub fn preferences(state: State<'_, AppState>) -> Result<Preferences, String> {
+    Ok(state.settings.current()?.into())
+}
+#[tauri::command]
+pub async fn save_preferences(
+    state: State<'_, AppState>,
+    preferences: Preferences,
+) -> Result<Preferences, String> {
+    state.settings.apply(preferences).map(Into::into)
 }
 #[tauri::command]
 pub async fn search(

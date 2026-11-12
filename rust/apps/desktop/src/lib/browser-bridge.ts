@@ -6,6 +6,7 @@ export type SearchPage={items:Post[];next_page:number|null;raw_count:number};
 export type SavedSearch={id:string;name:string;query:Query};
 export type PoolPage={pool:{key:{source:string;id:string};name:string;description:string|null;post_ids:string[]};entries:{id:string;position:number;post:Post|null}[];total:number;next_offset:number|null};
 export type Suggestion={name:string;category:unknown;post_count:number};
+export type Preferences={filename_template:string;pool_filename_template:string;concurrent_downloads:number;duplicates:'skip'|'overwrite'|'rename';gallery_scale:number;cache_limit_bytes:number;restore_session:boolean;save_metadata:boolean;start_muted:boolean};
 export type Invoke=<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class BrowserBridge {
  private invoke:Invoke;
@@ -14,6 +15,8 @@ export class BrowserBridge {
  favorites(query:Query,username:string,page:number){return this.invoke<SearchPage>('favorites',{query,username,page});}
  pool(id:number,offset:number,ratings:RatingFilter){return this.invoke<PoolPage>('pool_page',{id,offset,limit:50,ratings});}
  suggestions(prefix:string){return this.invoke<Suggestion[]>('suggestions',{prefix});}
+ preferences(){return this.invoke<Preferences>('preferences');}
+ savePreferences(preferences:Preferences){return this.invoke<Preferences>('save_preferences',{preferences});}
  searches(){return this.invoke<SavedSearch[]>('saved_searches');}
  save(search:SavedSearch){return this.invoke<void>('save_search',{search});}
  delete(id:string){return this.invoke<void>('delete_search',{id});}
