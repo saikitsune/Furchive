@@ -34,6 +34,16 @@ def window_identity(pid):
     if int(owner)!=pid:raise ValueError('owned X11 client is not foreground')
     return window
 
+def capture_pixels(screen,rect,verify,now=time.monotonic,sleep=time.sleep):
+    """Sample owned raw pixels first; expensive PNG compression happens later."""
+    samples=[]
+    for _ in range(12):
+        before=now();verify()
+        shot=screen.grab({'left':rect['x'],'top':rect['y'],'width':rect['width'],'height':rect['height']})
+        samples.append((before*1000,shot.size,bytes(shot.rgb)))
+        sleep(max(0,.08-(now()-before)))
+    return samples
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('binary',type=Path)
@@ -71,14 +81,13 @@ def main():
                 # set_focus is requested by the owned native app before request publication.
                 wid=window_identity(child.pid);report['windowId']=wid
                 capture={'checkpoint':checkpoint,'fixtureSha256':spec['fixtureSha256'],'viewport':spec['viewport'],'rect':spec['rect'],'clientPhysical':{'width':rect['width'],'height':rect['height']},'foreground':True,'frames':[]}
+                def verify_foreground():
+                    if window_identity(child.pid)!=wid:raise ValueError('foreground window changed during capture')
                 with mss.mss() as screen:
-                    for i in range(12):
-                        before=time.monotonic()
-                        if window_identity(child.pid)!=wid:raise ValueError('foreground window changed during capture')
-                        shot=screen.grab({'left':rect['x'],'top':rect['y'],'width':rect['width'],'height':rect['height']})
-                        path=output/f'{checkpoint}-{i}.png';Image.frombytes('RGB',shot.size,shot.rgb).save(path)
-                        capture['frames'].append({'file':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'monotonicMs':before*1000})
-                        time.sleep(max(0,.08-(time.monotonic()-before)))
+                    samples=capture_pixels(screen,rect,verify_foreground)
+                for i,(timestamp,size,pixels) in enumerate(samples):
+                    path=output/f'{checkpoint}-{i}.png';Image.frombytes('RGB',size,pixels).save(path,compress_level=1)
+                    capture['frames'].append({'file':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'monotonicMs':timestamp})
                 report['captures'].append(capture)
                 (output/'capture.json').write_text(json.dumps(report,indent=2))
                 (output/f'{checkpoint}.ack').write_bytes(b'OK')

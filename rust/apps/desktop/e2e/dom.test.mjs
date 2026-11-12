@@ -68,6 +68,20 @@ test('rendered Viewer fences stale image events and refuses corrupt or oversized
  await unmount(active);active=null;
 });
 
+test('rendered Viewer waits for decoded video data instead of enabling Play on metadata alone',async()=>{
+ const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
+ try{
+  const video=document.querySelector('video');assert.equal(video.preload,'auto');
+  Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2}});
+  video.dispatchEvent(new Event('loadedmetadata'));flushSync();
+  assert.equal(document.querySelector('[data-viewer]').getAttribute('data-status'),'loading');
+  assert.equal(document.querySelector('[aria-label="Play video"]').disabled,true);
+  video.dispatchEvent(new Event('loadeddata'));flushSync();
+  assert.equal(document.querySelector('[data-viewer]').getAttribute('data-status'),'ready');
+  assert.equal(document.querySelector('[aria-label="Play video"]').disabled,false);
+ }finally{if(active)await unmount(active);active=null;}
+});
+
 test('rendered Viewer releases video on navigation, close and unmount; controls use live element',async()=>{
  const Host=await viewerHost();
  const sample=[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'},{id:'i',kind:'image',src:'/fixtures/still.png',title:'Image'}];
@@ -75,7 +89,7 @@ test('rendered Viewer releases video on navigation, close and unmount; controls 
  active=mount(Host,{target:document.body,props:{items:sample,grants:sample.map(i=>i.src)}});flushSync();
  const video=document.querySelector('video');
  Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2}});
- video.dispatchEvent(new Event('loadedmetadata'));flushSync();
+ video.dispatchEvent(new Event('loadeddata'));flushSync();
  assert.equal(document.querySelector('[data-viewer]').getAttribute('data-status'),'ready');
  const speed=document.querySelector('[aria-label="Playback speed"]');speed.value='2';speed.dispatchEvent(new Event('change',{bubbles:true}));flushSync();assert.equal(video.playbackRate,2);
  document.querySelector('[aria-label="Unmute video"]').click();flushSync();assert.equal(video.muted,false);
@@ -114,7 +128,7 @@ test('rendered Viewer surfaces the native play rejection rather than an unexplai
  window.HTMLMediaElement.prototype.play=async function(){throw new window.DOMException('Native gesture required','NotAllowedError')};
  try{
   active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
-  const video=document.querySelector('video');Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2},paused:{value:true}});video.dispatchEvent(new Event('loadedmetadata'));flushSync();
+  const video=document.querySelector('video');Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2},paused:{value:true}});video.dispatchEvent(new Event('loadeddata'));flushSync();
   document.querySelector('[aria-label="Play video"]').click();await Promise.resolve();await Promise.resolve();flushSync();
   assert.match(document.querySelector('[data-playback-message]').textContent,/NotAllowedError/);
  }finally{window.HTMLMediaElement.prototype.play=previous;if(active)await unmount(active);active=null;}
@@ -125,7 +139,7 @@ test('rendered Viewer preserves the original decode failure when pending play is
  window.HTMLMediaElement.prototype.play=function(){return new Promise((resolve,reject)=>rejectPlay=reject)};
  try{
   active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
-  const video=document.querySelector('video');Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2},paused:{value:true},error:{value:{code:3,message:'native decoder refused frame'},configurable:true}});video.dispatchEvent(new Event('loadedmetadata'));flushSync();
+  const video=document.querySelector('video');Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2},paused:{value:true},error:{value:{code:3,message:'native decoder refused frame'},configurable:true}});video.dispatchEvent(new Event('loadeddata'));flushSync();
   document.querySelector('[aria-label="Play video"]').click();video.dispatchEvent(new Event('error'));flushSync();
   rejectPlay(new window.DOMException('source removed','AbortError'));await Promise.resolve();await Promise.resolve();flushSync();
   assert.match(document.querySelector('[data-viewer] .status').textContent,/Media error 3/);
