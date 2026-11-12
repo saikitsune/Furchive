@@ -1,6 +1,7 @@
 <script lang="ts">
  import {onMount} from 'svelte';
  import Viewer from './Viewer.svelte';
+ import Gallery from './Gallery.svelte';
  import {type MediaItem,createCatalog} from './media';
  import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences} from './browser-bridge';
  let {bridge}:{bridge:BrowserBridge}=$props();
@@ -10,7 +11,13 @@
  let result=$state<SearchPage|null>(null),pool=$state<PoolPage|null>(null),error=$state(''),busy=$state(false),page=$state(1),mode=$state<'search'|'favorites'|'pool'>('search');
  let preferences=$state<Preferences|null>(null),preferenceNotice=$state('');
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
+ let thumbnails=$state<Record<string,MediaItem>>({});
  let generation=0,suggestionGeneration=0,mediaGeneration=0;
+ const requestedPreviews=new Set<string>();
+ const placeholder='/placeholder.svg';
+ let galleryItems=$derived<readonly MediaItem[]>((result?.items??[]).map(p=>({id:p.key.id,kind:'image',title:p.title,src:thumbnails[p.key.id]?.src??placeholder})));
+ let galleryGrants=$derived([placeholder,...Object.values(thumbnails).map(p=>p.src)]);
+ function visible(ids:string[]){const current=generation;void (async()=>{for(const id of ids){if(current!==generation)return;if(requestedPreviews.has(id)||!result?.items.find(p=>p.key.id===id)?.preview_url)continue;requestedPreviews.add(id);try{const media=await bridge.prepare(id,'preview');if(current===generation)thumbnails={...thumbnails,[id]:media};}catch{/* Thumbnail failure leaves a neutral bundled placeholder, never a direct URL. */}}})();}
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
  onMount(()=>{void refresh();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;};});
@@ -21,7 +28,7 @@
  }
  async function complete(){const id=++suggestionGeneration;const prefix=includeInput.trim();if(prefix.length<2){suggestions=[];return;}try{const rows=await bridge.suggestions(prefix);if(id===suggestionGeneration)suggestions=rows;}catch(e){if(id===suggestionGeneration)error=String(e);}}
  async function view(id:string){const request=++mediaGeneration;error='';try{const item=await bridge.prepare(id,'full');if(request!==mediaGeneration)return;grants=[item.src];prepared=createCatalog([item],grants);selectedId=item.id;}catch(e){if(request===mediaGeneration)error=String(e);}}
- async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){const id=++generation;mediaGeneration++;selectedId=null;prepared=[];grants=[];busy=true;error='';try{
+ async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){const id=++generation;mediaGeneration++;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
   const intent=paginate&&submitted?submitted:{query:query(),username,poolId};
   const q=intent.query;if(q.ratings!=='any'&&!q.ratings.only.length)throw Error('Select at least one rating.');
   if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;result=null;}
@@ -67,7 +74,7 @@
    {#if pool}<h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button>
     <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button>{/if}</li>{/each}</ol>
     {#if pool.next_offset!==null}<button disabled={busy} onclick={()=>run('pool',1,pool?.next_offset??0,true)}>Next pool page</button>{/if}
-   {:else if result}<h1>{mode==='favorites'?'Favorites':'Search results'} · page {page}</h1><p>{result.items.length} visible posts from {result.raw_count} upstream records. Account filters remain respected.</p>
+   {:else if result}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{mode==='favorites'?'Favorites':'Search results'} · page {page}</h1><p>{result.items.length} visible posts from {result.raw_count} upstream records. Account filters remain respected.</p>
     <ol class="posts">{#each result.items as p}<li data-post-id={p.key.id}><b>{p.title}</b><button onclick={()=>view(p.key.id)}>View artwork</button><p>{p.artists.join(', ')||'No artist supplied'} · {p.rating} · score {p.score}</p><details><summary>Tags &amp; description</summary><p>{p.description}</p>{#each Object.entries(p.tags) as [category,tags]}<p><b>{category}:</b> {tags.join(' ')}</p>{/each}</details></li>{/each}</ol>
     <nav><button disabled={busy||page===1} onclick={()=>run(mode,page-1,0,true)}>Previous page</button><button disabled={busy||result.next_page===null} onclick={()=>run(mode,result?.next_page??1,0,true)}>Next page</button></nav>
    {:else}<h1>Your collection starts with a search.</h1><p>No network request is made until you search, browse favorites, request suggestions, or open a pool. Safe-only is the initial rating selection. Open a returned post to view validated media through the scoped Rust cache. Downloads and full gallery integration are still in progress.</p>{/if}

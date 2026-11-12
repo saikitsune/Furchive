@@ -11,6 +11,8 @@ export async function runBrowseCampaign(phase:number){
  if(phase===1){
   input('Include tags','fo');await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='fox 12'));button('fox 12');await tick();checks.push('autocomplete');
   input('Exclude tags','comic');await tick();button('Add exclude');await tick();button('Search');await wait(()=>idle()&&document.querySelectorAll('[data-post-id]').length===50);checks.push('include-exclude-ratings');
+  await wait(()=>[...document.querySelectorAll<HTMLImageElement>('[data-gallery] img')].some(img=>img.currentSrc.includes('/media/')&&img.complete&&img.naturalWidth>0));
+  if(document.querySelectorAll('[data-gallery-tile]').length>108)throw Error('unbounded product gallery');checks.push('product-gallery-thumbnails');
   for(const [id,kind] of [['100','image'],['101','animation'],['102','animation'],['103','animation'],['104','video'],['105','video']]){
    const row=document.querySelector(`[data-post-id="${id}"]`);const open=row?.querySelector<HTMLButtonElement>('button');if(!open)throw Error('missing product media control');open.click();await wait(()=>document.querySelector<HTMLElement>('[data-viewer]')?.dataset.status==='ready');
    if(kind==='video'){const video=document.querySelector<HTMLVideoElement>('[data-viewer] video');if(!video)throw Error('product video element missing');document.querySelector<HTMLButtonElement>('[aria-label="Play video"]')!.click();await wait(()=>!video.paused&&video.currentTime>0.1);}

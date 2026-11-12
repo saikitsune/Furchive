@@ -134,5 +134,9 @@ fn cache_enforces_budget_and_inflight_generation_before_publication() {
         .unwrap();
     assert!(c.publish_for_test(fresh, vec![2; 13], "image/png").is_err());
     assert!(c.get(&h).is_some());
+    let second = c.grant_for_test("2", Variant::Preview).unwrap();
+    let newer = c.publish_for_test(second, vec![2; 8], "image/png").unwrap();
+    assert!(c.get(&h).is_none());
+    assert_eq!(c.get(&newer).unwrap().bytes.len(), 8);
     assert!(c.resident_bytes().unwrap() <= 12);
 }

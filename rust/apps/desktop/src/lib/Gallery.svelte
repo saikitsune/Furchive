@@ -1,14 +1,16 @@
 <script lang="ts">
- import {onMount,tick} from 'svelte';
+ import {onMount,tick,untrack} from 'svelte';
  import {createCatalog,type MediaItem} from './media';
  import {gridWindow,navigateId,ROW_HEIGHT} from './presentation';
- let {items,grants,selectedId=null,onselect=()=>{}}:{items:readonly MediaItem[];grants:readonly string[];selectedId?:string|null;onselect?:(id:string)=>void}=$props();
+ let {items,grants,selectedId=null,onselect=()=>{},onvisible=()=>{}}:{items:readonly MediaItem[];grants:readonly string[];selectedId?:string|null;onselect?:(id:string)=>void;onvisible?:(ids:string[])=>void}=$props();
  let catalog=$derived(createCatalog(items,grants));
  $effect(()=>{const id=selectedId;if(id&&catalog.some(item=>item.id===id))focused=id;});
  let width=$state(800),height=$state(600),top=$state(0),focused=$state<string|null>(null);
  let viewport:HTMLDivElement;
  let range=$derived(gridWindow(catalog.length,width,top,height));
  let rows=$derived(catalog.slice(range.start,range.end));
+ let visibleKey=$derived(rows.map(item=>item.id).join('\n'));
+ $effect(()=>{const ids=visibleKey;untrack(()=>onvisible(ids?ids.split('\n'):[]));});
  let active=$derived(focused && catalog.some(i=>i.id===focused)?focused:selectedId && catalog.some(i=>i.id===selectedId)?selectedId:catalog[0]?.id??null);
  let visibleActive=$derived(rows.some(i=>i.id===active));
  onMount(()=>{
