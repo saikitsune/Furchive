@@ -51,6 +51,25 @@ impl Vault {
             store: Arc::new(store),
         }
     }
+    #[cfg(feature = "fixture-media")]
+    pub fn fixture() -> Self {
+        #[derive(Default)]
+        struct Memory(Mutex<Option<String>>);
+        impl ProtectedStore for Memory {
+            fn write(&self, v: &str) -> Result<(), String> {
+                *self.0.lock().map_err(|_| "test store lock")? = Some(v.into());
+                Ok(())
+            }
+            fn read(&self) -> Result<Option<String>, String> {
+                Ok(self.0.lock().map_err(|_| "test store lock")?.clone())
+            }
+            fn delete(&self) -> Result<(), String> {
+                *self.0.lock().map_err(|_| "test store lock")? = None;
+                Ok(())
+            }
+        }
+        Self::with_store(Memory::default())
+    }
     pub fn native() -> Result<Self, String> {
         #[cfg(target_os = "linux")]
         let store = zbus_secret_service_keyring_store::Store::new();

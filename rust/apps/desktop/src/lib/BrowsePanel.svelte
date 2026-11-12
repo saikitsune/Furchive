@@ -1,9 +1,9 @@
 <script lang="ts">
- import {onMount} from 'svelte';
+ import {onMount,tick} from 'svelte';
  import Viewer from './Viewer.svelte';
  import Gallery from './Gallery.svelte';
  import {type MediaItem,createCatalog} from './media';
- import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview,type DownloadJob} from './browser-bridge';
+ import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview,type DownloadJob,type Identity} from './browser-bridge';
  let {bridge}:{bridge:BrowserBridge}=$props();
  let include=$state<string[]>([]),exclude=$state<string[]>([]),includeInput=$state(''),excludeInput=$state('');
  let safe=$state(true),questionable=$state(false),explicit=$state(false),sort=$state<Query['sort']>('newest');
@@ -14,6 +14,7 @@
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
  let thumbnails=$state<Record<string,MediaItem>>({});
  let jobs=$state<DownloadJob[]>([]),downloadGranted=$state(false);
+ let accountUser=$state(''),accountKey=$state(''),identity=$state<Identity|null>(null);
  let generation=0,suggestionGeneration=0,mediaGeneration=0;
  const requestedPreviews=new Set<string>();
  const placeholder='/placeholder.svg';
@@ -37,6 +38,10 @@
   else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
+ function clearAccountView(){generation++;mediaGeneration++;busy=false;result=null;pool=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();}
+ async function login(){clearAccountView();error='';const key=accountKey;accountKey='';await tick();try{identity=await bridge.login(accountUser,key);}catch(e){error=String(e);}}
+ async function restoreAccount(){clearAccountView();error='';try{identity=await bridge.restoreAccount();}catch(e){error=String(e);}}
+ async function logout(){clearAccountView();identity=null;accountKey='';try{await bridge.logout();}catch(e){error=String(e);}}
  async function chooseDownloads(){try{downloadGranted=await bridge.chooseDownloads();if(downloadGranted)jobs=await bridge.jobs();}catch(e){error=String(e);}}
  $effect(()=>{if(!downloadGranted)return;let active=true,inflight=false;const timer=setInterval(async()=>{if(inflight)return;inflight=true;try{const rows=await bridge.jobs();if(active)jobs=rows;}catch(e){if(active)error=String(e);}finally{inflight=false;}},500);return ()=>{active=false;clearInterval(timer);};});
  async function refreshJobs(){try{jobs=await bridge.jobs();}catch(e){error=String(e);}}
@@ -68,6 +73,10 @@
    <label>Pool ID<input aria-label="Pool ID" inputmode="numeric" bind:value={poolId}></label><button disabled={busy} onclick={()=>run('pool')}>Open pool</button>
    <h2>Saved searches</h2><label>Search name<input aria-label="Saved search name" bind:value={name}></label><button onclick={save}>Save search</button>
    {#each saved as s}<div class="saved"><button onclick={()=>restore(s)}>{s.name}</button><button aria-label={'Delete '+s.name} onclick={()=>remove(s.id)}>×</button></div>{/each}
+   <h2>Account</h2><p>Anonymous until explicitly verified. API keys stay in your OS credential store, never settings or logs. Saved credentials are not restored automatically.</p>
+   {#if identity}<p>Verified account: {identity.name}</p><button onclick={logout}>Log out and remove key</button>{:else}
+    <label>Username<input aria-label="Account username" bind:value={accountUser} autocomplete="username"></label><label>API key<input type="password" aria-label="Account API key" bind:value={accountKey} autocomplete="off"></label><button onclick={login}>Verify and save account</button><button onclick={restoreAccount}>Restore saved account</button>
+   {/if}
    <h2>Preferences</h2><button onclick={loadPreferences}>Load preferences</button>
    {#if preferences}
     <label>Filename template<input aria-label="Filename template" bind:value={preferences.filename_template}></label>

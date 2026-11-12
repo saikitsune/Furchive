@@ -4,7 +4,7 @@ No live artwork, accounts, browser surrogate, installs or sandbox changes.
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3,time
-CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm','download-pause-ack','download-complete','download-cancel',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart']}
+CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','download-pause-ack','download-complete','download-cancel',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart']}
 def validate(receipt,phase):
  if receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase]):raise ValueError('missing or invalid native browsing receipt')
  return True
@@ -21,7 +21,9 @@ def main():
   def log_message(self,format,*args):pass
   def do_GET(self):
    url=urllib.parse.urlparse(self.path);pairs=urllib.parse.parse_qs(url.query);requests.append({'path':url.path,'query':pairs,'authorization':self.headers.get('Authorization') is not None,'userAgent':self.headers.get('User-Agent',''),'range':self.headers.get('Range'),'ifRange':self.headers.get('If-Range'),'identity':self.headers.get('Accept-Encoding')=='identity'})
-   if 'filter_id' in pairs or self.headers.get('Authorization'):self.send_error(403);return
+   if 'filter_id' in pairs or (self.headers.get('Authorization') and url.path!='/users/me.json'):self.send_error(403);return
+   if url.path=='/users/me.json':
+    data=b'{"id":123,"name":"fixture_user"}';self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
    if url.path.startswith('/data/aa/bb/aabb0000000000000000000000000000.'):
     ext=url.path.rsplit('.',1)[-1];fixture={'png':'still.png','gif':'viewer-animation.gif','apng':'viewer-animation.apng','webp':'viewer-animation.webp','webm':'vp8.webm','mp4':'h264.mp4'}.get(ext)
     if fixture is None:self.send_error(404);return
@@ -61,7 +63,7 @@ def main():
   expected=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures/still.png').read_bytes()
   if (downloads/'e621/local_fixture/100.png').read_bytes()!=expected or (downloads/'existing-art.bin').read_bytes()!=b'owned existing download must survive':raise ValueError('download artifact/preservation mismatch')
   tags=[q['query'].get('tags',[''])[0] for q in requests if q['path']=='/posts.json'];required=['fox -comic rating:s order:id_desc','fox fav:fixture_user -comic rating:s order:id_desc','id:10,2,30']
-  if not all(t in tags for t in required) or any(q['authorization'] or 'filter_id' in q['query'] or not q['userAgent'].startswith('Furchive/') for q in requests):raise ValueError('native HTTP/query policy mismatch')
+  if not all(t in tags for t in required) or any((q['authorization'] and q['path']!='/users/me.json') or 'filter_id' in q['query'] or not q['userAgent'].startswith('Furchive/') for q in requests):raise ValueError('native HTTP/query policy mismatch')
   (out/'accepted.json').write_text(json.dumps({'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':[1,2],'requests':requests,'scope':'native metadata browsing and restart only','full_app_complete':False},indent=2))
   print('NATIVE BROWSING PASS: actual UI/IPC/Rust/HTTP/restart contracts; media/download/settings product integration incomplete')
  finally:

@@ -10,6 +10,7 @@ export type Preferences={filename_template:string;pool_filename_template:string;
 export type LegacyPreview={digest:string;searches:SavedSearch[];pins:{key:{source:string;id:string};name:string;post_count:number}[];warnings:string[];queue:unknown};
 export type ImportReport={imported_searches:number;imported_pins:number;skipped_searches:number;skipped_pins:number};
 export type DownloadJob={id:number;post_id:string;state:string;bytes:number;relative_path:string;error:string|null};
+export type Identity={id:number;name:string};
 export type Invoke=<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class BrowserBridge {
  private invoke:Invoke;
@@ -27,6 +28,10 @@ export class BrowserBridge {
  queue(id:string){return this.invoke<number>('queue_download',{id});}
  jobs(){return this.invoke<DownloadJob[]>('download_jobs');}
  control(id:number,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_control',{id,verb});}
+ accountStatus(){return this.invoke<Identity|null>('account_status');}
+ login(username:string,key:string){return this.invoke<Identity>('account_login',{username,key});}
+ restoreAccount(){return this.invoke<Identity|null>('account_restore');}
+ logout(){return this.invoke<void>('account_logout');}
  searches(){return this.invoke<SavedSearch[]>('saved_searches');}
  save(search:SavedSearch){return this.invoke<void>('save_search',{search});}
  delete(id:string){return this.invoke<void>('delete_search',{id});}

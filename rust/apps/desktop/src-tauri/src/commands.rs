@@ -8,7 +8,10 @@ use furchive_e621::{E621Client, SearchPage, TagSuggestion};
 use furchive_engine::storage::SavedSearch;
 use tauri::{Manager, State};
 pub struct AppState {
-    pub browser: Browser<E621Client>,
+    pub browser: Browser<furchive_app::account_session::AccountSession>,
+    pub account: furchive_app::account_session::AccountSession,
+    #[cfg(feature = "self-test")]
+    pub test_vault: furchive_app::credentials::Vault,
     pub db: Database,
     pub settings: SettingsStore,
     pub downloads: furchive_app::downloads::Downloads,
@@ -40,9 +43,13 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     } else {
         downloads
     };
+    let account = furchive_app::account_session::AccountSession::new(api);
     app.manage(AppState {
         downloads,
-        browser: Browser::new(api, db.clone()),
+        browser: Browser::new(account.clone(), db.clone()),
+        account,
+        #[cfg(feature = "self-test")]
+        test_vault: furchive_app::credentials::Vault::fixture(),
         settings: SettingsStore::open(&root.join("settings.json"))
             .map_err(std::io::Error::other)?,
         legacy: furchive_app::legacy_session::LegacySession::new(),
@@ -116,6 +123,56 @@ pub async fn legacy_confirm(
 ) -> Result<furchive_app::legacy::ImportReport, String> {
     let confirmed = state.legacy.confirmed(&digest, search_ids, pool_ids)?;
     state.db.import_legacy(confirmed).await
+}
+fn account_vault(state: &AppState) -> Result<furchive_app::credentials::Vault, String> {
+    #[cfg(feature = "self-test")]
+    if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
+        return Ok(state.test_vault.clone());
+    }
+    let _ = state;
+    furchive_app::credentials::Vault::native()
+}
+#[tauri::command]
+pub async fn account_status(
+    state: State<'_, AppState>,
+) -> Result<Option<furchive_e621::VerifiedIdentity>, String> {
+    Ok(state.account.status().await)
+}
+#[tauri::command]
+pub async fn account_login(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    username: String,
+    key: String,
+) -> Result<furchive_e621::VerifiedIdentity, String> {
+    state_cache(&app).begin_page()?;
+    let vault = account_vault(&state)?;
+    let result = state.account.login(&username, &key, &vault).await;
+    state_cache(&app).begin_page()?;
+    result
+}
+#[tauri::command]
+pub async fn account_restore(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<furchive_e621::VerifiedIdentity>, String> {
+    state_cache(&app).begin_page()?;
+    let vault = account_vault(&state)?;
+    let result = state.account.restore(&vault).await;
+    state_cache(&app).begin_page()?;
+    result
+}
+#[tauri::command]
+pub async fn account_logout(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state_cache(&app).begin_page()?;
+    state.account.deactivate().await;
+    let vault = account_vault(&state)?;
+    let result = state.account.logout(&vault).await;
+    state_cache(&app).begin_page()?;
+    result
 }
 #[tauri::command]
 pub async fn choose_download_directory(state: State<'_, AppState>) -> Result<bool, String> {
