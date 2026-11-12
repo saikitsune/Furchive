@@ -8,6 +8,22 @@ if spec is None or spec.loader is None:raise RuntimeError('driver missing')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 
 class CaptureSchedule(unittest.TestCase):
+    def test_native_macos_capture_targets_only_the_owned_window(self):
+        calls=[]
+        class QuartzDouble:
+            kCGWindowListOptionIncludingWindow=8
+            kCGWindowImageNominalResolution=16
+            def CGRectMake(self,*args):return args
+            def CGWindowListCreateImage(self,rect,options,wid,flags):calls.append((rect,options,wid,flags));return 'owned-image'
+            def CGImageGetWidth(self,image):return 1
+            def CGImageGetHeight(self,image):return 1
+            def CGImageGetBytesPerRow(self,image):return 4
+            def CGImageGetDataProvider(self,image):return 'owned-provider'
+            def CGDataProviderCopyData(self,provider):return bytes([3,2,1,255])
+        shot=module.QuartzWindowScreen(QuartzDouble(),42).grab({'left':10,'top':20,'width':1,'height':1})
+        self.assertEqual(calls,[((10,20,1,1),8,42,16)])
+        self.assertEqual(shot.size,(1,1));self.assertEqual(shot.rgb,b'\x01\x02\x03')
+
     def test_png_encoding_is_outside_the_frame_sampling_schedule(self):
         clock=[0.0];events=[]
         class Shot:

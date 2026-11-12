@@ -18,6 +18,15 @@ test('catalog refuses authority-bearing URLs, duplicate IDs and ungranted resour
  assert.equal(media.createCatalog([{...one,src:'http://127.0.0.1:12345/'+ 'a'.repeat(64) +'/h264.mp4',kind:'video'}],['http://127.0.0.1:12345/'+ 'a'.repeat(64) +'/h264.mp4']).length,1);
 });
 
+test('validated immutable catalog is reused only while exact grants remain unchanged',()=>{
+ const item={id:'one',kind:'image',src:'/fixtures/still.png',title:'One'};
+ const grants=[item.src];const catalog=media.createCatalog([item],grants);
+ assert.equal(media.createCatalog(catalog,grants),catalog,'already validated immutable catalog should not be rebuilt per component');
+ assert.throws(()=>media.createCatalog(catalog,[]),/grant/,'revocation must never be cached away');
+ const mutable=[{...item}];media.createCatalog(mutable,grants);mutable[0].src='/fixtures/other.png';
+ assert.throws(()=>media.createCatalog(mutable,grants),/grant/,'untrusted mutable input must be revalidated');
+});
+
 test('load generations cancel pending work, release video and ignore late completions',()=>{
  assert.equal(typeof media.LoadScope,'function','load generation scope missing');
  const scope=new media.LoadScope(); let cancelled=0, released=0;

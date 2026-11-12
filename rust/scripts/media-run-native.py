@@ -34,6 +34,23 @@ def window_identity(pid):
     if int(owner)!=pid:raise ValueError('owned X11 client is not foreground')
     return window
 
+class QuartzWindowScreen:
+    """Capture one verified owned window, not a composition of the whole desktop."""
+    def __init__(self,quartz,window_id):self.quartz=quartz;self.window_id=int(window_id)
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def grab(self,region):
+        from PIL import Image
+        from types import SimpleNamespace
+        q=self.quartz
+        rect=q.CGRectMake(region['left'],region['top'],region['width'],region['height'])
+        image=q.CGWindowListCreateImage(rect,q.kCGWindowListOptionIncludingWindow,self.window_id,q.kCGWindowImageNominalResolution)
+        if image is None:raise RuntimeError('owned-window Quartz capture failed')
+        width=q.CGImageGetWidth(image);height=q.CGImageGetHeight(image);stride=q.CGImageGetBytesPerRow(image)
+        data=bytes(q.CGDataProviderCopyData(q.CGImageGetDataProvider(image)))
+        pixels=Image.frombytes('RGBA',(width,height),data,'raw','BGRA',stride,1).convert('RGB')
+        return SimpleNamespace(size=(width,height),rgb=pixels.tobytes())
+
 def capture_pixels(screen,rect,verify,now=time.monotonic,sleep=time.sleep):
     """Sample owned raw pixels first; expensive PNG compression happens later."""
     samples=[]
@@ -83,7 +100,11 @@ def main():
                 capture={'checkpoint':checkpoint,'fixtureSha256':spec['fixtureSha256'],'viewport':spec['viewport'],'rect':spec['rect'],'clientPhysical':{'width':rect['width'],'height':rect['height']},'foreground':True,'frames':[]}
                 def verify_foreground():
                     if window_identity(child.pid)!=wid:raise ValueError('foreground window changed during capture')
-                with mss.mss() as screen:
+                if sys.platform=='darwin':
+                    import Quartz
+                    capture_context=QuartzWindowScreen(Quartz,wid)
+                else:capture_context=mss.mss()
+                with capture_context as screen:
                     samples=capture_pixels(screen,rect,verify_foreground)
                 for i,(timestamp,size,pixels) in enumerate(samples):
                     path=output/f'{checkpoint}-{i}.png';Image.frombytes('RGB',size,pixels).save(path,compress_level=1)

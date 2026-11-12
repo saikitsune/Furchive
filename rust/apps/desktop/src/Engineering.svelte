@@ -17,7 +17,8 @@
   ...imageNames.map((name,i)=>({id:'media-'+i,kind:'image' as const,src:'/fixtures/'+name,title:name})),
   ...(mediaBase?videoNames.map((name,i)=>({id:'video-'+i,kind:'video' as const,src:mediaBase+name,title:name,thumbnail:'/fixtures/still.webp'})):[])
  ],grants));
- let items=$derived<readonly MediaItem[]>(createCatalog(Array.from({length:10000},(_,i)=>({id:'fixture-'+i,kind:'image' as const,src:'/fixtures/still.webp',title:`Generated collection ${i+1}`})),grants));
+ const collectionGrants=['/fixtures/still.webp'];
+ const items:readonly MediaItem[]=createCatalog(Array.from({length:10000},(_,i)=>({id:'fixture-'+i,kind:'image' as const,src:'/fixtures/still.webp',title:`Generated collection ${i+1}`})),collectionGrants);
  let viewerItems=$derived(selected?.startsWith('fixture-')?items:fixtures);
  async function close(){selected=null;await tick();gallery?.focus();}
  function choose(id:string){selected=id;}
@@ -34,7 +35,7 @@
  <h1>Gallery & media workbench</h1><p>{note}</p>
  <nav aria-label="Generated media fixtures">{#each fixtures as fixture(fixture.id)}<button data-fixture={fixture.title} onclick={()=>choose(fixture.id)}>{fixture.title}</button>{/each}</nav>
  <p>10,000 unique opaque IDs · arrow keys move selection · Home / End · Enter opens. Viewer: ← / → and Escape.</p>
- <Gallery {items} {grants} selectedId={selected} onselect={choose} bind:this={gallery}/>
+ <Gallery {items} grants={collectionGrants} selectedId={selected} onselect={choose} bind:this={gallery}/>
  <Viewer items={viewerItems} {grants} selectedId={selected} onselect={choose} onclose={close}/>
 </div>
 <style>

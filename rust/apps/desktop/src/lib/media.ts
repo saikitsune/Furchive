@@ -1,9 +1,14 @@
 export type MediaItem = Readonly<{id:string; kind:'image'|'video'; src:string; thumbnail?:string; title:string}>;
+// Only our own deeply frozen outputs are eligible; mutable caller inputs never
+// become cache keys. Grant signatures are recomputed so revocation is immediate.
+const validatedCatalogs=new WeakMap<readonly MediaItem[],string>();
 
 /** Exact URL grants are supplied by the trusted caller, not discovered by this UI.
  * Only bundled absolute paths and the existing tokenized loopback fixture seam are supported.
  * This is a presentation boundary, not a replacement for host CSP/IPC authorization. */
 export function createCatalog(input: readonly MediaItem[], grants: readonly string[]): readonly MediaItem[] {
+  const grantSignature=JSON.stringify(grants);
+  if(validatedCatalogs.get(input)===grantSignature)return input;
   const allowed = new Set(grants);
   const ids = new Set<string>();
   function checkUrl(value:unknown): asserts value is string {
@@ -23,7 +28,7 @@ export function createCatalog(input: readonly MediaItem[], grants: readonly stri
     if(item.thumbnail!==undefined) checkUrl(item.thumbnail);
     return Object.freeze({id:item.id,kind:item.kind,src:item.src,title:item.title,...(item.thumbnail?{thumbnail:item.thumbnail}:{})});
   });
-  return Object.freeze(result);
+  const frozen=Object.freeze(result);validatedCatalogs.set(frozen,grantSignature);return frozen;
 }
 
 /** Every navigation owns one release callback. Closing invalidates even already queued events. */
