@@ -106,6 +106,7 @@ pub async fn media_test_checkpoint(
         // Capture the actual webview client, not the outer window's content view.
         // On macOS their bounds can differ (title/content-layout inset).
         let webview: &tauri::Webview = window.as_ref();
+        #[cfg(not(target_os = "macos"))]
         let size = webview.size().map_err(|_| "cannot size owned webview")?;
         let bounds = webview
             .bounds()
