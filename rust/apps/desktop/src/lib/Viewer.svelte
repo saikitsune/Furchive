@@ -39,7 +39,7 @@
    });}
    media.style.cssText='position:absolute;left:50%;top:50%;max-width:none;max-height:none;visibility:hidden;transform-origin:center;user-select:none;pointer-events:none;';
    media.setAttribute('data-media',selected.kind);
-   if(media instanceof HTMLVideoElement){media.preload='metadata';media.defaultMuted=true;media.setAttribute('muted','');media.muted=true;media.playsInline=true;on('loadedmetadata',ready);on('timeupdate',()=>token.commit(()=>time=media.currentTime));on('play',()=>token.commit(()=>playing=true));on('pause',()=>token.commit(()=>playing=false));on('ended',()=>token.commit(()=>playing=false));}
+   if(media instanceof HTMLVideoElement){media.preload='metadata';media.defaultMuted=true;media.setAttribute('muted','');media.muted=true;media.playsInline=true;on('loadedmetadata',ready);on('timeupdate',()=>token.commit(()=>time=media.currentTime));on('seeked',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('volumechange',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('play',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;playing=true;}));on('pause',()=>token.commit(()=>playing=false));on('ended',()=>token.commit(()=>playing=false));}
    else{media.alt=selected.title;media.draggable=false;on('load',ready);}
    on('error',()=>fail('Media could not be decoded (corrupt, truncated or unsupported).'));
    element=media;container.append(media);timer=setTimeout(()=>fail('Media load timed out.'),8000);media.src=selected.src;dialog?.focus();

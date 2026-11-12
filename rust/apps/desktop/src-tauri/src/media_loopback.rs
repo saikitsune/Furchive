@@ -74,6 +74,9 @@ impl Drop for MediaServer {
     }
 }
 fn serve(stream: &mut TcpStream, address: SocketAddr, prefix: &str) -> std::io::Result<()> {
+    // Accepted sockets may inherit O_NONBLOCK on BSD/macOS; deadlines alone do
+    // not change that flag. Normalize this owned connection before bounded I/O.
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_millis(750)))?;
     stream.set_write_timeout(Some(Duration::from_millis(750)))?;
     let mut raw = Vec::new();
@@ -207,6 +210,25 @@ mod tests {
         let mut bytes = Vec::new();
         stream.read_to_end(&mut bytes).unwrap();
         bytes
+    }
+    #[test]
+    fn accepted_nonblocking_socket_is_normalized_before_reading_split_headers() {
+        let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let peer = std::thread::spawn(move || {
+            let mut s = TcpStream::connect(addr).unwrap();
+            write!(s, "HEAD /cap/vp8.webm HTTP/1.1\r\nHost: {addr}\r\n").unwrap();
+            std::thread::sleep(Duration::from_millis(40));
+            s.write_all(b"\r\n").unwrap();
+            let mut bytes = Vec::new();
+            s.read_to_end(&mut bytes).unwrap();
+            bytes
+        });
+        let (mut socket, _) = listener.accept().unwrap();
+        socket.set_nonblocking(true).unwrap();
+        assert!(serve(&mut socket, addr, "/cap/").is_ok());
+        drop(socket);
+        assert!(peer.join().unwrap().starts_with(b"HTTP/1.1 200"));
     }
     #[test]
     fn fixed_media_streams_exact_ranges_and_head_without_filesystem_scope() {

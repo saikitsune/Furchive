@@ -98,6 +98,16 @@ test('rendered Viewer establishes persistent mute defaults before assigning a so
  }finally{Object.defineProperty(prototype,'src',descriptor);if(active)await unmount(active);active=null;}
 });
 
+test('rendered Viewer preserves explicit mute intent across native volume state changes',async()=>{
+ const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'}],grants:['/fixtures/h264.mp4']}});flushSync();
+ try{
+  const video=document.querySelector('video');
+  video.muted=false;video.dispatchEvent(new Event('volumechange'));flushSync();assert.equal(video.muted,true,'native pipeline reset must not override initial mute intent');
+  document.querySelector('[aria-label="Unmute video"]').click();flushSync();assert.equal(video.muted,false,'explicit user unmute remains allowed');
+  video.muted=true;video.dispatchEvent(new Event('volumechange'));flushSync();assert.equal(video.muted,false,'native changes must not override explicit unmute either');
+ }finally{if(active)await unmount(active);active=null;}
+});
+
 test('rendered Viewer surfaces the native play rejection rather than an unexplained timeout',async()=>{
  const Host=await viewerHost();
  const previous=window.HTMLMediaElement.prototype.play;
