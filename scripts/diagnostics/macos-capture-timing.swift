@@ -16,6 +16,25 @@ import Darwin
         }
         return ["label": label, "requestedMs": 80, "actualMs": samples]
     }
+    static func blockingSleepSamples(_ label: String, useThread: Bool) -> [String: Any] {
+        var samples: [Double] = []
+        for _ in 0..<8 {
+            let start = now()
+            if useThread { Thread.sleep(forTimeInterval: 0.08) }
+            else { usleep(80_000) }
+            samples.append(now() - start)
+        }
+        return ["label": label, "requestedMs": 80, "actualMs": samples]
+    }
+    static func measuredDeadlineSamples() -> [String: Any] {
+        var samples: [Double] = []
+        for _ in 0..<8 {
+            let start = now()
+            while now() - start < 80 { usleep(1_000) }
+            samples.append(now() - start)
+        }
+        return ["label": "measured-clock-short-sleep-deadline", "requestedMs": 80, "actualMs": samples]
+    }
     static func machSleepSamples() -> [String: Any] {
         var info = mach_timebase_info_data_t()
         guard mach_timebase_info(&info) == KERN_SUCCESS else { fatalError("No Mach timebase") }
@@ -58,6 +77,9 @@ import Darwin
         let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Bounded hosted capture timing diagnostic")
         defer { ProcessInfo.processInfo.endActivity(activity) }
         results.append(try await sleepSamples("active-default-sleep", precise: false))
+        results.append(blockingSleepSamples("thread-relative-sleep", useThread: true))
+        results.append(blockingSleepSamples("posix-relative-sleep", useThread: false))
+        results.append(measuredDeadlineSamples())
         results.append(machSleepSamples())
         results.append(try await sleepSamples("active-zero-tolerance-sleep", precise: true))
         let data = try JSONSerialization.data(withJSONObject: ["schema": 1, "results": results], options: [.prettyPrinted, .sortedKeys])
