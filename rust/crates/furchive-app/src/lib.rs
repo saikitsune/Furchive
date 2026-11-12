@@ -1,6 +1,7 @@
 pub mod browse;
 pub mod credentials;
 pub mod legacy;
+pub mod legacy_session;
 pub mod media_cache;
 pub mod settings;
 use furchive_engine::storage::{CacheStore, SavedSearch, StateStore};
@@ -15,6 +16,7 @@ enum Command {
     Pin(furchive_domain::PoolKey, bool, Reply<()>),
     Pins(Reply<Vec<furchive_domain::PoolKey>>),
     Pool(furchive_domain::Pool, Reply<()>),
+    Import(legacy::ConfirmedImport, Reply<legacy::ImportReport>),
     Stop(Reply<()>),
 }
 #[derive(Clone)]
@@ -69,6 +71,13 @@ impl Database {
                         Command::Pool(pool, r) => {
                             let _ = r.send(cache.reconcile_pool(&pool).map_err(|e| e.to_string()));
                         }
+                        Command::Import(plan, r) => {
+                            let result = (|| {
+                                state.checkpoint().map_err(|e| e.to_string())?;
+                                legacy::import_into(plan, &root.join("state.sqlite"))
+                            })();
+                            let _ = r.send(result);
+                        }
                         Command::Stop(r) => {
                             drop(cache);
                             drop(state);
@@ -110,6 +119,12 @@ impl Database {
     }
     pub async fn store_pool(&self, p: furchive_domain::Pool) -> Result<(), String> {
         self.request(|r| Command::Pool(p, r)).await
+    }
+    pub async fn import_legacy(
+        &self,
+        plan: legacy::ConfirmedImport,
+    ) -> Result<legacy::ImportReport, String> {
+        self.request(|r| Command::Import(plan, r)).await
     }
     pub async fn shutdown(&self) -> Result<(), String> {
         self.request(Command::Stop).await

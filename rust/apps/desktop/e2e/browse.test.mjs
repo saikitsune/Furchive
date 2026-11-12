@@ -51,6 +51,12 @@ test('product selection fetches only the current post key and exposes granted me
  }finally{await unmount(app);window.happyDOM.abort();}
 });
 
+test('legacy preview requires explicit selected records before confirmation and never sends a source path',async()=>{
+ let searches=[],calls=[];const query={include:['fox'],exclude:[],ratings:{only:['safe']},artist:null,sort:'newest'};
+ const bridge=new BrowserBridge(async(command,args)=>{calls.push({command,args});if(command==='saved_searches')return searches;if(command==='pinned_pools')return [];if(command==='legacy_preview')return {digest:'a'.repeat(64),searches:[{id:'legacy-1',name:'Recovered foxes',query}],pins:[],warnings:['Credentials excluded'],queue:'Absent'};if(command==='legacy_confirm'){searches=[{id:'legacy-1',name:'Recovered foxes',query}];return {imported_searches:1,imported_pins:0,skipped_searches:0,skipped_pins:0};}throw Error(command);});
+ const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{click('Preview legacy data');await settle();assert.ok(!calls.some(c=>c.command==='legacy_confirm'));const check=document.querySelector('[aria-label="Import search Recovered foxes"]');assert.ok(check);assert.equal(check.checked,false);check.click();flushSync();click('Confirm selected import');await settle();assert.deepEqual(calls.find(c=>c.command==='legacy_confirm').args,{digest:'a'.repeat(64),searchIds:['legacy-1'],poolIds:[]});assert.match(document.body.textContent,/Imported 1 searches/);}finally{await unmount(app);window.happyDOM.abort();}
+});
+
 test('preferences controls send only non-secret non-directory preferences and show acknowledged persistence',async()=>{
  let value={filename_template:'{source}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};let saved;
  const bridge=new BrowserBridge(async(command,args)=>{if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='preferences')return structuredClone(value);if(command==='save_preferences'){saved=structuredClone(args.preferences);value=saved;return structuredClone(value);}throw Error(command);});
@@ -68,16 +74,17 @@ test('native campaign driver reaches both rendered phases with labeled in-memory
  window.HTMLMediaElement.prototype.play=async function(){this.paused=false;this.currentTime=.5;this.dispatchEvent(new Event('play'));};window.HTMLMediaElement.prototype.pause=function(){this.paused=true;};window.HTMLMediaElement.prototype.load=function(){};
  const {runBrowseCampaign}=await import('../src/lib/browse-campaign.ts');let searches=[],pins=[];let preferences={filename_template:'{source}/{artist}/{id}.{ext}',pool_filename_template:'{source}/{pool_name}/{id}.{ext}',concurrent_downloads:3,duplicates:'skip',gallery_scale:1,cache_limit_bytes:536870912,restore_session:false,save_metadata:false,start_muted:true};
  const bridge=new BrowserBridge(async(command,args)=>{
+  if(command==='legacy_preview')return {digest:'a'.repeat(64),searches:[{id:'legacy-fixture',name:'Migrated fixture search',query:{include:['fox'],exclude:[],ratings:{only:['safe']},artist:null,sort:'newest'}}],pins:[],warnings:[],queue:'Absent'};if(command==='legacy_confirm'){searches=[...searches,{id:'legacy-fixture',name:'Migrated fixture search',query:{include:['fox'],exclude:[],ratings:{only:['safe']},artist:null,sort:'newest'}}];return {imported_searches:1,imported_pins:0,skipped_searches:0,skipped_pins:0};}
   if(command==='prepare_media')return {id:args.id,kind:Number(args.id)>=104?'video':'image',title:'Local fixture',src:'http://127.0.0.1:43123/'+'a'.repeat(64)+'/media/'+('b'.repeat(62)+args.id.slice(-2))};
   if(command==='preferences')return structuredClone(preferences);if(command==='save_preferences'){preferences=structuredClone(args.preferences);return preferences;}
   if(command==='saved_searches')return structuredClone(searches);if(command==='pinned_pools')return structuredClone(pins);
-  if(command==='save_search'){searches=[args.search];return;}if(command==='delete_search'){searches=[];return;}
+  if(command==='save_search'){searches=[args.search];return;}if(command==='delete_search'){searches=searches.filter(s=>s.id!==args.id);return;}
   if(command==='set_pin'){pins=args.pinned?[{source:'e621',id:String(args.id)}]:[];return;}
   if(command==='suggestions')return [{name:'fox',post_count:12,category:'general'}];
   if(command==='search'||command==='favorites')return {items:args.page===2?[]:Array.from({length:50},(_,i)=>({key:{source:'e621',id:String(100+i)},title:'Post '+i,artists:[],tags:{},description:'fixture',rating:'safe',score:1,preview_url:'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png'})),raw_count:args.page===2?0:50,next_page:args.page===2?null:2};
   if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Native fixture pool',post_ids:['10','2','30']},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{title:'Post2'}},{id:'30',position:2,post:null}],total:3,next_offset:null};
   throw Error('unexpected command '+command);
  });
- for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?15:4);}finally{await unmount(app);}}
+ for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?16:5);}finally{await unmount(app);}}
  assert.deepEqual(searches,[]);assert.deepEqual(pins,[]);window.Element.prototype.setAttribute=oldSetAttribute;Object.defineProperty(window.HTMLImageElement.prototype,'src',imageSrc);Object.defineProperty(window.HTMLMediaElement.prototype,'src',videoSrc);window.HTMLMediaElement.prototype.play=oldPlay;window.HTMLMediaElement.prototype.pause=oldPause;window.HTMLMediaElement.prototype.load=oldLoad;window.happyDOM.abort();
 });

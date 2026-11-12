@@ -23,7 +23,7 @@ pub struct ImportPlan {
 #[derive(Debug)]
 pub struct ConfirmedImport(ImportPlan);
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct ImportReport {
     pub imported_searches: usize,
     pub imported_pins: usize,

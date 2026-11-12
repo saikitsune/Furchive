@@ -4,7 +4,7 @@ No live artwork, accounts, browser surrogate, installs or sandbox changes.
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3
-CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart']}
+CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete']}
 def validate(receipt,phase):
  if receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase]):raise ValueError('missing or invalid native browsing receipt')
  return True
@@ -13,6 +13,9 @@ def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('binary',type=Path);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args();out=args.output.resolve();binary=args.binary.resolve()
  if out.exists():raise SystemExit('refusing stale browsing evidence')
  out.mkdir(parents=True);requests=[]
+ legacy=out/'legacy-fixture';legacy.mkdir();(legacy/'artwork.bin').write_bytes(b'owned harmless preservation sentinel')
+ (legacy/'settings.json').write_text(json.dumps({'SavedSearches':json.dumps([{'Name':'Migrated fixture search','IncludeTags':['fox'],'ExcludeTags':[],'RatingFilterIndex':3}]),'E621ApiKey':'synthetic-key-must-not-import'}))
+ legacy_hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in legacy.iterdir()}
  class Handler(BaseHTTPRequestHandler):
   def log_message(self,format,*args):pass
   def do_GET(self):
@@ -42,6 +45,7 @@ def main():
    validate(json.loads(receipt.read_text()),phase)
   with sqlite3.connect(out/'profile/state.sqlite') as db:
    if db.execute('SELECT count(*) FROM saved_searches').fetchone()[0]!=0 or db.execute('SELECT count(*) FROM pinned_pools').fetchone()[0]!=0:raise ValueError('actual restart cleanup not persisted')
+  if {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in legacy.iterdir()}!=legacy_hashes:raise ValueError('legacy source or owned artwork changed')
   tags=[q['query'].get('tags',[''])[0] for q in requests if q['path']=='/posts.json'];required=['fox -comic rating:s order:id_desc','fox fav:fixture_user -comic rating:s order:id_desc','id:10,2,30']
   if not all(t in tags for t in required) or any(q['authorization'] or 'filter_id' in q['query'] or not q['userAgent'].startswith('Furchive/') for q in requests):raise ValueError('native HTTP/query policy mismatch')
   (out/'accepted.json').write_text(json.dumps({'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':[1,2],'requests':requests,'scope':'native metadata browsing and restart only','full_app_complete':False},indent=2))

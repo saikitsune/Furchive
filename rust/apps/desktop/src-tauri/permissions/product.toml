@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-product-commands"
 description = "Validated e621 and application-state intents; no arbitrary file or URL access"
-commands.allow = ["prepare_media", "preferences", "save_preferences", "browse_test_phase", "search", "favorites", "pool_page", "delete_search", "suggestions", "saved_searches", "save_search", "pinned_pools", "set_pin"]
+commands.allow = ["legacy_preview", "legacy_confirm", "prepare_media", "preferences", "save_preferences", "browse_test_phase", "search", "favorites", "pool_page", "delete_search", "suggestions", "saved_searches", "save_search", "pinned_pools", "set_pin"]

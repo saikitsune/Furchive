@@ -11,6 +11,7 @@ pub struct AppState {
     pub browser: Browser<E621Client>,
     pub db: Database,
     pub settings: SettingsStore,
+    pub legacy: furchive_app::legacy_session::LegacySession,
 }
 pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let root = app.path().app_data_dir()?;
@@ -34,6 +35,7 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         browser: Browser::new(api, db.clone()),
         settings: SettingsStore::open(&root.join("settings.json"))
             .map_err(std::io::Error::other)?,
+        legacy: furchive_app::legacy_session::LegacySession::new(),
         db,
     });
     Ok(())
@@ -70,6 +72,40 @@ pub async fn prepare_media(
         src: format!("{}media/{handle}", server.base_url()),
         title: format!("Post {id}"),
     })
+}
+#[tauri::command]
+pub async fn legacy_preview(
+    state: State<'_, AppState>,
+) -> Result<Option<furchive_app::legacy_session::Preview>, String> {
+    state.legacy.clear()?;
+    #[cfg(feature = "self-test")]
+    if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
+        let root =
+            std::env::var_os("FURCHIVE_TEST_DATA_ROOT").ok_or("missing isolated test profile")?;
+        let path = std::path::PathBuf::from(root)
+            .parent()
+            .ok_or("missing isolated fixture parent")?
+            .join("legacy-fixture");
+        return state.legacy.select_directory(&path).map(Some);
+    }
+    let Some(folder) = rfd::AsyncFileDialog::new()
+        .set_title("Select your old Furchive data directory (read-only preview)")
+        .pick_folder()
+        .await
+    else {
+        return Ok(None);
+    };
+    state.legacy.select_directory(folder.path()).map(Some)
+}
+#[tauri::command]
+pub async fn legacy_confirm(
+    state: State<'_, AppState>,
+    digest: String,
+    search_ids: Vec<String>,
+    pool_ids: Vec<String>,
+) -> Result<furchive_app::legacy::ImportReport, String> {
+    let confirmed = state.legacy.confirmed(&digest, search_ids, pool_ids)?;
+    state.db.import_legacy(confirmed).await
 }
 #[tauri::command]
 pub fn preferences(state: State<'_, AppState>) -> Result<Preferences, String> {

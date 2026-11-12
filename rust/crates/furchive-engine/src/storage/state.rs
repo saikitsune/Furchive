@@ -71,6 +71,12 @@ impl StateStore {
         }
         Ok(searches)
     }
+    /// Explicitly flush schema/header markers before the separate constrained importer opens this DB.
+    pub fn checkpoint(&self) -> Result<()> {
+        self.connection
+            .execute_batch("PRAGMA wal_checkpoint(FULL);")?;
+        Ok(())
+    }
     pub fn delete_search(&mut self, id: &str) -> Result<()> {
         self.connection
             .execute("DELETE FROM saved_searches WHERE id=?1", [id])?;

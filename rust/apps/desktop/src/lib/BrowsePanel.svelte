@@ -3,13 +3,14 @@
  import Viewer from './Viewer.svelte';
  import Gallery from './Gallery.svelte';
  import {type MediaItem,createCatalog} from './media';
- import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences} from './browser-bridge';
+ import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview} from './browser-bridge';
  let {bridge}:{bridge:BrowserBridge}=$props();
  let include=$state<string[]>([]),exclude=$state<string[]>([]),includeInput=$state(''),excludeInput=$state('');
  let safe=$state(true),questionable=$state(false),explicit=$state(false),sort=$state<Query['sort']>('newest');
  let username=$state(''),poolId=$state(''),name=$state(''),saved=$state<SavedSearch[]>([]),pins=$state<{source:string;id:string}[]>([]),suggestions=$state<Suggestion[]>([]);
  let result=$state<SearchPage|null>(null),pool=$state<PoolPage|null>(null),error=$state(''),busy=$state(false),page=$state(1),mode=$state<'search'|'favorites'|'pool'>('search');
  let preferences=$state<Preferences|null>(null),preferenceNotice=$state('');
+ let legacy=$state<LegacyPreview|null>(null),importSearches=$state<string[]>([]),importPools=$state<string[]>([]),importNotice=$state('');
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
  let thumbnails=$state<Record<string,MediaItem>>({});
  let generation=0,suggestionGeneration=0,mediaGeneration=0;
@@ -35,6 +36,8 @@
   else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
+ async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
+ async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
  async function loadPreferences(){try{preferences=await bridge.preferences();preferenceNotice='';}catch(e){error=String(e);}}
  async function savePreferences(){if(!preferences)return;try{preferences=await bridge.savePreferences($state.snapshot(preferences));preferenceNotice='Preferences saved';}catch(e){error=String(e);}}
  async function save(){error='';try{const value=name.trim();if(!value)throw Error('Name this search first.');await bridge.save({id:crypto.randomUUID(),name:value,query:query()});name='';await refresh();}catch(e){error=String(e);}}
@@ -66,6 +69,12 @@
     <p>Directory grants, account keys and automatic session restoration are not edited here. Download/cache/gallery controls will be enabled when their product integration is ready.</p>
     <button onclick={savePreferences}>Save preferences</button>{#if preferenceNotice}<p role="status">{preferenceNotice}</p>{/if}
    {/if}
+   <h2>Recover old data</h2><p>Choose the old Furchive data folder in the system picker. Preview first; artwork, keys, settings and queued downloads are never imported automatically.</p><button onclick={previewLegacy}>Preview legacy data</button>
+   {#if legacy}<div aria-label="Legacy import preview"><p>Preview digest: <code>{legacy.digest}</code></p>{#each legacy.warnings as warning}<p>{warning}</p>{/each}
+    {#each legacy.searches as search}<label class="import-row"><input type="checkbox" aria-label={'Import search '+search.name} bind:group={importSearches} value={search.id}>{search.name}</label>{/each}
+    {#each legacy.pins as pin}<label class="import-row"><input type="checkbox" aria-label={'Import pool '+pin.key.id} bind:group={importPools} value={pin.key.id}>Pool {pin.key.id}: {pin.name}</label>{/each}
+    <button disabled={!importSearches.length&&!importPools.length} onclick={confirmLegacy}>Confirm selected import</button>
+   </div>{/if}{#if importNotice}<p role="status">{importNotice}</p>{/if}
    <h2>Pinned pools</h2>{#each pins as p}<button onclick={()=>{poolId=p.id;void run('pool');}}>Pool {p.id}</button>{/each}
   </aside>
   <div class="results" aria-busy={busy}>
@@ -83,5 +92,5 @@
  <Viewer items={prepared} {grants} {selectedId} onclose={()=>{selectedId=null;mediaGeneration++;}}/>
 </section>
 <style>
- .browser{color:#e5e9ed}header{gap:16px;flex-wrap:wrap;height:auto;min-height:70px}header span{color:#98a7b6;font-size:12px}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{padding:20px;display:flex;flex-direction:column;gap:9px}h2{margin:15px 0 3px;font-size:15px}input,button,select{border-radius:5px;background:#202b36;color:#e5e9ed;border:1px solid #526271;padding:8px;font:inherit}input{min-width:0;width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.primary{background:#b76b31;border-color:#ebad6b}.chips{display:flex;flex-wrap:wrap;gap:4px}.chips button{background:#254934}.excludes button{background:#57303b}fieldset{border:1px solid #394857;margin:0;padding:8px;display:flex;flex-wrap:wrap;gap:8px}fieldset label{display:flex;flex-direction:row;gap:4px;align-items:center;font-size:12px}fieldset input{width:auto}.results{padding:24px;min-width:0}.posts{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}.posts li{background:#1c252e;border:1px solid #354656;border-radius:6px;padding:16px;overflow-wrap:anywhere}.posts p{margin:8px 0}.saved{display:flex;gap:4px}.saved button:first-child{flex:1}nav{display:flex;gap:12px}[role=alert]{color:#ffbdc9;border:1px solid #a86470;padding:12px}.suggestions{display:flex;flex-wrap:wrap;gap:4px}@media(max-width:800px){.layout{grid-template-columns:230px minmax(0,1fr)}.results{padding:12px}}
+ .browser{color:#e5e9ed}header{gap:16px;flex-wrap:wrap;height:auto;min-height:70px}header span{color:#98a7b6;font-size:12px}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{padding:20px;display:flex;flex-direction:column;gap:9px}h2{margin:15px 0 3px;font-size:15px}input,button,select{border-radius:5px;background:#202b36;color:#e5e9ed;border:1px solid #526271;padding:8px;font:inherit}input{min-width:0;width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.primary{background:#b76b31;border-color:#ebad6b}.chips{display:flex;flex-wrap:wrap;gap:4px}.chips button{background:#254934}.excludes button{background:#57303b}fieldset{border:1px solid #394857;margin:0;padding:8px;display:flex;flex-wrap:wrap;gap:8px}fieldset label{display:flex;flex-direction:row;gap:4px;align-items:center;font-size:12px}fieldset input{width:auto}.import-row{flex-direction:row;align-items:center}.import-row input{width:auto}code{overflow-wrap:anywhere}.results{padding:24px;min-width:0}.posts{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}.posts li{background:#1c252e;border:1px solid #354656;border-radius:6px;padding:16px;overflow-wrap:anywhere}.posts p{margin:8px 0}.saved{display:flex;gap:4px}.saved button:first-child{flex:1}nav{display:flex;gap:12px}[role=alert]{color:#ffbdc9;border:1px solid #a86470;padding:12px}.suggestions{display:flex;flex-wrap:wrap;gap:4px}@media(max-width:800px){.layout{grid-template-columns:230px minmax(0,1fr)}.results{padding:12px}}
 </style>
