@@ -150,6 +150,17 @@ test('rendered Viewer preserves the original decode failure when pending play is
  }finally{window.HTMLMediaElement.prototype.play=previous;if(active)await unmount(active);active=null;}
 });
 
+test('native lifecycle observer waits for the selected replacement rather than previous ready media',async()=>{
+ const {settledSelection}=await import('../src/lib/media-observer.ts');
+ const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'old',kind:'image',src:'/fixtures/a.png',title:'A'},{id:'new',kind:'image',src:'/fixtures/b.png',title:'B'}],grants:['/fixtures/a.png','/fixtures/b.png']}});flushSync();
+ const old=document.querySelector('[data-media]');Object.defineProperties(old,{naturalWidth:{value:320},naturalHeight:{value:200}});old.dispatchEvent(new Event('load'));flushSync();assert.equal(document.querySelector('[data-viewer]').dataset.status,'ready');
+ let timer;
+ try{
+  timer=setTimeout(()=>{active.select('new');flushSync();const image=document.querySelector('[data-media]');Object.defineProperties(image,{naturalWidth:{value:320},naturalHeight:{value:200}});image.dispatchEvent(new Event('load'));flushSync();},5);
+  const image=await settledSelection('new',old);assert.notEqual(image,old);assert.equal(document.querySelector('[data-viewer]').dataset.id,'new');
+ }finally{clearTimeout(timer);await unmount(active);active=null;}
+});
+
 test('rendered Viewer fit, 100 percent and bounded zoom reset operate on media transform',async()=>{
  const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'large',kind:'image',src:'/fixtures/large.png',title:'<b>literal</b>'}],grants:['/fixtures/large.png']}});flushSync();
  const img=document.querySelector('[data-viewer] img');Object.defineProperties(img,{naturalWidth:{value:1280},naturalHeight:{value:800}});img.dispatchEvent(new Event('load'));flushSync();

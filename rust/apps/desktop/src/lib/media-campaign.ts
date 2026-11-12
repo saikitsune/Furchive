@@ -1,4 +1,5 @@
 import {tick} from 'svelte';
+import {settledSelection} from './media-observer';
 import {validateMediaEvidence,type MediaEvidence} from './media-evidence';
 import manifest from '../../public/fixtures/viewer-manifest.json';
 
@@ -55,8 +56,7 @@ export async function runMediaCampaign(capture:(checkpoint:Checkpoint,request:Ca
  for(let cycle=0;cycle<20;cycle++){
   await open('h264.mp4');const video=currentMedia();
   fixture('viewer-large.png').click();await painted();const old=currentMedia();
-  fixture('still.png').click();await until(()=>viewer()?.dataset.status==='ready','rapid navigation did not settle');
-  const now=currentMedia();
+  fixture('still.png').click();const now=await settledSelection('media-0',old);
   old.dispatchEvent(new Event('load'));old.dispatchEvent(new Event('error'));video.dispatchEvent(new Event('error'));await painted();
   const staleIgnored=viewer()?.dataset.id==='media-0'&&viewer()?.dataset.status==='ready'&&currentMedia()===now;
   await close();lifecycle.push({cycle,released:released(video)&&released(old)&&released(now),staleIgnored,closed:!viewer(),remaining:document.querySelectorAll('[data-media]').length});
