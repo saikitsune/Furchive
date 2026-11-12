@@ -37,7 +37,8 @@ def main():
     self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
    def post(id):
     ext={100:'png',101:'gif',102:'apng',103:'webp',104:'webm',105:'mp4'}.get(id,'png')
-    return {'id':id,'rating':'s','tags':{'artist':['local_fixture']},'description':'Harmless metadata only','preview':{'url':'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png'},'file':{'url':f'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.{ext}','ext':ext},'score':{'total':1}}
+    fixture={'png':'still.png','gif':'viewer-animation.gif','apng':'viewer-animation.apng','webp':'viewer-animation.webp','webm':'vp8.webm','mp4':'h264.mp4'}[ext];data=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures'/fixture).read_bytes()
+    return {'id':id,'rating':'s','tags':{'artist':['local_fixture']},'description':'Harmless metadata only','preview':{'url':'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png'},'file':{'url':f'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.{ext}','ext':ext,'md5':hashlib.md5(data).hexdigest(),'size':len(data)},'score':{'total':1}}
    if url.path=='/tags.json':value=[{'name':'fox','category':0,'post_count':12}]
    elif url.path=='/pools/3.json':value={'id':3,'name':'Native fixture pool','post_ids':[10,2,30]}
    elif url.path=='/posts.json':

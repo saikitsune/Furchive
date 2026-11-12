@@ -115,6 +115,19 @@ pub fn map_post(value: &serde_json::Value) -> Result<furchive_domain::MediaItem,
     };
     item.created_at = value["created_at"].as_str().map(str::to_owned);
     item.file_size_bytes = value["file"]["size"].as_u64();
+    item.file_md5 = match value["file"]["md5"].as_str() {
+        Some(hash) => {
+            if hash.len() != 32
+                || !hash
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err("invalid upstream file checksum".into());
+            }
+            Some(hash.into())
+        }
+        None => None,
+    };
     item.width = value["file"]["width"]
         .as_u64()
         .and_then(|x| u32::try_from(x).ok());

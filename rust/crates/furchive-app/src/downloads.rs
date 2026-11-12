@@ -102,8 +102,16 @@ impl Downloads {
             crate::settings::DuplicatePolicy::Overwrite => DuplicatePolicy::Overwrite,
             crate::settings::DuplicatePolicy::Rename => DuplicatePolicy::Rename,
         };
-        let intent =
-            Intent::new(post, &template, &values, policy, None).map_err(|e| e.to_string())?;
+        let intent = Intent::new(
+            post,
+            &template,
+            &values,
+            policy,
+            post.file_md5
+                .clone()
+                .map(furchive_downloads::ExpectedHash::Md5),
+        )
+        .map_err(|e| e.to_string())?;
         // Persist paused first: explicit Resume is the network-start intent. No restored
         // queued job can run before the host directory has again been granted.
         value

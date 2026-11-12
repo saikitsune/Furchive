@@ -20,6 +20,8 @@ pub struct MediaItem {
     pub favorite_count: u64,
     pub file_extension: Option<String>,
     pub file_size_bytes: Option<u64>,
+    #[serde(default)]
+    pub file_md5: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
@@ -43,6 +45,7 @@ impl MediaItem {
             favorite_count: 0,
             file_extension: None,
             file_size_bytes: None,
+            file_md5: None,
             width: None,
             height: None,
         }
