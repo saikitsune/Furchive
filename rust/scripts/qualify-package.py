@@ -109,6 +109,8 @@ def main()->None:
     if args.media_campaign:
         subprocess.run([sys.executable,str(Path(__file__).with_name('media-run-native.py')),str(binary),'--output',str(output/'media')],check=True,timeout=120)
         record['viewer_campaign']='PASS: actual native frames, lifecycle and bounded gallery observations'
+        subprocess.run([sys.executable,str(Path(__file__).with_name('browse-run-native.py')),str(binary),'--output',str(output/'browse')],check=True,timeout=140)
+        record['browse_campaign']='PASS: actual product controls, IPC, Rust HTTP/SQLite and restart'
     record['native_runtime']='PASS: extracted payload image decode/video playback+seek/virtualized DOM only'
     receipt.write_text(json.dumps(record,indent=2));print(json.dumps(record,indent=2))
 

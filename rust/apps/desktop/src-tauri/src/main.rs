@@ -5,8 +5,20 @@ mod media_loopback;
 mod media_protocol;
 mod media_test;
 #[tauri::command]
+fn browse_test_phase() -> u8 {
+    #[cfg(feature = "self-test")]
+    if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
+        return std::env::var("FURCHIVE_BROWSE_TEST_PHASE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|n| matches!(n, 1 | 2))
+            .unwrap_or(0);
+    }
+    0
+}
+#[tauri::command]
 fn qualification_mode() -> bool {
-    cfg!(feature = "self-test")
+    cfg!(feature = "self-test") && browse_test_phase() == 0
 }
 #[tauri::command]
 fn qualification_result(app: tauri::AppHandle, result: serde_json::Value) -> Result<(), String> {
@@ -114,9 +126,13 @@ fn main() {
             media_test::media_test_checkpoint,
             media_test::media_test_result,
             qualification_mode,
+            browse_test_phase,
             qualification_media_base,
             qualification_result,
             commands::search,
+            commands::favorites,
+            commands::pool_page,
+            commands::delete_search,
             commands::suggestions,
             commands::saved_searches,
             commands::save_search,

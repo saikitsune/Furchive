@@ -15,6 +15,22 @@ impl E621Client {
     pub fn new() -> Result<Self, String> {
         Self::build("https://e621.net/", Duration::from_secs(1))
     }
+    #[cfg(feature = "fixture-api")]
+    pub fn local_fixture(base: &str) -> Result<Self, String> {
+        let url = url::Url::parse(base).map_err(|_| "invalid fixture origin")?;
+        if url.scheme() != "http"
+            || url.host_str() != Some("127.0.0.1")
+            || url.port().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err("fixture API requires an exact IPv4 loopback origin".into());
+        }
+        Self::build(base, Duration::from_millis(1))
+    }
     fn build(base: &str, pace: Duration) -> Result<Self, String> {
         let http = reqwest::Client::builder()
             .user_agent("Furchive/2.0-alpha (+https://github.com/saikitsune/Furchive)")
@@ -120,6 +136,47 @@ impl E621Client {
         }
         crate::map_pool(&self.get_json(&format!("pools/{id}.json"), &[]).await?)
     }
+    /// Exact requested membership only; absent/account-filtered members stay absent.
+    /// This endpoint must never introduce filter_id=0 or compact pool positions.
+    pub async fn posts_by_ids(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<furchive_domain::MediaItem>, String> {
+        let mut requested = std::collections::HashSet::new();
+        if ids.is_empty() || ids.len() > 100 {
+            return Err("post batch must contain 1–100 IDs".into());
+        }
+        for id in ids {
+            let number = id.parse::<u64>().map_err(|_| "invalid post ID")?;
+            if number == 0 || number.to_string() != *id || !requested.insert(id.as_str()) {
+                return Err("invalid or duplicate post ID".into());
+            }
+        }
+        let value = self
+            .get_json(
+                "posts.json",
+                &[
+                    ("tags", format!("id:{}", ids.join(","))),
+                    ("limit", ids.len().to_string()),
+                ],
+            )
+            .await?;
+        let rows = value["posts"].as_array().ok_or("missing posts array")?;
+        if rows.len() > ids.len() {
+            return Err("unexpected post batch size".into());
+        }
+        let mut seen = std::collections::HashSet::new();
+        let mut posts = Vec::new();
+        for row in rows {
+            let post = crate::map_post(row)?;
+            if !requested.contains(post.key.id()) || !seen.insert(post.key.id().to_owned()) {
+                return Err("unrequested or duplicate batch member".into());
+            }
+            posts.push(post);
+        }
+        Ok(posts)
+    }
+
     pub async fn suggestions(
         &self,
         prefix: &str,
@@ -169,6 +226,79 @@ impl E621Client {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "fixture-api")]
+    #[test]
+    fn fixture_api_is_strict_loopback_only_without_account_or_redirect_scope() {
+        assert!(super::E621Client::local_fixture("http://127.0.0.1:43123/").is_ok());
+        for url in [
+            "https://e621.net/",
+            "http://localhost:43123/",
+            "http://127.0.0.1/",
+            "http://user@127.0.0.1:43123/",
+            "http://127.0.0.1:43123/path",
+            "http://127.0.0.1:43123/?filter_id=0",
+            "http://127.0.0.1:43123/#fragment",
+        ] {
+            assert!(super::E621Client::local_fixture(url).is_err(), "{url}");
+        }
+    }
+
+    #[tokio::test]
+    async fn exact_post_batch_retains_filters_and_rejects_unrequested_duplicate_ids() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}/", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for body in [
+                r#"{"posts":[{"id":2,"rating":"s"},{"id":10,"rating":"q"}]}"#,
+                r#"{"posts":[{"id":99,"rating":"s"}]}"#,
+                r#"{"posts":[{"id":2,"rating":"s"},{"id":2,"rating":"s"}]}"#,
+            ] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(4)))
+                    .unwrap();
+                let mut bytes = [0; 4096];
+                let n = stream.read(&mut bytes).unwrap();
+                let request = String::from_utf8_lossy(&bytes[..n]);
+                let target = request.split_whitespace().nth(1).unwrap();
+                let url = url::Url::parse(&format!("http://fixture{target}")).unwrap();
+                let pairs: std::collections::HashMap<_, _> =
+                    url.query_pairs().into_owned().collect();
+                assert_eq!(pairs.get("tags").unwrap(), "id:10,2,30");
+                assert_eq!(pairs.get("limit").unwrap(), "3");
+                assert!(!pairs.contains_key("filter_id"));
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            }
+        });
+        let client = super::E621Client::test_client(&base);
+        let ids = vec!["10".into(), "2".into(), "30".into()];
+        let posts = client.posts_by_ids(&ids).await.unwrap();
+        assert_eq!(
+            posts.iter().map(|p| p.key.id()).collect::<Vec<_>>(),
+            vec!["2", "10"]
+        );
+        assert!(client.posts_by_ids(&ids).await.is_err());
+        assert!(client.posts_by_ids(&ids).await.is_err());
+        server.join().unwrap();
+        for invalid in [
+            vec![],
+            vec!["1".into(), "1".into()],
+            vec!["0".into()],
+            vec!["1 rating:e".into()],
+            vec!["01".into()],
+            vec!["-3".into()],
+            vec!["1".into(); 101],
+        ] {
+            assert!(client.posts_by_ids(&invalid).await.is_err());
+        }
+    }
+
     #[tokio::test]
     async fn verified_identity_requires_current_account_match() {
         use std::io::{Read, Write};

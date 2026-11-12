@@ -16,7 +16,7 @@ after(async()=>{await browser?.close();server?.kill();});
 
 test('rendered gallery selects and navigates stable IDs with bounded responsive DOM',async()=>{
  await page.goto('http://127.0.0.1:1427');
- await page.getByRole('button',{name:'Open engineering gallery'}).click();
+ await page.getByRole('button',{name:'Harmless media test gallery'}).click();
  await page.waitForSelector('[data-gallery]');
  const tiles=page.locator('[data-gallery-tile]');
  assert.ok(await tiles.count()>0 && await tiles.count()<=108);

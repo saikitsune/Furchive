@@ -1,3 +1,4 @@
+pub mod browse;
 pub mod credentials;
 pub mod legacy;
 pub mod settings;
@@ -8,6 +9,7 @@ type Reply<T> = oneshot::Sender<Result<T, String>>;
 enum Command {
     Save(SavedSearch, Reply<()>),
     Searches(Reply<Vec<SavedSearch>>),
+    DeleteSearch(String, Reply<()>),
     Posts(Vec<furchive_domain::MediaItem>, Reply<()>),
     Pin(furchive_domain::PoolKey, bool, Reply<()>),
     Pins(Reply<Vec<furchive_domain::PoolKey>>),
@@ -51,6 +53,9 @@ impl Database {
                         Command::Searches(r) => {
                             let _ = r.send(state.saved_searches().map_err(|e| e.to_string()));
                         }
+                        Command::DeleteSearch(id, r) => {
+                            let _ = r.send(state.delete_search(&id).map_err(|e| e.to_string()));
+                        }
                         Command::Posts(items, r) => {
                             let _ = r.send(cache.upsert_posts(&items).map_err(|e| e.to_string()));
                         }
@@ -87,6 +92,9 @@ impl Database {
     pub async fn save_search(&self, s: SavedSearch) -> Result<(), String> {
         self.request(|r| Command::Save(s, r)).await
     }
+    pub async fn delete_search(&self, id: String) -> Result<(), String> {
+        self.request(|r| Command::DeleteSearch(id, r)).await
+    }
     pub async fn searches(&self) -> Result<Vec<SavedSearch>, String> {
         self.request(Command::Searches).await
     }
@@ -109,6 +117,25 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn saved_search_delete_is_acknowledged_and_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = super::Database::open(dir.path()).await.unwrap();
+        db.save_search(furchive_engine::storage::SavedSearch {
+            id: "fixture".into(),
+            name: "Fixture".into(),
+            query: Default::default(),
+        })
+        .await
+        .unwrap();
+        assert_eq!(db.searches().await.unwrap().len(), 1);
+        db.delete_search("fixture".into()).await.unwrap();
+        assert!(db.searches().await.unwrap().is_empty());
+        db.shutdown().await.unwrap();
+        let db = super::Database::open(dir.path()).await.unwrap();
+        assert!(db.searches().await.unwrap().is_empty());
+        db.shutdown().await.unwrap();
+    }
     #[tokio::test]
     async fn db_actor_keeps_user_state_and_closes_before_reopen() {
         use furchive_engine::storage::SavedSearch;

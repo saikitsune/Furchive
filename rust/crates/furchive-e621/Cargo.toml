@@ -3,6 +3,8 @@ name="furchive-e621"
 version="0.1.0"
 edition="2024"
 publish=false
+[features]
+fixture-api=[]
 [dependencies]
 furchive-domain={path="../furchive-domain"}
 reqwest={version="0.13",default-features=false,features=["rustls","json"]}
