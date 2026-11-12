@@ -88,6 +88,19 @@ def prepare(output:Path,platform:str)->tuple[Path,Path]:
     else:raise ValueError('unknown platform')
     return artifact,locate_binary(payload,platform)
 
+def exercise_campaigns(binary:Path,output:Path,runner=subprocess.run)->None:
+    # Independent paths retain evidence even if a peer gate fails. This NEVER
+    # converts a partial pass to combined acceptance or retries a failed gate.
+    outcomes={}
+    for name,script,timeout in [('media','media-run-native.py',120),('browse','browse-run-native.py',140)]:
+        try:
+            runner([sys.executable,str(Path(__file__).with_name(script)),str(binary),'--output',str(output/name)],check=True,timeout=timeout)
+            outcomes[name]={'status':'PASS'}
+        except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+            outcomes[name]={'status':'FAIL','error':type(error).__name__}
+        (output/'campaigns.json').write_text(json.dumps(outcomes,indent=2))
+    if any(row['status']!='PASS' for row in outcomes.values()):raise RuntimeError('one or more required native campaigns failed; inspect campaigns.json')
+
 def main()->None:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
@@ -107,9 +120,8 @@ def main()->None:
     subprocess.run([sys.executable,str(Path(__file__).with_name('run-native-qualification.py')),
                     str(binary),'--output',str(output/'native.json')],check=True,timeout=120)
     if args.media_campaign:
-        subprocess.run([sys.executable,str(Path(__file__).with_name('media-run-native.py')),str(binary),'--output',str(output/'media')],check=True,timeout=120)
+        exercise_campaigns(binary,output)
         record['viewer_campaign']='PASS: actual native frames, lifecycle and bounded gallery observations'
-        subprocess.run([sys.executable,str(Path(__file__).with_name('browse-run-native.py')),str(binary),'--output',str(output/'browse')],check=True,timeout=140)
         record['browse_campaign']='PASS: actual product controls, IPC, Rust HTTP/SQLite and restart'
     record['native_runtime']='PASS: extracted payload image decode/video playback+seek/virtualized DOM only'
     receipt.write_text(json.dumps(record,indent=2));print(json.dumps(record,indent=2))

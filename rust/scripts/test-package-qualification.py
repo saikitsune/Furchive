@@ -11,6 +11,16 @@ module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 class PackageLayout(unittest.TestCase):
+    def test_independent_browsing_runs_after_media_failure_but_combined_acceptance_stays_failed(self):
+        import subprocess
+        calls=[]
+        def runner(argv,**kwargs):
+            calls.append(argv)
+            if 'media-run-native.py' in argv[1]:raise subprocess.CalledProcessError(1,argv)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):module.exercise_campaigns(Path('owned-binary'),Path(tmp),runner)
+        self.assertEqual([Path(c[1]).name for c in calls],['media-run-native.py','browse-run-native.py'])
+
     def test_bundle_executable_must_exist_in_exact_platform_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)

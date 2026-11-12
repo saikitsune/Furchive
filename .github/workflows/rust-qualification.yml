@@ -142,6 +142,7 @@ jobs:
             rust/test-artifacts/ci-native-*.json
             rust/test-artifacts/ci-native-*.log
             rust/test-artifacts/package-*/package.json
+            rust/test-artifacts/package-*/campaigns.json
             rust/test-artifacts/package-*/native.json
             rust/test-artifacts/package-*/native.log
             rust/test-artifacts/package-*/*.deb
