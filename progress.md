@@ -1,5 +1,11 @@
 # Execution progress
 
+## Latest whole-pool milestone
+- Prior4c7290a/run43339725218 all9jobs and9actualZIPs owner verified,24+7nativeUI eachOS/108frames/core/vault. Nyx boundedPASS with MINOR NYX-CONC-01 sampler reset; original failure preserved, no whole-release approval.
+- Whole-pool acquisition/admission/UI implemented with one account-held snapshot,100IDbatches,10000member cap, hidden/rating holes, single pausedgroup transaction/restart;5new service/browse/session tests,1coregroup test,1compiledDOM. Progressreset regression RED/GREEN covers single/group/shutdown at1/2/4 without pausedpoll.
+- Next native campaign25+8 checks pending integration/run. Canonical source unchanged until reviewed4c7290a return completes; work isolated in project test-artifacts/next-whole-pool. New source has local workspace/DOM/unit/check/build/Clippy proof; desktop nestedCargo gate refused ancestorworkspace, will run from canonicalroot, no manifestguard relaxation. npm audit2low dev-only warnings retained, no automated fix.
+
+
 ## Initial checkpoint
 - Approved rewrite implementation, local branch rewrite/rust in /opt/data/projects/Furchive.
 - Original C# tree clean, original plan read.

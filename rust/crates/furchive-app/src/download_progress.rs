@@ -46,6 +46,12 @@ impl ProgressSampler {
         }
         result
     }
+    pub fn forget(&mut self, id: i64) {
+        self.last.remove(&id);
+    }
+    pub fn clear(&mut self) {
+        self.last.clear();
+    }
     pub fn retain(&mut self, ids: &[i64]) {
         let ids = ids.iter().copied().collect::<HashSet<_>>();
         self.last.retain(|id, _| ids.contains(id));

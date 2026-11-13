@@ -49,6 +49,7 @@
  async function chooseDownloads(){try{downloadGranted=await bridge.chooseDownloads();if(downloadGranted)jobs=await bridge.jobs();}catch(e){error=String(e);}}
  $effect(()=>{if(!downloadGranted)return;let active=true,inflight=false;const timer=setInterval(async()=>{if(inflight)return;inflight=true;try{const rows=await bridge.jobs();if(active)jobs=rows;}catch(e){if(active)error=String(e);}finally{inflight=false;}},500);return ()=>{active=false;clearInterval(timer);};});
  async function refreshJobs(){try{jobs=await bridge.jobs();}catch(e){error=String(e);}}
+ async function queueWholePool(){if(!pool||!submitted||busy)return;const id=Number(pool.pool.key.id),ratings=submitted.query.ratings;busy=true;try{await bridge.queueWholePool(id,ratings);await refreshJobs();}catch(e){error=String(e);}finally{busy=false;}}
  async function queuePoolPage(){try{await bridge.queuePoolPage();await refreshJobs();}catch(e){error=String(e);}}
  async function controlGroup(id:string,verb:'pause'|'resume'|'cancel'){try{await bridge.controlGroup(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function queueDownload(id:string){try{await bridge.queue(id);await refreshJobs();}catch(e){error=String(e);}}
@@ -109,7 +110,7 @@
   <div class="results" aria-busy={busy}>
    {#if error}<p role="alert">{error}</p>{/if}
    {#if busy}<p role="status">Loading…</p>{/if}
-   {#if pool}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button><button disabled={!downloadGranted||busy} onclick={queuePoolPage}>Queue visible pool page</button>
+   {#if pool}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button><button disabled={!downloadGranted||busy} onclick={queuePoolPage}>Queue visible pool page</button><button disabled={!downloadGranted||busy||pool.total>10000} onclick={queueWholePool}>Queue whole pool ({pool.total} members)</button><p>Whole-pool metadata uses bounded batches, current account filters and submitted ratings. Hidden members retain positions; jobs start paused. Maximum 10,000 members.</p>
     <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(e.id)}>Queue download</button>{/if}</li>{/each}</ol>
     <button disabled={busy||poolOffset===0} onclick={()=>run('pool',1,Math.max(0,poolOffset-50),true)}>Previous pool page</button>
     {#if pool.next_offset!==null}<button disabled={busy} onclick={()=>run('pool',1,pool?.next_offset??0,true)}>Next pool page</button>{/if}

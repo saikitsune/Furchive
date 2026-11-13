@@ -21,6 +21,20 @@ impl AccountSession {
             })),
         }
     }
+    /// Holds the account boundary through all metadata batches and paused commit.
+    /// A concurrent login/logout waits; no batch can silently switch identity.
+    pub async fn queue_whole_pool(
+        &self,
+        id: u64,
+        ratings: &furchive_domain::RatingFilter,
+        downloads: &crate::downloads::Downloads,
+        settings: &crate::settings::Settings,
+    ) -> Result<String, String> {
+        settings.validate()?;
+        let inner = self.inner.lock().await;
+        let snapshot = crate::browse::collect_pool_download(&inner.client, id, ratings).await?;
+        downloads.enqueue_whole_pool(&snapshot, settings).await
+    }
     pub async fn deactivate(&self) {
         let mut inner = self.inner.lock().await;
         inner.client = inner.anonymous.clone();

@@ -15,5 +15,8 @@ Tauri 2.12.5 executable compiled with WebKitGTK 2.54.0 from an unprivileged Debi
 ## Concurrency decision
 Native directory identity, not lowercased path spelling, reserves active writers conservatively; same-directory jobs serialize (including distinct leaf names/Rename suffixes) while separate native directories may overlap. Paused jobs reserve no writer and must not starve queued work. Worker concurrency is selected1–4 at the explicit host grant, not silently changed mid-transfer. Rates/ETA are observed samples, unknown until enough data, reset on pause/regression/removal and never restored as fabricated speed.
 
+## Whole-pool admission
+Whole-pool metadata holds account identity through batches/pausedcommit, with100IDs/request and10000member maximum. Service refuses incomplete coverage, core validatesall beforeone transaction. Native campaign uses105members with hiddenholes at positions1/102. NYX-CONC-01 reset must follow control transitions independent of jobs polling.
+
 ## Decisions
 Desktop first; e621 only; safe first-run rating, account filters respected; no telemetry. Harmless generated media/HTTP fixtures only in repeatable tests. Native media support must be qualified per actual WebView engine.

@@ -151,6 +151,7 @@ fn main() {
             commands::account_logout,
             commands::choose_download_directory,
             commands::queue_pool_page,
+            commands::queue_whole_pool,
             commands::download_group_control,
             commands::queue_download,
             commands::download_jobs,

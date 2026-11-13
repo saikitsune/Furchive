@@ -374,7 +374,25 @@ impl Engine {
         label: &str,
         intents: Vec<(u32, Intent)>,
     ) -> Result<Vec<i64>> {
-        if !valid_group(id, label) || intents.is_empty() || intents.len() > 100 {
+        self.enqueue_bounded_group(id, label, intents, 100)
+    }
+    /// Explicit whole-pool path retains a fixed cap and one all-or-nothing transaction.
+    pub fn enqueue_whole_group_paused(
+        &self,
+        id: &str,
+        label: &str,
+        intents: Vec<(u32, Intent)>,
+    ) -> Result<Vec<i64>> {
+        self.enqueue_bounded_group(id, label, intents, 10_000)
+    }
+    fn enqueue_bounded_group(
+        &self,
+        id: &str,
+        label: &str,
+        intents: Vec<(u32, Intent)>,
+        limit: usize,
+    ) -> Result<Vec<i64>> {
+        if !valid_group(id, label) || intents.is_empty() || intents.len() > limit {
             return Err(Error::Invalid("invalid bounded download group".into()));
         }
         let mut previous = None;

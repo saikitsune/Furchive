@@ -135,6 +135,46 @@ pub struct PoolPage {
     pub total: usize,
     pub next_offset: Option<usize>,
 }
+/// Explicit whole-pool metadata intent. Snapshot once; never fetch missing IDs through
+/// an unfiltered endpoint. No queue mutation until every batch is validated.
+pub async fn collect_pool_download<P: Provider>(
+    provider: &P,
+    id: u64,
+    ratings: &RatingFilter,
+) -> Result<PoolPage, String> {
+    if id == 0 {
+        return Err("invalid pool ID".into());
+    }
+    SearchQuery {
+        ratings: ratings.clone(),
+        ..Default::default()
+    }
+    .e621_tags()
+    .map_err(|e| e.to_string())?;
+    let pool = provider.pool(id).await?;
+    if pool.key.id() != id.to_string() {
+        return Err("pool response identity mismatch".into());
+    }
+    if pool.post_ids.len() > 10_000 {
+        return Err("whole-pool download limited to 10000 members".into());
+    }
+    pool_slice(&pool, 0, 1)?;
+    let mut entries = Vec::with_capacity(pool.post_ids.len());
+    for offset in (0..pool.post_ids.len()).step_by(100) {
+        let ids = pool_slice(&pool, offset, 100)?;
+        let posts = provider.posts(ids).await?;
+        let page = assemble_pool_page(pool.clone(), posts, offset, 100, ratings)?;
+        entries.extend(page.entries);
+    }
+    let total = pool.post_ids.len();
+    Ok(PoolPage {
+        pool,
+        entries,
+        total,
+        next_offset: None,
+    })
+}
+
 pub fn favorites_query(query: &SearchQuery, username: &str) -> Result<SearchQuery, String> {
     if username.is_empty()
         || username.len() > 100

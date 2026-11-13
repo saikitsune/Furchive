@@ -57,16 +57,16 @@
       "bytes": 395
     },
     "src/model.rs": {
-      "sha256": "52de8cac99ffef123a4370bbcaba0efa0a5d37ffa9e898a65adef91051d7a184",
-      "bytes": 16965
+      "sha256": "dd61a064e2c7181278f34b80fbdc5351ceed859421d55d818036994ff38dde05",
+      "bytes": 17520
     },
     "src/tests/native.rs": {
       "sha256": "62e394c8657cdfc7ab8212bc9459bac78b1aa5cb36f87a1f708c92b89a341929",
       "bytes": 6128
     },
     "src/tests.rs": {
-      "sha256": "fdf3ef8b4e39673c4cd3e1c26cfde29f356b421b79baa062d411deaf17c9f3a2",
-      "bytes": 66484
+      "sha256": "3aef27dea4e2ef959fa508c21eaf38f47ba2413b881d5b729426421ff2851968",
+      "bytes": 67860
     },
     "src/worker.rs": {
       "sha256": "0b71c76661b721790c97ae3038327b7ba004da2737e84a62cbe81bc4614b4e41",
@@ -113,34 +113,34 @@
       "bytes": 884
     },
     "contracts/NATIVE.md": {
-      "sha256": "1673bfcf45186011ba602e1661b27514082b01e72e662806ac6573866d2da16f",
+      "sha256": "83e50ff3154a9a52ba2f7c1bd01f362c11d125889e27e884fb150550c0445942",
       "bytes": 12697
     },
     "contracts/test-inventory.json": {
-      "sha256": "c17ee88c3b1875e034015aef2d0a0c318703187453c569cfa5c3de2f41cfd7d9",
-      "bytes": 12319
+      "sha256": "2d1cec179403b83a24f88e4b00b04f20238894975fde38cacd9a741df98167e7",
+      "bytes": 12580
     }
   },
   "inventory": {
     "linux": {
-      "count": 53,
-      "sha256": "6a6e2c3c0c34737c2e6f142b5754f9d6f7a5fa0c77d75fc8410bc9ecb1f3dd39"
+      "count": 54,
+      "sha256": "786e455b443f41902865c6bcc8eca5606fc30c854c39ddeade6cad9833ba3519"
     },
     "darwin": {
-      "count": 52,
-      "sha256": "a68927b50c26a78e4feff361e4821e9e38f898cfc347d3dbf8454cf8ac1933be"
+      "count": 53,
+      "sha256": "02544dad2dd70695ba8ecb839156584f8987a1ffc62fac9909e75adfc1afbad8"
     },
     "win32": {
-      "count": 54,
-      "sha256": "0e97f73f1420a32076361c000df7dcf4108f4154d32031411b579710f09e89da"
+      "count": 55,
+      "sha256": "6f27e03484d272461df643fe5ebcc729605e735d147acc1c89feda03cce47f31"
     }
   },
   "verification": {
-    "linux": "53 default +54 fixture tests, one doctest/fmt/strict Clippy; current local gate passed",
-    "windows": "concurrency candidate actual native pending",
-    "macos": "concurrency candidate actual native pending"
+    "linux": "whole-pool candidate final native gate pending integration",
+    "windows": "whole-pool native pending",
+    "macos": "whole-pool native pending"
   },
   "native_receipt": "test-artifacts/native-linux/receipt.json",
-  "previous_manifest_sha256": "7932815514641f85e780fc094f44b9e52f6084c721e7a01a0a5b245982a80b48",
-  "integration_base": "96fb77d3fcf9e100b13b89e012827ee428113963"
+  "previous_manifest_sha256": "5a3c067834afe6071d1774a87290f4755e97a67fbbab3fb792623fd314272d80",
+  "integration_base": "4c7290a7727eec5c726ee747865b0c8925cb0a46"
 }

@@ -147,6 +147,36 @@ impl Downloads {
         page: &crate::browse::PoolPage,
         settings: &crate::settings::Settings,
     ) -> Result<String, String> {
+        if page.entries.len() > 100 {
+            return Err("pool page exceeds 100 entries".into());
+        }
+        self.enqueue_pool_snapshot(page, settings, false).await
+    }
+    pub async fn enqueue_whole_pool(
+        &self,
+        page: &crate::browse::PoolPage,
+        settings: &crate::settings::Settings,
+    ) -> Result<String, String> {
+        if page.pool.post_ids.len() > 10_000
+            || page.total != page.pool.post_ids.len()
+            || page.entries.len() != page.total
+            || page.next_offset.is_some()
+            || page
+                .entries
+                .iter()
+                .enumerate()
+                .any(|(n, e)| e.position != n || page.pool.post_ids.get(n) != Some(&e.id))
+        {
+            return Err("whole-pool snapshot incomplete or invalid".into());
+        }
+        self.enqueue_pool_snapshot(page, settings, true).await
+    }
+    async fn enqueue_pool_snapshot(
+        &self,
+        page: &crate::browse::PoolPage,
+        settings: &crate::settings::Settings,
+        whole: bool,
+    ) -> Result<String, String> {
         settings.validate()?;
         crate::browse::pool_slice(&page.pool, 0, 1)?;
         let template =
@@ -211,10 +241,16 @@ impl Downloads {
         );
         let active = self.active.lock().await;
         let value = active.as_ref().ok_or("select a download directory first")?;
-        value
-            .engine
-            .enqueue_group_paused(&id, &page.pool.name, intents)
-            .map_err(|e| e.to_string())?;
+        if whole {
+            value
+                .engine
+                .enqueue_whole_group_paused(&id, &page.pool.name, intents)
+        } else {
+            value
+                .engine
+                .enqueue_group_paused(&id, &page.pool.name, intents)
+        }
+        .map_err(|e| e.to_string())?;
         Ok(id)
     }
     pub async fn control_group(&self, id: &str, verb: &str) -> Result<(), String> {
@@ -237,6 +273,10 @@ impl Downloads {
             return Err("unknown download group".into());
         }
         for job in jobs {
+            self.progress
+                .lock()
+                .map_err(|_| "download progress poisoned")?
+                .forget(job.id);
             value
                 .worker
                 .control(job.id, control)
@@ -295,6 +335,10 @@ impl Downloads {
         };
         let active = self.active.lock().await;
         let value = active.as_ref().ok_or("select a download directory first")?;
+        self.progress
+            .lock()
+            .map_err(|_| "download progress poisoned")?
+            .forget(id);
         value
             .worker
             .control(id, control)
@@ -304,6 +348,10 @@ impl Downloads {
     }
     pub async fn shutdown(&self) -> Result<(), String> {
         let mut active = self.active.lock().await;
+        self.progress
+            .lock()
+            .map_err(|_| "download progress poisoned")?
+            .clear();
         if let Some(value) = active.take() {
             value.worker.shutdown().await.map_err(|e| e.to_string())?;
         }

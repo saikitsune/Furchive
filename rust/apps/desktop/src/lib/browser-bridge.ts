@@ -27,6 +27,7 @@ export class BrowserBridge {
  chooseDownloads(){return this.invoke<boolean>('choose_download_directory');}
  queue(id:string){return this.invoke<number>('queue_download',{id});}
  queuePoolPage(){return this.invoke<string>('queue_pool_page');}
+ queueWholePool(id:number,ratings:RatingFilter){return this.invoke<string>('queue_whole_pool',{id,ratings});}
  controlGroup(id:string,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_group_control',{id,verb});}
  jobs(){return this.invoke<DownloadJob[]>('download_jobs');}
  control(id:number,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_control',{id,verb});}

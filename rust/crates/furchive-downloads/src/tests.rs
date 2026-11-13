@@ -409,6 +409,45 @@ async fn independent_native_directories_complete_in_parallel_with_exact_bytes() 
         );
     }
 }
+#[test]
+fn whole_group_extends_page_bound_without_partial_insert_or_automatic_fetch() {
+    let temp = OwnedTemp::new();
+    let engine = Engine::open(temp.database("whole"), temp.path()).unwrap();
+    let many = (1..=105)
+        .map(|n| (n - 1, intent(&n.to_string(), DuplicatePolicy::Skip)))
+        .collect::<Vec<_>>();
+    assert!(engine
+        .enqueue_group_paused("page", "page", many.clone())
+        .is_err());
+    assert!(engine.jobs().unwrap().is_empty());
+    let mut invalid = many.clone();
+    invalid[104].1.relative = "../escape".into();
+    assert!(engine
+        .enqueue_whole_group_paused("whole", "whole", invalid)
+        .is_err());
+    assert!(engine.jobs().unwrap().is_empty());
+    assert!(engine
+        .enqueue_whole_group_paused(
+            "whole",
+            "whole",
+            (0..10001)
+                .map(|n| (n, intent("1", DuplicatePolicy::Skip)))
+                .collect()
+        )
+        .is_err());
+    engine
+        .enqueue_whole_group_paused("whole", "whole", many)
+        .unwrap();
+    assert_eq!(engine.jobs().unwrap().len(), 105);
+    assert!(engine
+        .jobs()
+        .unwrap()
+        .iter()
+        .all(|j| j.state == State::Paused));
+    drop(engine);
+    let engine = Engine::open(temp.database("whole"), temp.path()).unwrap();
+    assert_eq!(engine.jobs().unwrap()[104].group_position, Some(104));
+}
 struct OwnedTemp {
     _temp: tempfile::TempDir,
     media: std::path::PathBuf,

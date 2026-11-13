@@ -51,6 +51,7 @@
     "tests::staging_case_alias_cannot_be_enqueued",
     "tests::valid_416_completes_only_with_matching_validator_total_and_local_size",
     "tests::validators_reject_weak_tags_and_unproven_dates",
+    "tests::whole_group_extends_page_bound_without_partial_insert_or_automatic_fetch",
     "tests::worker_downloads_real_bytes_then_atomically_publishes",
     "tests::writer_rejects_symlinked_parents_leaves_and_hardlinked_parts"
   ],
@@ -105,6 +106,7 @@
     "tests::staging_case_alias_cannot_be_enqueued",
     "tests::valid_416_completes_only_with_matching_validator_total_and_local_size",
     "tests::validators_reject_weak_tags_and_unproven_dates",
+    "tests::whole_group_extends_page_bound_without_partial_insert_or_automatic_fetch",
     "tests::worker_downloads_real_bytes_then_atomically_publishes",
     "tests::writer_rejects_symlinked_parents_leaves_and_hardlinked_parts"
   ],
@@ -161,6 +163,7 @@
     "tests::staging_case_alias_cannot_be_enqueued",
     "tests::valid_416_completes_only_with_matching_validator_total_and_local_size",
     "tests::validators_reject_weak_tags_and_unproven_dates",
+    "tests::whole_group_extends_page_bound_without_partial_insert_or_automatic_fetch",
     "tests::worker_downloads_real_bytes_then_atomically_publishes",
     "tests::writer_rejects_symlinked_parents_leaves_and_hardlinked_parts"
   ]
