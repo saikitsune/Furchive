@@ -2,7 +2,7 @@ import {tick} from 'svelte';
 /** Rendered UI driver. Native proof comes from host readback, never this function alone. */
 export async function runAccountCampaign(phase:number){
  const checks:string[]=[];
- const wait=async(predicate:()=>boolean)=>{const end=performance.now()+8000;while(!predicate()){if(performance.now()>end)throw Error('native account UI condition timed out');await new Promise(r=>setTimeout(r,20));await tick();}};
+ const wait=async(predicate:()=>boolean)=>{const end=performance.now()+8000;while(!predicate()){const alert=document.querySelector('[role="alert"]');if(alert)throw Error('native account UI: '+alert.textContent);if(performance.now()>end)throw Error('native account UI condition timed out');await new Promise(r=>setTimeout(r,20));await tick();}};
  const button=(name:string)=>{const b=[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.trim()===name);if(!b||b.disabled)throw Error('missing account control '+name);b.click();};
  await wait(()=>document.querySelector('[aria-label="Account API key"]')!==null);
  if(document.body.textContent?.includes('Verified account:'))throw Error('account restored without explicit intent');

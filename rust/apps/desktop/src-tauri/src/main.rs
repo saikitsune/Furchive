@@ -34,7 +34,7 @@ fn qualification_result(app: tauri::AppHandle, result: serde_json::Value) -> Res
                 return Err("actual cache budget not applied".into());
             }
         }
-        if matches!(browse_test_phase(), 3 | 4) {
+        if matches!(browse_test_phase(), 3 | 4) && result["ok"] == true {
             let scope = commands::account_ui_namespace()?
                 .ok_or("missing isolated native store namespace")?;
             let vault = furchive_app::credentials::Vault::native_qualification(&scope)?;

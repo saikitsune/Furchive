@@ -8,6 +8,9 @@
  const initialStart=performance.now();
  let {nativeTest=false}:{nativeTest?:boolean}=$props();
  campaignDiagnostics.initialization={componentStartMs:initialStart};
+ // Dispatch native capability discovery before synchronous catalog/render work;
+ // timing still begins at component entry and includes the complete handshake.
+ const transportReady=invoke<string>('qualification_media_base').then(base=>{mediaBase=base;},()=>{note+=' Browser mode: video uses bundled fixtures, not the native capability transport.';mediaBase='/fixtures/';}).then(()=>{(campaignDiagnostics.initialization as Record<string,number>).transportReadyMs=performance.now();});
  const imageNames=['still.png','still.jpg','animation.gif','animation.apng','still.webp','viewer-animation.gif','viewer-animation.apng','viewer-animation.webp','viewer-large.png','viewer-oversized.png','viewer-corrupt.png','viewer-truncated.png'];
  const videoNames=['vp8.webm','vp9.webm','h264.mp4'];
  let mediaBase=$state(''),note=$state('Only generated fixtures. No accounts, remote art, restoration or product integration.');
@@ -26,8 +29,7 @@
  function choose(id:string){selected=id;}
  onMount(async()=>{
   (campaignDiagnostics.initialization as Record<string,number>).onMountMs=performance.now();
-  try{mediaBase=await invoke<string>('qualification_media_base');}catch{note+=' Browser mode: video uses bundled fixtures, not the native capability transport.';mediaBase='/fixtures/';}
-  (campaignDiagnostics.initialization as Record<string,number>).transportReadyMs=performance.now();
+  await transportReady;
   if(nativeTest){
    try{await tick();const receipt=await runMediaCampaign(async(checkpoint,payload)=>invoke('media_test_checkpoint',{checkpoint,receipt:payload}),initialStart);await invoke('media_test_result',{result:receipt});}
    catch(error){note=String(error);await invoke('media_test_result',{result:{schema:1,ok:false,error:String(error),engine:navigator.userAgent,diagnostics:campaignDiagnostics}});}

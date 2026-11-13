@@ -64,6 +64,18 @@ test('closed Viewer does not scan a ten-thousand-item catalog before any selecti
  try{active=mount(Viewer,{target:document.body,props:{items,grants:['/fixtures/still.png'],selectedId:null}});flushSync();assert.equal(scans,0,'a closed Viewer has no selection to search for');assert.equal(document.querySelector('[data-viewer]'),null);}finally{Array.prototype.find=originalFind;Array.prototype.findIndex=originalIndex;if(active)await unmount(active);active=null;}
 });
 
+test('engineering media transport request starts before expensive catalog construction without shifting timing origin',async()=>{
+ await component('Gallery');await component('Viewer');const events=[];globalThis.__furchiveBootstrapEvents=events;
+ const mock=path.join(output,'tauri-bootstrap-double.mjs');await writeFile(mock,`export async function invoke(name){globalThis.__furchiveBootstrapEvents.push('transport:'+name);return '/fixtures/';}`);
+ const campaignMock=path.join(output,'campaign-bootstrap-double.mjs');await writeFile(campaignMock,`export const campaignDiagnostics={};export async function runMediaCampaign(){throw Error('native campaign not requested by this bootstrap probe');}`);
+ let code=compile(await readFile(new URL('../src/Engineering.svelte',import.meta.url),'utf8'),{filename:'Engineering.svelte',generate:'client',dev:true}).js.code;
+ code=code.replace("'./lib/media-campaign'",JSON.stringify(pathToFileURL(campaignMock).href));
+ code=code.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace("'@tauri-apps/api/core'",JSON.stringify(pathToFileURL(mock).href)).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>`from '${spec.endsWith('.svelte')?pathToFileURL(path.join(output,spec.split('/').at(-1).replace('.svelte','.mjs'))).href:new URL('../src/'+spec.slice(2)+'.ts',import.meta.url).href}'`);
+ const file=path.join(output,'EngineeringBootstrap.mjs');await writeFile(file,code);const Engineering=(await import(pathToFileURL(file).href)).default;
+ const original=Array.from;Array.from=function(value,...args){if(value?.length===10000)events.push('catalog');return original.call(this,value,...args)};
+ try{active=mount(Engineering,{target:document.body,props:{nativeTest:false}});flushSync();await Promise.resolve();flushSync();assert.deepEqual(events.slice(0,2),['transport:qualification_media_base','catalog']);}finally{Array.from=original;if(active)await unmount(active);active=null;delete globalThis.__furchiveBootstrapEvents;}
+});
+
 test('rendered Viewer fences stale image events and refuses corrupt or oversized media',async()=>{
  const Host=await viewerHost();
  const sample=[{id:'a',kind:'image',src:'/fixtures/a.png',title:'<b>literal</b>'},{id:'b',kind:'image',src:'/fixtures/b.png',title:'B'}];

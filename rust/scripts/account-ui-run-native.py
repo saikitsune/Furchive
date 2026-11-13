@@ -8,7 +8,7 @@ CHECKS={3:['anonymous-start','verified-login-native-save','masked-key-cleared'],
 def validate(receipt,phase,scope,system):
  if (receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or receipt.get('credential_store')!='native' or receipt.get('native_store')!=system or receipt.get('namespace')!=scope or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase])):raise ValueError('native account UI receipt invalid')
  return True
-def allowed_request(path,authorized):return path=='/users/me.json' and authorized is True
+def allowed_request(path,authorized):return path in ('/users/me.json','/users/me.json?') and authorized is True
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('binary',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--probe',type=Path,required=True);a=p.parse_args();root=a.output.resolve()
  if root.exists():raise SystemExit('refusing stale account UI evidence')

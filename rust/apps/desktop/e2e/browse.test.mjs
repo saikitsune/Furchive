@@ -121,6 +121,12 @@ test('native account UI campaign verifies and saves, then explicitly restores an
  assert.deepEqual(calls.filter(c=>c.startsWith('account_')),['account_login','account_restore','account_logout']);assert.equal(stored,false);window.happyDOM.abort();
 });
 
+test('native account UI driver reports verification refusal without claiming success',async()=>{
+ const {runAccountCampaign}=await import('../src/lib/account-campaign.ts');
+ const bridge=new BrowserBridge(async(command)=>{if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='preferences')return {filename_template:'{id}',pool_filename_template:'{id}',concurrent_downloads:1,duplicates:'skip',gallery_scale:1,cache_limit_bytes:16777216,restore_session:false,save_metadata:false,start_muted:true};if(command==='account_login')throw Error('owned verification refused');throw Error(command);});
+ const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{await assert.rejects(runAccountCampaign(3),/owned verification refused/);assert.ok(document.querySelector('[role="alert"]'));}finally{await unmount(app);window.happyDOM.abort();}
+});
+
 test('native campaign driver reaches both rendered phases with labeled in-memory provider double',async()=>{
  const oldSetAttribute=window.Element.prototype.setAttribute;window.Element.prototype.setAttribute=function(name,value){oldSetAttribute.call(this,name,value);if(this instanceof window.HTMLImageElement&&name==='src'){Object.defineProperties(this,{naturalWidth:{value:320,configurable:true},naturalHeight:{value:200,configurable:true},currentSrc:{value,configurable:true},complete:{value:true,configurable:true}});queueMicrotask(()=>this.dispatchEvent(new Event('load')));}};
  const imageSrc=Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype,'src');const videoSrc=Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype,'src');const oldPlay=window.HTMLMediaElement.prototype.play;const oldPause=window.HTMLMediaElement.prototype.pause;const oldLoad=window.HTMLMediaElement.prototype.load;

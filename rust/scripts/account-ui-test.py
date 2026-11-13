@@ -23,7 +23,7 @@ class AccountReceipt(unittest.TestCase):
      if fault=='cleanup-fails' and phase=='delete':return subprocess.CompletedProcess(argv,1,'owned cleanup failure','')
      return subprocess.CompletedProcess(argv,0,json.dumps({'schema':1,'phase':phase,'namespace':scope,'native_store':system,'ok':True,'synthetic_data':True}),'')
     env=kwargs['env'];phase=int(env['FURCHIVE_BROWSE_TEST_PHASE']);calls.append('ui:'+str(phase));scope=env['FURCHIVE_ACCOUNT_UI_NAMESPACE'];key='synthetic-native-vault-qualification-only'
-    req=urllib.request.Request(env['FURCHIVE_BROWSE_FIXTURE_ORIGIN']+'users/me.json',headers={'Authorization':'Basic '+base64.b64encode(('fixture_user:'+key).encode()).decode(),'User-Agent':'Furchive/host-runner-test-double'})
+    req=urllib.request.Request(env['FURCHIVE_BROWSE_FIXTURE_ORIGIN']+'users/me.json?',headers={'Authorization':'Basic '+base64.b64encode(('fixture_user:'+key).encode()).decode(),'User-Agent':'Furchive/host-runner-test-double'})
     with urllib.request.urlopen(req,timeout=3) as response:self.assertEqual(response.status,200)
     if fault=='restore-fails' and phase==4:raise subprocess.CalledProcessError(1,argv)
     if fault=='missing-receipt' and phase==4:return subprocess.CompletedProcess(argv,0)
@@ -42,5 +42,5 @@ class AccountReceipt(unittest.TestCase):
     self.assertTrue((root/'vault-initial-absent.log').exists());self.assertTrue((root/'cleanup.log').exists())
 
  def test_account_fixture_refuses_unexpected_authority_and_never_records_credentials(self):
-  self.assertFalse(m.allowed_request('/users/me.json',False));self.assertFalse(m.allowed_request('/posts.json',True));self.assertFalse(m.allowed_request('/users/me.json?filter_id=0',True));self.assertTrue(m.allowed_request('/users/me.json',True))
+  self.assertFalse(m.allowed_request('/users/me.json',False));self.assertFalse(m.allowed_request('/posts.json',True));self.assertFalse(m.allowed_request('/users/me.json?filter_id=0',True));self.assertTrue(m.allowed_request('/users/me.json',True));self.assertTrue(m.allowed_request('/users/me.json?',True));self.assertFalse(m.allowed_request('/users/me.json?filter_id=',True));self.assertFalse(m.allowed_request('/users/me.json#fragment',True))
 if __name__=='__main__':unittest.main()
