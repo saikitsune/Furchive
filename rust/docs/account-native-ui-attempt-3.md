@@ -1,0 +1,7 @@
+# Native account UI attempt3 — same-identity macOS PASS; Windows fixture refusal
+
+b6c2146/run43354073930: Linux+macOS native pairedUI/protectedstore +media+browserPASS; all6core/standalonevaultjobsPASS. Owner downloadedproviderZIPdigests/exactpackages/binaries,26+9browser,6accountchecks/OSstampednamespace,exactread/absence/cleanup,72frames. macOS probe_identity same-packaged-executable; accountphases3+4PASS,syntheticentrydeleted. NoACL/signing/promptautomation/fallback. Previousdifferenthelperread/cleanupFAIL retained, notretroactivelyapproved.
+
+Windows jobFAILED before newpackagecampaign in Python test_macos_probe_uses_same_packaged_executable_identity_without_weakening_keychain_acl: concreteWindowsPathstr has backslashes vs hardcodedPOSIXexpectedpath. This is a testconstruction portabilitydefect, notfailureofproductionnativekeyring. ActualWindowspairedstoreGUI passed prior0364c01, but oldproofdoesn'tacceptcurrentcandidate. OriginalfailingWindowslogandpartialartifactretained.
+
+Fixexpectedpathusesstr(Path) and explicitPureWindowsPath/PurePosixPathmatrix to assertexactsuppliedpathpreservation. No conversionofactualWindowsinput,noskip/assertiondeletionorproductionguardchange. Host4tests/package3passedlocally, strictnative9tests/30DOM+15unitpass atsamecurrentruntime. Onlytest+documentationdelta afterb6c2146; freshactualWindowsrunnativepairingstillrequiredbeforefullboundedacceptance. OverallcandidateNOTACCEPTEDuntilsameheadall3OS.

@@ -43,7 +43,11 @@ class AccountReceipt(unittest.TestCase):
     self.assertTrue((root/'vault-initial-absent.log').exists());self.assertTrue((root/'cleanup.log').exists())
 
  def test_macos_probe_uses_same_packaged_executable_identity_without_weakening_keychain_acl(self):
-  self.assertEqual(m.probe_command(Path('owned.app/Contents/MacOS/furchive-desktop'),Path('different-probe'),'read','qualification-'+'a'*32,'macos'),['owned.app/Contents/MacOS/furchive-desktop','--native-vault-probe','read','qualification-'+'a'*32])
+  from pathlib import PureWindowsPath,PurePosixPath
+  for pathclass in [PureWindowsPath,PurePosixPath]:
+   binary=pathclass('owned.app/Contents/MacOS/furchive-desktop');probe=pathclass('different-probe');scope='qualification-'+'b'*32
+   self.assertEqual(m.probe_command(binary,probe,'read',scope,'macos'),[str(binary),'--native-vault-probe','read',scope])
+  self.assertEqual(m.probe_command(Path('owned.app/Contents/MacOS/furchive-desktop'),Path('different-probe'),'read','qualification-'+'a'*32,'macos'),[str(Path('owned.app/Contents/MacOS/furchive-desktop')),'--native-vault-probe','read','qualification-'+'a'*32])
   self.assertEqual(m.probe_command(Path('owned.exe'),Path('probe.exe'),'absent','qualification-'+'a'*32,'windows'),['probe.exe','absent','qualification-'+'a'*32])
 
  def test_account_fixture_refuses_unexpected_authority_and_never_records_credentials(self):
