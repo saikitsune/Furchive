@@ -14,6 +14,9 @@ pub struct JobView {
     pub bytes: u64,
     pub relative_path: String,
     pub error: Option<String>,
+    pub group_id: Option<String>,
+    pub group_label: Option<String>,
+    pub group_position: Option<u32>,
 }
 struct Active {
     engine: Arc<Engine>,
@@ -119,6 +122,110 @@ impl Downloads {
             .enqueue_paused(intent)
             .map_err(|e| e.to_string())
     }
+    /// Current bounded page only: hidden/unavailable members retain ordinal holes.
+    pub async fn enqueue_pool_page(
+        &self,
+        page: &crate::browse::PoolPage,
+        settings: &crate::settings::Settings,
+    ) -> Result<String, String> {
+        settings.validate()?;
+        crate::browse::pool_slice(&page.pool, 0, 1)?;
+        let template =
+            FilenameTemplate::parse(&settings.pool_filename_template).map_err(|e| e.to_string())?;
+        let mut intents = Vec::new();
+        for entry in &page.entries {
+            if let Some(post) = &entry.post {
+                if page.pool.post_ids.get(entry.position) != Some(&entry.id)
+                    || post.key.id() != entry.id
+                {
+                    return Err("pool download membership mismatch".into());
+                }
+                crate::media_cache::canonical_media(
+                    post.full_url
+                        .as_deref()
+                        .ok_or("pool member file unavailable")?,
+                )?;
+                let artist = post.artists.join(",");
+                let number = (entry.position + 1).to_string();
+                let values = TemplateValues {
+                    source: "e621",
+                    artist: &artist,
+                    id: post.key.id(),
+                    safe_title: &post.title,
+                    pool_name: &page.pool.name,
+                    page_number: &number,
+                    ext: post
+                        .file_extension
+                        .as_deref()
+                        .ok_or("pool member extension unavailable")?,
+                };
+                let policy = match settings.duplicates {
+                    crate::settings::DuplicatePolicy::Skip => DuplicatePolicy::Skip,
+                    crate::settings::DuplicatePolicy::Overwrite => DuplicatePolicy::Overwrite,
+                    crate::settings::DuplicatePolicy::Rename => DuplicatePolicy::Rename,
+                };
+                let intent = Intent::new(
+                    post,
+                    &template,
+                    &values,
+                    policy,
+                    post.file_md5
+                        .clone()
+                        .map(furchive_downloads::ExpectedHash::Md5),
+                )
+                .map_err(|e| e.to_string())?;
+                intents.push((
+                    u32::try_from(entry.position).map_err(|_| "pool position too large")?,
+                    intent,
+                ));
+            }
+        }
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random).map_err(|_| "group identity randomness unavailable")?;
+        let id = format!(
+            "pool-{}-{}",
+            page.pool.key.id(),
+            random
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        );
+        let active = self.active.lock().await;
+        let value = active.as_ref().ok_or("select a download directory first")?;
+        value
+            .engine
+            .enqueue_group_paused(&id, &page.pool.name, intents)
+            .map_err(|e| e.to_string())?;
+        Ok(id)
+    }
+    pub async fn control_group(&self, id: &str, verb: &str) -> Result<(), String> {
+        let active = self.active.lock().await;
+        let value = active.as_ref().ok_or("select a download directory first")?;
+        let control = match verb {
+            "resume" => Control::Resume,
+            "pause" => Control::Pause,
+            "cancel" => Control::Cancel,
+            _ => return Err("unknown download control".into()),
+        };
+        let jobs = value
+            .engine
+            .jobs()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter(|j| j.group_id.as_deref() == Some(id))
+            .collect::<Vec<_>>();
+        if jobs.is_empty() {
+            return Err("unknown download group".into());
+        }
+        for job in jobs {
+            value
+                .worker
+                .control(job.id, control)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
     pub async fn jobs(&self) -> Result<Vec<JobView>, String> {
         let active = self.active.lock().await;
         let Some(value) = active.as_ref() else {
@@ -133,6 +240,9 @@ impl Downloads {
                     bytes: j.bytes,
                     relative_path: j.relative_path,
                     error: j.error,
+                    group_id: j.group_id,
+                    group_label: j.group_label,
+                    group_position: j.group_position,
                 })
                 .collect()
         })

@@ -57,16 +57,16 @@
       "bytes": 395
     },
     "src/model.rs": {
-      "sha256": "dbb0195ebdd2968227ce66938d74b9b56f3d673bdf4d420ce11841929569dcce",
-      "bytes": 14135
+      "sha256": "78e11541281f2b33b6f4b2cdc172fc65fa5ded2d985cb896ceb44753811dd837",
+      "bytes": 16855
     },
     "src/tests/native.rs": {
       "sha256": "62e394c8657cdfc7ab8212bc9459bac78b1aa5cb36f87a1f708c92b89a341929",
       "bytes": 6128
     },
     "src/tests.rs": {
-      "sha256": "f8f44af882326493387043423134ab4e0388bec25c6ff43699ebb2b2fa853157",
-      "bytes": 53165
+      "sha256": "76eef678dd09ed7771e3e108039c47479a1ac66337fb47cd53638324087b77a7",
+      "bytes": 55351
     },
     "src/worker.rs": {
       "sha256": "18e15d7e3ace6f2163de003d237a351e6989caf4d980dd5478d1723803f715e8",
@@ -117,30 +117,30 @@
       "bytes": 12648
     },
     "contracts/test-inventory.json": {
-      "sha256": "610e9c78ad108a0bcfe732e51cb13e537bb216c51a39942a6b55826ebcfaf8ea",
-      "bytes": 10633
+      "sha256": "c83ecdc1a1fd62933825d913f6e961dc1bdb0fc35f2e23bd19084b066674676c",
+      "bytes": 11041
     }
   },
   "inventory": {
     "linux": {
-      "count": 46,
-      "sha256": "11474fb4ea6287969115b608360efa6e3abfdb3f5e217c4549b88812b5c541bb"
+      "count": 48,
+      "sha256": "a98375cdd31a80135d8230b981e4114b9694e01bd71000ec8514c75c76c94747"
     },
     "darwin": {
-      "count": 45,
-      "sha256": "1603f0776857219a0c94b5f949f12773e5bbbb8dc4f1d923311662883588c129"
+      "count": 47,
+      "sha256": "68ff6082dc7576c29fe89d7dd2bfcbf439fb65738e7342e6d5afb5a5f93d0031"
     },
     "win32": {
-      "count": 47,
-      "sha256": "6e53867c85a73d89deb6e1fbba26f73da44c9824c7d7cab42421694b12e0736e"
+      "count": 49,
+      "sha256": "ec8aa1666e5fac676e1c8fdd82c44b9f5c1f37d6df80763d1059bef7b795bd0e"
     }
   },
   "verification": {
-    "linux": "integration candidate pending new default+feature suites",
-    "windows": "new integration candidate native runtime pending",
-    "macos": "new integration candidate native runtime pending"
+    "linux": "new group candidate local suites pending final native runner",
+    "windows": "group candidate actual native pending",
+    "macos": "group candidate actual native pending"
   },
   "native_receipt": "test-artifacts/native-linux/receipt.json",
-  "previous_manifest_sha256": "d43e24246e5d06b621614a020343c162eb7c9a9eb870f8542ebf27bb3d40ec5e",
-  "integration_base": "1b816f3607ca21945fc7445d3dbe9d5500cc897f"
+  "previous_manifest_sha256": "1689795910ac10b3c31027ac6789db30faf916ed84f19a000bd294c215efa9ae",
+  "integration_base": "4aa5af99e60a477395bc264ae915bc8a602d797e"
 }

@@ -121,6 +121,12 @@ pub struct Job {
     pub bytes: u64,
     pub relative_path: String,
     pub error: Option<String>,
+    #[serde(default)]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub group_label: Option<String>,
+    #[serde(default)]
+    pub group_position: Option<u32>,
     pub(crate) intent: Intent,
     pub(crate) validator: Option<String>,
     pub(crate) total: Option<u64>,
@@ -159,6 +165,16 @@ pub struct Engine {
     pub(crate) loopback: Option<String>,
     #[cfg(test)]
     pub(crate) crash_at: std::sync::atomic::AtomicU8,
+}
+fn valid_group(id: &str, label: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+        && !label.is_empty()
+        && label.len() <= 256
+        && !label.chars().any(char::is_control)
 }
 impl Engine {
     pub fn open(db: impl AsRef<Path>, root: impl AsRef<Path>) -> Result<Self> {
@@ -326,6 +342,9 @@ impl Engine {
             bytes: 0,
             relative_path: intent.relative.clone(),
             error: None,
+            group_id: None,
+            group_label: None,
+            group_position: None,
             intent,
             validator: None,
             total: None,
@@ -341,6 +360,55 @@ impl Engine {
         tx.commit()?;
         self.wake.notify_one();
         Ok(job.id)
+    }
+    /// Validate the complete group before one transaction inserts any paused child.
+    pub fn enqueue_group_paused(
+        &self,
+        id: &str,
+        label: &str,
+        intents: Vec<(u32, Intent)>,
+    ) -> Result<Vec<i64>> {
+        if !valid_group(id, label) || intents.is_empty() || intents.len() > 100 {
+            return Err(Error::Invalid("invalid bounded download group".into()));
+        }
+        let mut previous = None;
+        for (position, intent) in &intents {
+            if previous.is_some_and(|n| *position <= n) {
+                return Err(Error::Invalid("group positions must increase".into()));
+            }
+            previous = Some(*position);
+            intent.validate()?;
+            self.check_destination(&intent.relative)?;
+        }
+        let db = self.db.lock().unwrap();
+        let tx = db.unchecked_transaction()?;
+        let mut ids = Vec::new();
+        for (position, intent) in intents {
+            tx.execute("INSERT INTO jobs(payload) VALUES ('')", [])?;
+            let job_id = tx.last_insert_rowid();
+            let job = Job {
+                id: job_id,
+                key: intent.key.clone(),
+                state: State::Paused,
+                bytes: 0,
+                relative_path: intent.relative.clone(),
+                error: None,
+                intent,
+                validator: None,
+                total: None,
+                publication: None,
+                group_id: Some(id.into()),
+                group_label: Some(label.into()),
+                group_position: Some(position),
+            };
+            tx.execute(
+                "UPDATE jobs SET payload=? WHERE id=?",
+                rusqlite::params![serde_json::to_string(&job)?, job_id],
+            )?;
+            ids.push(job_id);
+        }
+        tx.commit()?;
+        Ok(ids)
     }
     pub fn jobs(&self) -> Result<Vec<Job>> {
         let db = self.db.lock().unwrap();
@@ -359,6 +427,11 @@ impl Engine {
                 || job.total.is_some_and(|n| n > i64::MAX as u64)
             {
                 return Err(Error::Invalid("inconsistent persisted job".into()));
+            }
+            match (&job.group_id, &job.group_label, job.group_position) {
+                (None, None, None) => {}
+                (Some(id), Some(label), Some(_)) if valid_group(id, label) => {}
+                _ => return Err(Error::Invalid("inconsistent persisted group".into())),
             }
             if let Some(v) = &job.validator {
                 let valid = if let Some(etag) = v.strip_prefix("etag:") {

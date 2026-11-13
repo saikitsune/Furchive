@@ -122,13 +122,13 @@ impl<P: Provider> Browser<P> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoolEntry {
     pub id: String,
     pub position: usize,
     pub post: Option<MediaItem>,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoolPage {
     pub pool: Pool,
     pub entries: Vec<PoolEntry>,

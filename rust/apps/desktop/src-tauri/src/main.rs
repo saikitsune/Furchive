@@ -150,6 +150,8 @@ fn main() {
             commands::account_restore,
             commands::account_logout,
             commands::choose_download_directory,
+            commands::queue_pool_page,
+            commands::download_group_control,
             commands::queue_download,
             commands::download_jobs,
             commands::download_control,

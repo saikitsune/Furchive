@@ -23,6 +23,7 @@
  let galleryGrants=$derived([placeholder,...Object.values(thumbnails).map(p=>p.src)]);
  function visible(ids:string[]){const current=generation;void (async()=>{for(const id of ids){if(current!==generation)return;if(requestedPreviews.has(id)||!visiblePosts.find(p=>p.key.id===id)?.preview_url)continue;requestedPreviews.add(id);try{const media=await bridge.prepare(id,'preview');if(current===generation)thumbnails={...thumbnails,[id]:media};}catch{/* Thumbnail failure leaves a neutral bundled placeholder, never a direct URL. */}}})();}
  let poolOffset=$state(0);
+ let downloadGroups=$derived([...new Set(jobs.flatMap(j=>j.group_id?[j.group_id]:[]))].map(id=>({id,label:jobs.find(j=>j.group_id===id)?.group_label??id,members:jobs.filter(j=>j.group_id===id)})));
  let navigation=$derived({index:visiblePosts.findIndex(p=>p.key.id===selectedId),total:visiblePosts.length});
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
@@ -48,6 +49,8 @@
  async function chooseDownloads(){try{downloadGranted=await bridge.chooseDownloads();if(downloadGranted)jobs=await bridge.jobs();}catch(e){error=String(e);}}
  $effect(()=>{if(!downloadGranted)return;let active=true,inflight=false;const timer=setInterval(async()=>{if(inflight)return;inflight=true;try{const rows=await bridge.jobs();if(active)jobs=rows;}catch(e){if(active)error=String(e);}finally{inflight=false;}},500);return ()=>{active=false;clearInterval(timer);};});
  async function refreshJobs(){try{jobs=await bridge.jobs();}catch(e){error=String(e);}}
+ async function queuePoolPage(){try{await bridge.queuePoolPage();await refreshJobs();}catch(e){error=String(e);}}
+ async function controlGroup(id:string,verb:'pause'|'resume'|'cancel'){try{await bridge.controlGroup(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function queueDownload(id:string){try{await bridge.queue(id);await refreshJobs();}catch(e){error=String(e);}}
  async function control(id:number,verb:'pause'|'resume'|'cancel'){try{await bridge.control(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
@@ -88,7 +91,8 @@
     <button onclick={savePreferences}>Save preferences</button>{#if preferenceNotice}<p role="status">{preferenceNotice}</p>{/if}
    {/if}
    <h2>Downloads</h2><button onclick={chooseDownloads}>Choose download directory</button><button onclick={refreshJobs}>Refresh downloads</button><p>New jobs start paused. Resume explicitly starts transfer. Reselect the same directory after restart to recover history.</p>
-   {#each jobs as job}<div data-job-id={job.id} data-job-bytes={job.bytes}><b>Post {job.post_id} · {job.state}</b><p>{job.bytes} bytes · {job.relative_path}</p>{#if job.error}<p>{job.error}</p>{/if}
+   {#each downloadGroups as group}<div data-download-group={group.id}><b>{group.label}</b><p>{group.members.filter(j=>j.state==='Completed').length} / {group.members.length} complete</p><button onclick={()=>controlGroup(group.id,'resume')}>Resume group</button><button onclick={()=>controlGroup(group.id,'pause')}>Pause group</button><button onclick={()=>controlGroup(group.id,'cancel')}>Cancel group</button></div>{/each}
+   {#each jobs as job}<div data-job-id={job.id} data-job-bytes={job.bytes} data-group-position={job.group_position??undefined}><b>Post {job.post_id} · {job.state}</b><p>{job.bytes} bytes · {job.relative_path}</p>{#if job.error}<p>{job.error}</p>{/if}
     <button disabled={!['Paused','Failed'].includes(job.state)} onclick={()=>control(job.id,'resume')}>Resume</button><button disabled={!['Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'pause')}>Pause</button><button disabled={!['Paused','Failed','Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'cancel')}>Cancel</button>
    </div>{/each}
    <h2>Recover old data</h2><p>Choose the old Furchive data folder in the system picker. Preview first; artwork, keys, settings and queued downloads are never imported automatically.</p><button onclick={previewLegacy}>Preview legacy data</button>
@@ -102,7 +106,7 @@
   <div class="results" aria-busy={busy}>
    {#if error}<p role="alert">{error}</p>{/if}
    {#if busy}<p role="status">Loading…</p>{/if}
-   {#if pool}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button>
+   {#if pool}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button><button disabled={!downloadGranted||busy} onclick={queuePoolPage}>Queue visible pool page</button>
     <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(e.id)}>Queue download</button>{/if}</li>{/each}</ol>
     <button disabled={busy||poolOffset===0} onclick={()=>run('pool',1,Math.max(0,poolOffset-50),true)}>Previous pool page</button>
     {#if pool.next_offset!==null}<button disabled={busy} onclick={()=>run('pool',1,pool?.next_offset??0,true)}>Next pool page</button>{/if}

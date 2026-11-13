@@ -14,6 +14,7 @@ pub struct AppState {
     pub test_vault: furchive_app::credentials::Vault,
     pub db: Database,
     pub settings: SettingsStore,
+    pub pool_snapshot: std::sync::Mutex<Option<PoolPage>>,
     pub downloads: furchive_app::downloads::Downloads,
     pub legacy: furchive_app::legacy_session::LegacySession,
 }
@@ -46,6 +47,7 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let account = furchive_app::account_session::AccountSession::new(api);
     app.manage(AppState {
         downloads,
+        pool_snapshot: std::sync::Mutex::new(None),
         browser: Browser::new(account.clone(), db.clone()),
         account,
         #[cfg(feature = "self-test")]
@@ -212,6 +214,35 @@ pub async fn queue_download(
         .await
 }
 #[tauri::command]
+pub async fn queue_pool_page(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let page = state
+        .pool_snapshot
+        .lock()
+        .map_err(|_| "pool snapshot poisoned")?
+        .clone()
+        .ok_or("open a pool page first")?;
+    for post in page.entries.iter().filter_map(|e| e.post.as_ref()) {
+        if state_cache(&app).authorized_post(post.key.id())? != *post {
+            return Err("pool page authority changed".into());
+        }
+    }
+    state
+        .downloads
+        .enqueue_pool_page(&page, &state.settings.current()?)
+        .await
+}
+#[tauri::command]
+pub async fn download_group_control(
+    state: State<'_, AppState>,
+    id: String,
+    verb: String,
+) -> Result<(), String> {
+    state.downloads.control_group(&id, &verb).await
+}
+#[tauri::command]
 pub async fn download_jobs(
     state: State<'_, AppState>,
 ) -> Result<Vec<furchive_app::downloads::JobView>, String> {
@@ -245,6 +276,10 @@ pub async fn search(
 ) -> Result<SearchPage, String> {
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
+    *state
+        .pool_snapshot
+        .lock()
+        .map_err(|_| "pool snapshot poisoned")? = None;
     let result = state.browser.search(&query, page).await?;
     cache.authorize_page(generation, &result.items)?;
     Ok(result)
@@ -266,6 +301,10 @@ pub async fn favorites(
 ) -> Result<SearchPage, String> {
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
+    *state
+        .pool_snapshot
+        .lock()
+        .map_err(|_| "pool snapshot poisoned")? = None;
     let result = state.browser.favorites(&query, &username, page).await?;
     cache.authorize_page(generation, &result.items)?;
     Ok(result)
@@ -281,6 +320,10 @@ pub async fn pool_page(
 ) -> Result<PoolPage, String> {
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
+    *state
+        .pool_snapshot
+        .lock()
+        .map_err(|_| "pool snapshot poisoned")? = None;
     let result = state.browser.pool_page(id, offset, limit, &ratings).await?;
     cache.authorize_page(
         generation,
@@ -290,6 +333,10 @@ pub async fn pool_page(
             .filter_map(|e| e.post.clone())
             .collect::<Vec<_>>(),
     )?;
+    *state
+        .pool_snapshot
+        .lock()
+        .map_err(|_| "pool snapshot poisoned")? = Some(result.clone());
     Ok(result)
 }
 #[tauri::command]

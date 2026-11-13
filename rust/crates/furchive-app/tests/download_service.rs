@@ -48,11 +48,64 @@ async fn upstream_hash_mismatch_never_overwrites_good_download() {
         b"existing artwork"
     );
 }
+#[tokio::test]
+async fn pool_group_uses_authoritative_page_numbers_and_persists_membership() {
+    let dir = owned_temp();
+    let root = dir.path().join("art");
+    std::fs::create_dir(&root).unwrap();
+    let hub = Downloads::new(dir.path().join("queue.sqlite"));
+    hub.select_root(&root).await.unwrap();
+    let mut pool = furchive_domain::Pool::new(
+        furchive_domain::PoolKey::new("e621", "3").unwrap(),
+        "Fixture pool".into(),
+    );
+    pool.post_ids = vec!["1".into(), "2".into(), "3".into()];
+    let mut p3 = post();
+    p3.key = furchive_domain::PostKey::new("e621", "3").unwrap();
+    let page = furchive_app::browse::assemble_pool_page(
+        pool,
+        vec![p3, post()],
+        0,
+        3,
+        &furchive_domain::RatingFilter::Any,
+    )
+    .unwrap();
+    let group = hub
+        .enqueue_pool_page(&page, &Settings::default())
+        .await
+        .unwrap();
+    let jobs = hub.jobs().await.unwrap();
+    assert_eq!(jobs.len(), 2);
+    assert!(
+        jobs.iter()
+            .all(|j| j.group_id.as_deref() == Some(group.as_str()))
+    );
+    assert_eq!(
+        jobs.iter().map(|j| j.group_position).collect::<Vec<_>>(),
+        vec![Some(0), Some(2)]
+    );
+    assert!(jobs[0].relative_path.ends_with("1_1.png"));
+    assert!(jobs[1].relative_path.ends_with("3_3.png"));
+    hub.control_group(&group, "cancel").await.unwrap();
+    assert!(
+        hub.jobs()
+            .await
+            .unwrap()
+            .iter()
+            .all(|j| j.state == "Cancelled")
+    );
+    hub.shutdown().await.unwrap();
+    let hub = Downloads::new(dir.path().join("queue.sqlite"));
+    hub.select_root(&root).await.unwrap();
+    assert_eq!(hub.jobs().await.unwrap()[1].group_position, Some(2));
+    hub.shutdown().await.unwrap();
+}
 fn post() -> MediaItem {
     let mut p = MediaItem::new(PostKey::new("e621", "1").unwrap());
     p.full_url =
         Some("https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png".into());
     p.file_extension = Some("png".into());
+    p.rating = furchive_domain::Rating::Safe;
     p
 }
 #[tokio::test]

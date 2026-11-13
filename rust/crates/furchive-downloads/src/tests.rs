@@ -57,6 +57,76 @@ fn paused_intent_is_durable_before_any_worker_can_fetch() {
     assert_eq!(engine.jobs().unwrap()[0].id, id);
     assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
 }
+#[test]
+fn malformed_persisted_group_fields_refuse_queue_read() {
+    let temp = OwnedTemp::new();
+    let engine = Engine::open(temp.database("q"), temp.path()).unwrap();
+    let id = engine
+        .enqueue_paused(intent("1", DuplicatePolicy::Skip))
+        .unwrap();
+    let text: String = engine
+        .db
+        .lock()
+        .unwrap()
+        .query_row("SELECT payload FROM jobs WHERE id=?", [id], |r| r.get(0))
+        .unwrap();
+    let mut json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    json["group_id"] = serde_json::json!("../bad");
+    engine
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE jobs SET payload=? WHERE id=?",
+            rusqlite::params![json.to_string(), id],
+        )
+        .unwrap();
+    assert!(engine.jobs().is_err());
+}
+#[test]
+fn paused_group_is_atomic_ordered_and_retained_after_reopen() {
+    let temp = OwnedTemp::new();
+    let db = temp.database("queue");
+    let engine = Engine::open(&db, temp.path()).unwrap();
+    let ids = engine
+        .enqueue_group_paused(
+            "pool-3-page-0",
+            "Fixture pool",
+            vec![
+                (0, intent("10", DuplicatePolicy::Skip)),
+                (2, intent("30", DuplicatePolicy::Skip)),
+            ],
+        )
+        .unwrap();
+    let jobs = engine.jobs().unwrap();
+    assert_eq!(
+        jobs.iter().map(|j| j.group_position).collect::<Vec<_>>(),
+        vec![Some(0), Some(2)]
+    );
+    assert_eq!(jobs[0].group_id.as_deref(), Some("pool-3-page-0"));
+    assert!(jobs.iter().all(|j| j.state == State::Paused));
+    let mut invalid = intent("2", DuplicatePolicy::Skip);
+    invalid.relative = "../escape".into();
+    assert!(engine
+        .enqueue_group_paused(
+            "bad",
+            "bad",
+            vec![(0, intent("1", DuplicatePolicy::Skip)), (1, invalid)]
+        )
+        .is_err());
+    assert_eq!(engine.jobs().unwrap().len(), 2);
+    drop(engine);
+    let engine = Engine::open(&db, temp.path()).unwrap();
+    assert_eq!(
+        engine
+            .jobs()
+            .unwrap()
+            .iter()
+            .map(|j| j.id)
+            .collect::<Vec<_>>(),
+        ids
+    );
+}
 struct OwnedTemp {
     _temp: tempfile::TempDir,
     media: std::path::PathBuf,

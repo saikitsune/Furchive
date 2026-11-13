@@ -9,7 +9,7 @@ export type Suggestion={name:string;category:unknown;post_count:number};
 export type Preferences={filename_template:string;pool_filename_template:string;concurrent_downloads:number;duplicates:'skip'|'overwrite'|'rename';gallery_scale:number;cache_limit_bytes:number;restore_session:boolean;save_metadata:boolean;start_muted:boolean};
 export type LegacyPreview={digest:string;searches:SavedSearch[];pins:{key:{source:string;id:string};name:string;post_count:number}[];warnings:string[];queue:unknown};
 export type ImportReport={imported_searches:number;imported_pins:number;skipped_searches:number;skipped_pins:number};
-export type DownloadJob={id:number;post_id:string;state:string;bytes:number;relative_path:string;error:string|null};
+export type DownloadJob={id:number;post_id:string;state:string;bytes:number;relative_path:string;error:string|null;group_id?:string|null;group_label?:string|null;group_position?:number|null};
 export type Identity={id:number;name:string};
 export type Invoke=<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class BrowserBridge {
@@ -26,6 +26,8 @@ export class BrowserBridge {
  legacyConfirm(digest:string,searchIds:string[],poolIds:string[]){return this.invoke<ImportReport>('legacy_confirm',{digest,searchIds,poolIds});}
  chooseDownloads(){return this.invoke<boolean>('choose_download_directory');}
  queue(id:string){return this.invoke<number>('queue_download',{id});}
+ queuePoolPage(){return this.invoke<string>('queue_pool_page');}
+ controlGroup(id:string,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_group_control',{id,verb});}
  jobs(){return this.invoke<DownloadJob[]>('download_jobs');}
  control(id:number,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_control',{id,verb});}
  accountStatus(){return this.invoke<Identity|null>('account_status');}
