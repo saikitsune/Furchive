@@ -41,6 +41,12 @@ Build frontend before compiling the adapter: Tauri embeds `dist`. Normal default
 
 No remote artwork or real credentials are bundled, no telemetry, and no project license has been selected. App identifier/data root is distinct from C#. Optional `scripts/native-env.sh` accepts an unprivileged extracted SDK; it is neither runtime bundling nor permission to weaken a sandbox. This agent container still cannot faithfully run sandboxed WebKit, so local compile/package output is not GUI proof.
 
+## Ordinary default packages: build proof only
+
+Commit **b9ca10f**, Actions **43433712227**, produced default (no-self-test) Windows x64 portable ZIP, Linux x64 Debian and complete macOS arm64.app archive. Owner verified all three actual provider ZIPs, source commit/tree, actual compiler features `["custom-protocol"]`, package/executable/member hashes and27 host tests perOS. These are **debug/unoptimized, statically verified packages**, not installed release builds. Native launch remains **UNRUN**: Linux hosted UID-map policy refused the required isolated namespace; Windows/macOS safe OS-user/webview containment is not established. All three runtime refusal steps remain non-success. Report: `rust/test-artifacts/ci-default-run-43433712227/owner-report.md`.
+
+No sandbox/profile policy will be weakened to manufacture a native PASS. Further default native qualification needs suitable disposable native desktop/OS-user resources or an explicitly reviewed isolation design. The C# application and existing artwork/data remain preserved.
+
 ## Remaining acceptance
 
 Actual default installed builds/install-upgrade-uninstall/data retention, supported architectures/display stacks/accessibility/audio/GPU, real locked or denied protected-store prompts/native picker, wider catalog/native opener/history-clear scope, broader migration and final whole-product review remain open. The dependency scan found RUSTSEC-2026-0459 in baseline SQLite; the source-reviewed correction to SQLite3.54.1 is integrated and passed fresh three-platform qualification. Remembered-control and cache privacy scopes do not implement broad downloaded-history removal or secure erasure. GLib unsoundness/unmaintained and dev-only LOW advisory warnings are retained separately. Do not describe the alpha as dependency-audit clean, fully supported, or ready to replace C#.

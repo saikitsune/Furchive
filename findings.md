@@ -27,5 +27,8 @@ Selftestpairedphases3/4 isolatequalification-onlynativeentry, actualUIverify/sav
 ## Local completed-media authority
 Local bytes require currentaccount/queryauthorization and explicitnativegrant anewafterrestart; durableCompletedrecord+publicationnativeidentity+SHA256+admittedURL match before boundedread. Changed/missinglocalpublication is visibleerror, no silentnetworkfallbackconcealingcorruption. No recursivecollectionscan/arbitraryrendererpath/implicitlegacygrant. Byte snapshot goes through existingMIME/dimensionvalidation/scopedloopback/cachegeneration checks.
 
+## Default non-self-test platform evidence
+Actualrun43433712227/b9ca10f producedall3ordinarydefaultpackageswithuniqueCargoJSONfeaturecustom-protocolonly,sourcecommit/tree,andcompleteactualnestedpayload/executablehashesverified. Defaultnativeharnessrefusedbeforelaunch:hostedLinuxuid_mapwriteEPERM(with0ownedprocesssurvivors),WinKnownFoldercannotberedirectedbyAPPDATAenv,macOSHOMEdoesnotprovablycontainWKWebView/nativeprofileeffects. Thesearequalificationresource/designlimits, notthreeproductcrashes. Existing017b21cengineeringactual3OSproofisdistinctandcannotreplaceordinarynativeacceptance. Rawrefusal/failedpriorrunsandindependentsourceverdictsretained;nohostsecuritychangesperformed.
+
 ## Decisions
 Desktop first; e621 only; safe first-run rating, account filters respected; no telemetry. Harmless generated media/HTTP fixtures only in repeatable tests. Native media support must be qualified per actual WebView engine.

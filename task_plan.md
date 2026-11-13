@@ -6,6 +6,9 @@ Working e621-focused Windows/Linux/macOS desktop app with Rust engine, Tauri 2 a
 ## Constraints
 Preserve old C# source, user data, art and history. No production/server changes, license choice, model/provider changes, main merge or release publication without approval. Test-first behavior slices; real artifacts/tests required. Read scoped repository AGENTS.md if present. Keep milestone-scale progress and honest platform gaps.
 
+## Current platform acceptance boundary
+Ordinarydefaultpackages atb9ca10f/run43433712227 builtandpassedactualstatic/source/feature/payloadhashchecks onWindowsx64/Linuxx64/macOSarm64;defaultno-selftest/customprotocolonly,27hosttestsperOS/Linux4supervisorPASS. NativeGUIall3UNRUN andwholeworkflowFAILatprelaunch/runtimeadmission:actualLinuxUID-mapEPERM,WinKnownFolder/macWKcontainmentunproven. No workaroundweakeninghostpolicyorusingrealprofiles. Nativeacceptanceblockedontrustworthy disposableOS-user/native desktopresources orseparatelyapprovedprofileisolationdesign; do not repeatunchangeddenials orclaimcompletion. Currentexactreport rust/test-artifacts/ci-default-run-43433712227/owner-report.md. WholegoalNOTCOMPLETE.
+
 ## Current verified volume milestone
 Runtime017b21c/run43427455162 all9jobs/9actualZIPsourcepackagebinary/capture/account/corevaultownerverified. Actualrenderedvolume.5mutedforall3codecsonWebKitGTK/WebView2/WKWebView;31+13product+6account/36framesperOS,164namedRust94component17unitstrictquality. InitialLinux356/Windows37.8/macOS985ms<=1000,scroll53/32.5/158<=250;mac15msmarginretained. Sourceef389wholeNyx+returnPASS;originald047/run43423773747LinuxFAILpreserved. Default-packagequalificationtoolingcorrectedsourcecc2d5d3 hasboundedindependentdeltaPASS;nativeall3UNRUN,notinstalledapproval. Wholeproductgapsremain; no C#retirement/license/main/publication. See rust/test-artifacts/ci-run-43427455162/owner-report.md.
 
