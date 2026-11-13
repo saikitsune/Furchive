@@ -4,8 +4,10 @@
 compile_error!("furchive-downloads requires Linux, macOS or Windows native capabilities");
 
 mod files;
+mod metadata;
 mod model;
 mod worker;
+pub use metadata::{MetadataStatus, NormalizedMetadata, METADATA_LIMIT};
 pub use model::*;
 pub use worker::{Control, Worker};
 

@@ -10,7 +10,7 @@ export type Suggestion={name:string;category:unknown;post_count:number};
 export type Preferences={filename_template:string;pool_filename_template:string;concurrent_downloads:number;duplicates:'skip'|'overwrite'|'rename';gallery_scale:number;cache_limit_bytes:number;restore_session:boolean;save_metadata:boolean;start_muted:boolean};
 export type LegacyPreview={digest:string;searches:SavedSearch[];pins:{key:{source:string;id:string};name:string;post_count:number}[];warnings:string[];queue:unknown};
 export type ImportReport={imported_searches:number;imported_pins:number;skipped_searches:number;skipped_pins:number};
-export type DownloadJob={id:number;post_id:string;state:string;bytes:number;total_bytes?:number|null;bytes_per_second?:number|null;eta_seconds?:number|null;relative_path:string;error:string|null;group_id?:string|null;group_label?:string|null;group_position?:number|null};
+export type DownloadJob={id:number;post_id:string;state:string;bytes:number;total_bytes?:number|null;bytes_per_second?:number|null;eta_seconds?:number|null;relative_path:string;error:string|null;metadata_status?:'NotRequested'|'Pending'|'Written'|'Failed';metadata_error?:string|null;metadata_retry_available?:boolean;group_id?:string|null;group_label?:string|null;group_position?:number|null};
 export type Identity={id:number;name:string};
 export type Invoke=<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class BrowserBridge {
@@ -32,7 +32,7 @@ export class BrowserBridge {
  queueWholePool(id:number,ratings:RatingFilter){return this.invoke<string>('queue_whole_pool',{id,ratings});}
  controlGroup(id:string,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_group_control',{id,verb});}
  jobs(){return this.invoke<DownloadJob[]>('download_jobs');}
- control(id:number,verb:'pause'|'resume'|'cancel'){return this.invoke<void>('download_control',{id,verb});}
+ control(id:number,verb:'pause'|'resume'|'cancel'|'retry_metadata'){return this.invoke<void>('download_control',{id,verb});}
  accountStatus(){return this.invoke<Identity|null>('account_status');}
  login(username:string,key:string){return this.invoke<Identity>('account_login',{username,key});}
  restoreAccount(){return this.invoke<Identity|null>('account_restore');}

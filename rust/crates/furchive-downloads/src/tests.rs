@@ -1,3 +1,11 @@
+#[path = "tests/metadata_repair.rs"]
+mod metadata_repair;
+
+// Preserve the independent reviewer's regression bytes verbatim.
+#[rustfmt::skip]
+#[path = "tests/reviewer_regressions.rs"]
+mod reviewer_regressions;
+
 #[cfg(feature = "fixture-http")]
 #[tokio::test]
 async fn explicit_fixture_engine_downloads_real_bytes_and_refuses_nonloopback_origin() {
@@ -682,6 +690,7 @@ fn platform_adapter_atomic_publication_keeps_open_original_and_identity() {
 
 use super::*;
 
+mod metadata;
 mod native;
 
 fn symlink(

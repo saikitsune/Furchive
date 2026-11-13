@@ -1,28 +1,8 @@
 {
-  "base_head": "10c9e330a676541f32b2e7714053469d3f846aa6",
+  "base_head": "05d1bf378b8b73d63110aa588c73d62a7e5bece6",
+  "repair_base": "372d9b6cb7dd9a1816cf393a39e141d9df3abfd1",
   "scope": "rust/crates/furchive-downloads/",
-  "changed_paths": [
-    "rust/crates/furchive-downloads/Cargo.toml",
-    "rust/crates/furchive-downloads/README.md",
-    "rust/crates/furchive-downloads/contracts/NATIVE.md",
-    "rust/crates/furchive-downloads/contracts/source-manifest.json",
-    "rust/crates/furchive-downloads/contracts/test-inventory.json",
-    "rust/crates/furchive-downloads/scripts/milestone_evidence.py",
-    "rust/crates/furchive-downloads/scripts/native_check.py",
-    "rust/crates/furchive-downloads/scripts/preflight.py",
-    "rust/crates/furchive-downloads/scripts/test_native_check.py",
-    "rust/crates/furchive-downloads/scripts/windows_cfg_probe.py",
-    "rust/crates/furchive-downloads/scripts/windows_clippy_check.py",
-    "rust/crates/furchive-downloads/scripts/windows_crate_check.py",
-    "rust/crates/furchive-downloads/src/files.rs",
-    "rust/crates/furchive-downloads/src/files/unix.rs",
-    "rust/crates/furchive-downloads/src/files/windows.rs",
-    "rust/crates/furchive-downloads/src/lib.rs",
-    "rust/crates/furchive-downloads/src/model.rs",
-    "rust/crates/furchive-downloads/src/tests.rs",
-    "rust/crates/furchive-downloads/src/tests/native.rs",
-    "rust/crates/furchive-downloads/src/worker.rs"
-  ],
+  "milestone": "normalized-furchive-v1 sidecars; REY-META-01 correction; implementation handoff only",
   "files": {
     ".gitignore": {
       "sha256": "dc5adb4bf99b793a4f0cba94a552dd9b86e933c40f60d5d73b40cf98d378477c",
@@ -37,40 +17,60 @@
       "bytes": 38861
     },
     "README.md": {
-      "sha256": "27a31c513f9825a7908c6baee96b4ef4aeed7f637101989db845d4dc5da90df3",
-      "bytes": 15403
+      "sha256": "16d531625f0374d572fc4b5ee69b56f5662bc65142106ed30cb8861baef2eafc",
+      "bytes": 15782
     },
     "src/files/unix.rs": {
-      "sha256": "6d752eb1cd92e4f0443fcc218b83a125fe0c5892df98e15dc88e9d45701d1f1a",
-      "bytes": 4002
+      "sha256": "674e79a407e44a547d99c98bdee39ba15325c9031391fe2fdf5b1c6c9594356f",
+      "bytes": 4026
     },
     "src/files/windows.rs": {
-      "sha256": "6140394cebe1a2aff5c375f783a3747df49f006d1e81197da9c94c3512e1fcc0",
-      "bytes": 14649
+      "sha256": "a2d12968a0f46abd34042821352fa1171ce09ead5e87065ca9e394d8c78bf254",
+      "bytes": 14720
     },
     "src/files.rs": {
-      "sha256": "bad22e2cb7a29cc9189f2a712cdc43b7fc4fcbc5fce3e7018ca747f5ebd366be",
-      "bytes": 8476
+      "sha256": "2dcaf4d6f191ecb6be62c934578932de3caa55474d476cf8e7b36ddf25f9616d",
+      "bytes": 12310
     },
     "src/lib.rs": {
-      "sha256": "926a5cd4186453f376637a04d4e28474a8ab1aedb0326f82d7223277ec347891",
-      "bytes": 395
+      "sha256": "6e2096a024337b4fa12f9e2d42c7a4715c274546d4265c91eef250f809d38461",
+      "bytes": 481
+    },
+    "src/metadata.rs": {
+      "sha256": "5c5eae46fb185b047821c55425ec6dc0354043ea95564f7161b25b0cfa427fd9",
+      "bytes": 13265
     },
     "src/model.rs": {
-      "sha256": "149918289e09b2a5dad305cfefb5fdeca66ab4abab8c9ce2d94bbc14a4f42115",
-      "bytes": 20522
+      "sha256": "29d56d073acafebc6b11e94641d8447fabaab944d599f076f345e75c53a2a459",
+      "bytes": 22728
+    },
+    "src/tests/metadata.rs": {
+      "sha256": "133c5492ea83e18257d6f662817389672112e955a9f0d77973f8bb694baaa162",
+      "bytes": 15141
+    },
+    "src/tests/metadata_repair.rs": {
+      "sha256": "b7d20adbd8afebe4604ef6eb01d8ad102e8a38b6c0144a0675b7ab01c5b3e4b7",
+      "bytes": 12306
+    },
+    "src/tests/metadata_safety.rs": {
+      "sha256": "52e502d946a306abfd65417c574b30a615c06f96a39144b48cb3050c6e19ef6f",
+      "bytes": 16133
     },
     "src/tests/native.rs": {
       "sha256": "62e394c8657cdfc7ab8212bc9459bac78b1aa5cb36f87a1f708c92b89a341929",
       "bytes": 6128
     },
+    "src/tests/reviewer_regressions.rs": {
+      "sha256": "d6c99284a8992cffd7df148ee9824f8d7ddf5f612d00ec5ad940f093bf4f8480",
+      "bytes": 2986
+    },
     "src/tests.rs": {
-      "sha256": "4713474671285ee6fabcd27dba34da77f63337bc675def5019d382d2cb2a02f7",
-      "bytes": 72202
+      "sha256": "895c91a2309a380aa45a03d5fcba2254d1132f7c45de2699ad1f177c9017f2a8",
+      "bytes": 72427
     },
     "src/worker.rs": {
-      "sha256": "0b71c76661b721790c97ae3038327b7ba004da2737e84a62cbe81bc4614b4e41",
-      "bytes": 24765
+      "sha256": "cede9de5142a508b854eac529c45b9596963e45229ecb9de2e03745830545135",
+      "bytes": 26760
     },
     "scripts/check.py": {
       "sha256": "68b0240d9cdee14f4f537d0cce62f83ae25105b4fae91da85bc36327cc6a2107",
@@ -79,6 +79,14 @@
     "scripts/evidence.py": {
       "sha256": "07db479c475f9f6fbf6ae3353cc71b8d6b4e6f4a7f7a1e2f06615b531d7f41f7",
       "bytes": 1619
+    },
+    "scripts/metadata_inventory.py": {
+      "sha256": "187e6902378f0219eebbc68d66c46ae54010ed04d61e230a5f45a872fa64e1d2",
+      "bytes": 3029
+    },
+    "scripts/metadata_source.py": {
+      "sha256": "fe628cb71432caf14314fe4319c007dba7b41afa49fb5bc045ade56d8c38ec9e",
+      "bytes": 2384
     },
     "scripts/milestone_evidence.py": {
       "sha256": "bbd1a1fcf7f24132e56a89d7c0522bc1ab70efa4d357a267cb94eb7864923bd7",
@@ -113,34 +121,628 @@
       "bytes": 884
     },
     "contracts/NATIVE.md": {
-      "sha256": "83e50ff3154a9a52ba2f7c1bd01f362c11d125889e27e884fb150550c0445942",
-      "bytes": 12697
+      "sha256": "cf011cfdd2a66bc99dd2f954266a6eb21e95a960fd168d60be20058574e4e480",
+      "bytes": 13812
     },
     "contracts/test-inventory.json": {
-      "sha256": "011bfd540dd0ba6c2d76f46bd9ae0acb059fa796809c829ab846f54559f33759",
-      "bytes": 13096
+      "sha256": "96feaa4d6bc12dd0c01deb2516cef667db6399f830e138d6a38f078358e7b882",
+      "bytes": 21430
     }
   },
   "inventory": {
     "linux": {
-      "count": 56,
-      "sha256": "f535ea733a7a04cd6523a22fd3594b9056bd23de7ada5c4bb228e6c96fa20049"
+      "count": 85,
+      "sha256": "79bf4d787beefdad297d4de8d26f069587b85a5cf2fcf073da2f141aab485c19"
     },
     "darwin": {
-      "count": 55,
-      "sha256": "ab135511db6da86cc0620ebed70c6e7b6f832921f470295866afef1d717e9e84"
+      "count": 84,
+      "sha256": "54a555de2f28a68703fdc4d53a8e9461aaa6351bf1cf5212f305c1d939f95c50"
     },
     "win32": {
-      "count": 57,
-      "sha256": "f82c7621210e280a34db1f69c67eaa09190ed9131e0669b22724db626c3d7444"
+      "count": 86,
+      "sha256": "205f52efea78dcff976a5f07efc86c3dbfb625f854c7c64e77c4f8cdefd6c54e"
     }
   },
   "verification": {
-    "linux": "local-completed-media candidate local gate in progress",
-    "windows": "new local-reader native gate pending",
-    "macos": "new local-reader native gate pending"
+    "linux": "native core tests/fixture/doc/fmt/strict Clippy; see isolated verification.json",
+    "windows": "UNRUN for this candidate; reviewed closed inventory updated intentionally",
+    "macos": "UNRUN for this candidate; reviewed closed inventory updated intentionally",
+    "packaged_webview": "UNRUN on all OS; campaign now requires 27+11 checks; no CI dispatched"
   },
-  "native_receipt": "test-artifacts/native-linux/receipt.json",
-  "previous_manifest_sha256": "e3418b7edb5e6de0e1b626ea108a48563dd102a7957148cc8ff66e7faf194e60",
-  "integration_base": "4c7290a7727eec5c726ee747865b0c8925cb0a46"
+  "verification_receipts": [
+    {
+      "label": "workspace",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--workspace",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 9.28,
+      "log": "final-workspace.log",
+      "sha256": "6f6b18607ad6981674cd55e9bce38a22b2139ae519ec8d278a47b2154a81a826",
+      "rust_summaries": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "label": "workspace-fixture",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--workspace",
+        "--features",
+        "furchive-app/fixture-downloads",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 11.29,
+      "log": "final-workspace-fixture.log",
+      "sha256": "deeca0db2cd4e74ce26ca6a4570669d131b237071afc04299e6e5983bf2389bf",
+      "rust_summaries": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.47s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "label": "core",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/crates/furchive-downloads/Cargo.toml",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "--test-threads=1"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 28.57,
+      "log": "final-core.log",
+      "sha256": "5d618bd71f91c6910d400e6e38905818ff73fd9a9c665079eda28adc553a3fe5",
+      "rust_summaries": [
+        "test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 27.17s"
+      ]
+    },
+    {
+      "label": "core-fixture",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/crates/furchive-downloads/Cargo.toml",
+        "--all-targets",
+        "--features",
+        "fixture-http",
+        "--locked",
+        "--offline",
+        "--",
+        "--test-threads=1"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 29.16,
+      "log": "final-core-fixture.log",
+      "sha256": "c3bcd63541fb243750e41d5f30a78218157b7f751346fb14b867de3246ec9cac",
+      "rust_summaries": [
+        "test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.03s"
+      ]
+    },
+    {
+      "label": "core-doc",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/crates/furchive-downloads/Cargo.toml",
+        "--doc",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.87,
+      "log": "final-core-doc.log",
+      "sha256": "c92a7d2d856afb605157cd55d095433094583ffa7f643539e03db8c20b275de9",
+      "rust_summaries": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+      ]
+    },
+    {
+      "label": "catalog",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/crates/furchive-catalog/Cargo.toml",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.13,
+      "log": "final-catalog.log",
+      "sha256": "8ba331559eaa18a115e00914001adae3adbc2175e0a15503ee58595ad7e2139e",
+      "rust_summaries": [
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "label": "workspace-fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.24,
+      "log": "final-workspace-fmt.log",
+      "sha256": "eaefd48c9d51d75b79f47e031b0d78588e53116e5313ecdbc52d0428cec0524e",
+      "rust_summaries": []
+    },
+    {
+      "label": "core-fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "rust/crates/furchive-downloads/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.12,
+      "log": "final-core-fmt.log",
+      "sha256": "08670008e254b3fbc225197f051dc4382ebf196e8488b988a13151cf2e25b8da",
+      "rust_summaries": []
+    },
+    {
+      "label": "desktop-fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "rust/apps/desktop/src-tauri/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.08,
+      "log": "final-desktop-fmt.log",
+      "sha256": "71fb33954966ba79eadb9e48e433d3600fa2b6b04dfd816ba609b48c930e4f59",
+      "rust_summaries": []
+    },
+    {
+      "label": "workspace-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 1.13,
+      "log": "final-workspace-clippy.log",
+      "sha256": "abdafbc3a47394b0d13ad915753222b533c51769ddde020ab398b27f221a645f",
+      "rust_summaries": []
+    },
+    {
+      "label": "core-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "rust/crates/furchive-downloads/Cargo.toml",
+        "--all-targets",
+        "--all-features",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.65,
+      "log": "final-core-clippy.log",
+      "sha256": "02cb440bdd5f0e219da84a957ba82d79f1ec234a8bbbbd3ca38b95d0b7cd0b8b",
+      "rust_summaries": []
+    },
+    {
+      "label": "desktop-host",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/apps/desktop/src-tauri/Cargo.toml",
+        "--features",
+        "self-test",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 3.76,
+      "log": "final-desktop-host.log",
+      "sha256": "59e9e109de42effc3c53c1bd0117a52e1f654fb03469dacdf35a04050b2e0cd7",
+      "rust_summaries": [
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+      ]
+    },
+    {
+      "label": "desktop-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "rust/apps/desktop/src-tauri/Cargo.toml",
+        "--all-targets",
+        "--features",
+        "self-test",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 1.47,
+      "log": "final-desktop-clippy.log",
+      "sha256": "4313c77b3b0e35f8596cb0b6e26e144b0e8474ab965b34d02300b9619ca9f02f",
+      "rust_summaries": []
+    },
+    {
+      "label": "frontend-check",
+      "command": [
+        "npm",
+        "run",
+        "check"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars/rust/apps/desktop",
+      "exit": 0,
+      "seconds": 2.29,
+      "log": "final-frontend-check.log",
+      "sha256": "a04373009f1b1565290508b0f30aaa03f77c06f5b28f18b01143affbdc771428",
+      "rust_summaries": []
+    },
+    {
+      "label": "frontend-unit",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars/rust/apps/desktop",
+      "exit": 0,
+      "seconds": 0.26,
+      "log": "final-frontend-unit.log",
+      "sha256": "68fb3873e47cef594bff99531200927de3249b6f32ddc8e2c06de78421f97c7f",
+      "rust_summaries": []
+    },
+    {
+      "label": "frontend-dom",
+      "command": [
+        "npm",
+        "run",
+        "test:components"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars/rust/apps/desktop",
+      "exit": 0,
+      "seconds": 3.33,
+      "log": "final-frontend-dom.log",
+      "sha256": "129e98a17930b7b6245dd8aba446f47039bc58bda7e3e08bc5e57720a5405e75",
+      "rust_summaries": []
+    },
+    {
+      "label": "frontend-build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars/rust/apps/desktop",
+      "exit": 0,
+      "seconds": 0.91,
+      "log": "final-frontend-build.log",
+      "sha256": "c992a8dd7dfe7a251ad1b205332c77504dabf0ff92108a79d90ffe8fa8c86584",
+      "rust_summaries": []
+    },
+    {
+      "label": "native-receipt-guards",
+      "command": [
+        "python3",
+        "rust/scripts/browse-test-native.py"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.3,
+      "log": "final-native-receipt-guards.log",
+      "sha256": "3f6ff514096a934a47bf09af291352a0b0b9c5f12a243e3e24edc6c36fc7f8f8",
+      "rust_summaries": []
+    },
+    {
+      "label": "package-guards",
+      "command": [
+        "python3",
+        "rust/scripts/test-package-qualification.py"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.26,
+      "log": "final-package-guards.log",
+      "sha256": "c85cf95a796fbabad12146803747cbc71f8e5007d48f7c57966154aa75f3c823",
+      "rust_summaries": []
+    },
+    {
+      "label": "platform-guards",
+      "command": [
+        "python3",
+        "rust/scripts/test-platform-assets.py"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.2,
+      "log": "final-platform-guards.log",
+      "sha256": "d6d575a5e00d2119bb583e8b405cc8131e0826f636c333a235440c89690e8a35",
+      "rust_summaries": []
+    },
+    {
+      "label": "account-ui-guards",
+      "command": [
+        "python3",
+        "rust/scripts/account-ui-test.py"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 2.42,
+      "log": "final-account-ui-guards.log",
+      "sha256": "4f51a72f8960f3b5ef403ca63df7a540ef5988f36f88c27812c117d06fcdc339",
+      "rust_summaries": []
+    },
+    {
+      "label": "core-receipt-guards",
+      "command": [
+        "python3",
+        "rust/crates/furchive-downloads/scripts/test_native_check.py"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.21,
+      "log": "final-core-receipt-guards.log",
+      "sha256": "c049006391662434f0b4348f88061582e6202a31d88e4cef753fb1316c506730",
+      "rust_summaries": []
+    },
+    {
+      "label": "workspace-allfeatures",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--workspace",
+        "--all-features",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 20.85,
+      "log": "final-workspace-allfeatures.log",
+      "sha256": "ea204ff95416503181aa579326194bf4f976e131a2f6e84cfaba3135be32a087",
+      "rust_summaries": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.58s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.42s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "label": "workspace-allfeatures-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 1.28,
+      "log": "final-workspace-allfeatures-clippy.log",
+      "sha256": "e6e457fb98cdc1c75b84cba596829f0998707ea1b7c8a9f5b7dd50a870bffc7e",
+      "rust_summaries": []
+    },
+    {
+      "label": "desktop-cache-host",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/apps/desktop/src-tauri/Cargo.toml",
+        "--features",
+        "self-test,cache-test-contract",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 2.67,
+      "log": "final-desktop-cache-host.log",
+      "sha256": "535ccfa653149779e90334e2cf104990307441ca9468e4bb407e9a21aaef1fd9",
+      "rust_summaries": [
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s"
+      ]
+    },
+    {
+      "label": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "cwd": "/opt/data/projects/Furchive/rust/test-artifacts/next-metadata-sidecars",
+      "exit": 0,
+      "seconds": 0.01,
+      "log": "final-diff-check.log",
+      "sha256": "c7753431f3496a29763ea670c866ba7e3639fef8109bab757cd7b6ae5f89303c",
+      "rust_summaries": []
+    }
+  ]
 }

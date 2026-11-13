@@ -72,7 +72,7 @@
  async function queuePoolPage(){try{await bridge.queuePoolPage();await refreshJobs();}catch(e){error=String(e);}}
  async function controlGroup(id:string,verb:'pause'|'resume'|'cancel'){try{await bridge.controlGroup(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function queueDownload(id:string){try{await bridge.queue(id);await refreshJobs();}catch(e){error=String(e);}}
- async function control(id:number,verb:'pause'|'resume'|'cancel'){try{await bridge.control(id,verb);await refreshJobs();}catch(e){error=String(e);}}
+ async function control(id:number,verb:'pause'|'resume'|'cancel'|'retry_metadata'){try{await bridge.control(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
  async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
  async function readAppliedPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request===preferenceGeneration)applied=value;}catch(e){if(request===preferenceGeneration)error=String(e);}}
@@ -111,6 +111,8 @@
     <label>Gallery scale<input aria-label="Gallery scale" type="number" min="0.5" max="2" step="0.25" bind:value={preferences.gallery_scale}></label>
     <label>Resident media cache (MiB)<input aria-label="Resident media cache MiB" type="number" min="16" max="512" step="16" value={Math.min(512,preferences.cache_limit_bytes/1048576)} onchange={event=>{if(preferences)preferences.cache_limit_bytes=Number(event.currentTarget.value)*1048576;}}></label>
     <label class="import-row"><input aria-label="Start videos muted" type="checkbox" bind:checked={preferences.start_muted}>Start videos muted</label>
+    <label class="import-row"><input aria-label="Save metadata sidecars" type="checkbox" bind:checked={preferences.save_metadata}>Save metadata sidecars</label>
+    <p>Normalized Furchive v1 JSON for new jobs only, beside the exact completed filename. Raw upstream JSON is unavailable (deferred). Existing jobs are not exported automatically.</p>
     <label>Duplicate downloads<select aria-label="Duplicate downloads" value={preferences.duplicates} onchange={event=>{const value=event.currentTarget.value;if(preferences&&(value==='skip'||value==='rename'||value==='overwrite'))preferences.duplicates=value;}}><option value="skip">Skip existing</option><option value="rename">Keep both (rename)</option><option value="overwrite">Replace after verified completion</option></select></label>
     <p>Media cache is compressed resident bytes, capped at 512 MiB. Decoded webview surfaces and in-flight response buffers have separate lifetimes. Gallery and mute changes apply after acknowledged save; mute policy applies on next media open.</p>
     <label>Concurrent downloads<select aria-label="Concurrent downloads" value={preferences.concurrent_downloads} onchange={event=>{if(preferences)preferences.concurrent_downloads=Number(event.currentTarget.value);}}>{#each [1,2,3,4] as n}<option value={n}>{n}</option>{/each}</select></label>
@@ -122,6 +124,9 @@
    {#each jobs as job}<div data-job-id={job.id} data-job-bytes={job.bytes} data-group-position={job.group_position??undefined}><b>Post {job.post_id} · {job.state}</b><p>{job.bytes}{job.total_bytes!=null?' / '+job.total_bytes:''} bytes · {job.relative_path}</p>
     {#if job.total_bytes!=null&&job.total_bytes>0}<progress aria-label={'Download progress '+job.id} max={job.total_bytes} value={job.bytes}></progress>{/if}
     <p>{job.bytes_per_second!=null?Math.round(job.bytes_per_second)+' B/s':'Rate unavailable'} · {job.eta_seconds!=null?'ETA '+Math.ceil(job.eta_seconds)+'s':'ETA unavailable'}</p>{#if job.error}<p>{job.error}</p>{/if}
+    {#if job.metadata_status}<p data-metadata-status={job.metadata_status}>Metadata: {job.metadata_status}</p>{/if}
+    {#if job.metadata_error}<p>{job.metadata_error}</p>{/if}
+    {#if job.state==='Completed'&&job.metadata_status==='Failed'&&job.metadata_retry_available}<button data-retry-metadata onclick={()=>control(job.id,'retry_metadata')}>Retry metadata</button>{/if}
     <button disabled={!['Paused','Failed'].includes(job.state)} onclick={()=>control(job.id,'resume')}>Resume</button><button disabled={!['Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'pause')}>Pause</button><button disabled={!['Paused','Failed','Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'cancel')}>Cancel</button>
    </div>{/each}
    <h2>Recover old data</h2><p>Choose the old Furchive data folder in the system picker. Preview first; artwork, keys, settings and queued downloads are never imported automatically.</p><button onclick={previewLegacy}>Preview legacy data</button>

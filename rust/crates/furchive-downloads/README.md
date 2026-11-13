@@ -6,6 +6,10 @@ and the explicit per-platform [test inventory](contracts/test-inventory.json).
 This nested workspace intentionally does not edit the parent Cargo.toml/lockfile.
 The integrator owns workspace membership and native Actions/runtime acceptance.
 
+Opt-in normalized metadata sidecars now have an independent durable status and
+bounded no-network retry. See the full [representation/lifecycle/recovery contract](../../docs/normalized-metadata-sidecars.md).
+This is not raw upstream JSON; `save_metadata` remains false by default.
+
 ## Exact public interface
 
 ```rust,no_run
@@ -50,8 +54,10 @@ async fn download(db: &Path, root: &Path, media: &MediaItem) -> furchive_downloa
 - `Engine::{enqueue(Intent) -> Result<i64>, jobs() -> Result<Vec<Job>>}`.
 - `Engine::start(self: &Arc<Self>) -> Result<Worker>`.
 - `Worker::control(&self, id: i64, Control) -> impl Future<Output=Result<Job>>`.
-  `Control::{Pause,Cancel,Resume}`; unknown ID errors; terminal jobs no-op and
-  return their actual state. Paused/Failed resume at original FIFO position.
+  `Control::{Pause,Cancel,Resume,RetryMetadata}`; unknown ID errors. Metadata retry
+  is bounded and restricted to completed media with a failed admitted sidecar.
+  Other terminal-job controls are no-ops and return their actual state.
+  Paused/Failed media resume at original FIFO position.
 - `Worker::shutdown(self) -> impl Future<Output=Result<()>>` joins the worker.
   Drop requests shutdown but is **not** an acknowledged stop. Always await shutdown.
 - `Job` exposes `id`, domain `key`, `state`, committed `bytes`, `relative_path`,
@@ -169,9 +175,9 @@ This is process-crash evidence, **not** power-loss/filesystem fault-injection pr
   directory. No OS sandbox against malicious same-UID interference, hardlink
   insertion during a write, bind mounts or database-file replacement. DB path is
   trusted application state, not a user-supplied media path. Prefer DB outside root.
-- No groups, sidecars, batch atomicity, parallel workers, bandwidth scheduling,
-  pool intent discovery, credentialed downloads, retries/backoff, queue reordering,
-  cleanup UI, subscriptions/progress event stream or product integration.
+- No media-plus-sidecar multi-file atomicity, bandwidth scheduling,
+  credentialed downloads, automatic retries/backoff, queue reordering,
+  destructive staging-cleanup UI or full product acceptance.
 - Synchronous fsync/hash/DB work is not throughput optimized; use a dedicated Tokio
   runtime/thread rather than GUI or shared latency-sensitive executor. Unknown
   lengths have no quota beyond i64 byte-count ceiling; integration must enforce

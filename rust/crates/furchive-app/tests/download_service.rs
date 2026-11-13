@@ -178,6 +178,56 @@ fn post() -> MediaItem {
     p.rating = furchive_domain::Rating::Safe;
     p
 }
+
+#[tokio::test]
+async fn metadata_opt_in_snapshots_single_page_and_whole_pool_only_at_new_admission() {
+    let dir = owned_temp();
+    let root = dir.path().join("art");
+    std::fs::create_dir(&root).unwrap();
+    let hub = Downloads::new(dir.path().join("queue.sqlite"));
+    hub.select_root(&root).await.unwrap();
+    hub.enqueue(&post(), &Settings::default()).await.unwrap();
+    let settings = Settings {
+        save_metadata: true,
+        ..Default::default()
+    };
+    let mut p = post();
+    p.title = "At admission".into();
+    hub.enqueue(&p, &settings).await.unwrap();
+    let mut pool = furchive_domain::Pool::new(
+        furchive_domain::PoolKey::new("e621", "3").unwrap(),
+        "Fixture pool".into(),
+    );
+    pool.post_ids = vec!["1".into()];
+    let page = furchive_app::browse::assemble_pool_page(
+        pool,
+        vec![p.clone()],
+        0,
+        1,
+        &furchive_domain::RatingFilter::Any,
+    )
+    .unwrap();
+    hub.enqueue_pool_page(&page, &settings).await.unwrap();
+    hub.enqueue_whole_pool(&page, &settings).await.unwrap();
+    p.title = "Changed after admission".into();
+    let jobs = hub.jobs().await.unwrap();
+    assert_eq!(jobs[0].metadata_status, "NotRequested");
+    assert!(jobs[1..].iter().all(|j| j.metadata_status == "Pending"
+        && j.state == "Paused"
+        && !j.metadata_retry_available));
+    hub.shutdown().await.unwrap();
+    let db = rusqlite::Connection::open(dir.path().join("queue.sqlite")).unwrap();
+    let text: String = db
+        .query_row("SELECT payload FROM jobs WHERE id=2", [], |r| r.get(0))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["intent"]["metadata"]["title"], "At admission");
+    let hub = Downloads::new(dir.path().join("queue.sqlite"));
+    hub.select_root(&root).await.unwrap();
+    assert_eq!(hub.jobs().await.unwrap()[0].metadata_status, "NotRequested");
+    assert!(hub.control(2, "retry_metadata").await.is_err());
+    hub.shutdown().await.unwrap();
+}
 #[tokio::test]
 async fn download_service_requires_explicit_root_and_acknowledges_persisted_controls() {
     let dir = owned_temp();

@@ -1,0 +1,23 @@
+# Combined viewer navigation and normalized metadata milestone
+
+## Inputs and independent source gates
+
+- Cross-page source: local commit95695f324f3e87958cdfc79354e258d7e06fa601, exact reviewed treec09b3f41d7825c026bba3212fac72ff23af328f1/archive93d3379e26a81940f49a983ec0474756059014c3a55c2f684758df3a04e1dda6. Nyx fresh re-review SOURCEPASS closes NYX-XPV-01/02; originalBLOCK+failingassertions preserved.
+- Metadata source:5449de486f01ba16e3a6ce4678abf31f5b67061e/treec41ad86f0c16d30a06d9f522e7bedf31c6f0d823/archive3797884abd6aa2d95af59ccb9dd89ac2a0ac6412403a131573512c915e30500b. Fresh independentSOURCEPASS closesREY-META-01; original372d9b6/BLOCK retained.
+- Neutral Lyra accepted allfourhunkdecisions. File-only profile lacked shell/Git; no permissions/model/profile changes were made. Owner exported realbase/metadata/crosspageindexstages, applied exactlyneutraldisjointunionchoices, verified29+11checkunion againstBOTHinputlists, staged/testedmechanics. Lyra finalfileauditPASS explicitlyattributesownerexecutions. Originalcapabilityblockreport retained,notrewrittenasexecutedPASS.
+
+## Combined implementation
+
+Rust-owned submitted search/favorites/pool cursors crosspage at viewable edges, skipboundedfilteredpages and preservepoolordinalholes. Renderer followsrequiredRustviewable_ids; queryANDviewer-intentfences keepclose/newselectionfinal, reconcilingbackendpageauthority onlateedgeIPC. Accountfilters/canonicalURLvalidation remain.
+
+Newjobs alone optin to normalized-furchive-v1 JSON sidecars appended toactualfinalmediafilename includingRename. Native nofollow/identity/digest/boundedstage/atomicNOREPLACE publication protectsoldart+sidecars. MetadataPending/Written/Failed isdistinctfromCompletedmedia; explicitboundedretry performsno mediaHTTP, needsunchangedpublicationandcurrentrootgrant. RawupstreamJSON/.post.json notclaimed. Existingjobsarenotadopted.
+
+## Real composed acceptance test
+
+viewer_metadata_integration.rs uses actual identified-UA localHTTPmetadata with nofilterbypass/credentialforwarding, Browser/Database/ViewerCursor/MediaCache, pauseddownload admission/Resume, existingartRename, normalizedsidecarreceipt, acknowledgedshutdown/reopen andexactfullimagebytes withfixtureHTTPlistenerclosed. Existingart and sidecar remainbyteexact. This is Rustcompositionproof, notWebViewruntime.
+
+Owner localcombinedgates:133allfeatureworkspace tests,85Linuxcoredefault/86fixture+1doc,6catalog,9actualdesktopRust,50component15unit,Svelte0errors0warnings,fmt/strictworkspace+default/allfeaturedesktopClippy/build. Exactcommands/cwd/exits/logSHA inownedintegrationevidence. Registeredcampaignincludesbothfeaturecontracts,29first-run+11restart UIchecks; sixrealnativeaccountUIchecks/media108frames/core/vault gates unchanged. NewcandidateactualthreeOSpackagequalificationPENDING; inputnativePASSnottransferred.
+
+## Retained limitations
+
+REY-META-N1 nonblockingconservativepolicy: unclaimed/emptyinterruptedsidecarstage remainsFailed/preserved and requiresmanualoperatorremoval; no destructivecleanup. Wholeaction/kernel-I/Ocancellation,largehistoryperformance,restorefailurestale-presentation/reloadaffordance,broaderfilesystems/architectures/HiDPI/Wayland/accessibility/audio/installupgrade/signing/notarization/lockedstoreprompts andfinalwholeproductreview remainunverified. No wholeapplicationcompletionor releaseapproval. OriginalC#80payloadfiles/artwork/data/history preserved; nomainmerge/release/license/model/provider/profile/safetycontrolchanges.

@@ -1,5 +1,8 @@
 # Execution progress
 
+## Combined cross-page viewer and metadata candidate
+- Correctedcrosspagec09b3f4SOURCEPASS(NYX-XPV-01/02closed),metadata5449de4SOURCEPASS(REY-META-01closed); originalBLOCKs/evidence retained. NeutralLyrafourhunkdisjointunionaudited, ownermechanics/testsexecutedwithoutprofile/tool/modelchange. Combined133workspace/85default86fixturecore+doc/9nativeRust/50DOM15unit/fmtstrictClippycheckbuildPASS; newcomposedHTTPpage->Rename+sidecar->offlineRestartlocalread/originalpreservationPASS.29+11nativeproduct+6realaccount/108frames freshcampaignpending.WholeappNOTCOMPLETE; see rust/docs/combined-viewer-metadata-milestone.md.
+
 ## Cross-page repair in progress
 - Originalindependentreview134ae93fBLOCKtwoMAJOR:NYX-XPV-01metadatanullURLtrapsnavigation;NYX-XPV-02oldedgereceiptreopensclosedViewer/overridesnewselection. Ownerreproducedoriginal8DOMcases7fail1pass(exit1), preservedoriginalevidence. RepairRustviewable_idsprojectionanddualquery/viewerfence+oldpagesubmittedauthorityreconciliation; extra delayedreconciliationregressionREDthenGREEN. Expanded49DOM+15unit and131workspace/9desktopRust/fmtstrictClippy/check/buildPASS, freshreview/nativeproofpending. BrammetadataREY-META-01repairt_ecbcbd21/verificationt_8210a380isolated, original372d9b6BLOCK preserved.
 

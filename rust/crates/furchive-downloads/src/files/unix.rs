@@ -70,9 +70,9 @@ pub(super) fn mkdir(dir: &File, name: &str, private: bool) -> io::Result<()> {
 }
 pub(super) fn file(dir: &File, name: &str, access: Access) -> io::Result<File> {
     let access = match access {
-        Access::Read => OFlags::RDONLY,
+        Access::Read | Access::PublicationRead => OFlags::RDONLY,
         Access::Create => OFlags::CREATE | OFlags::RDWR,
-        Access::Exclusive => OFlags::CREATE | OFlags::EXCL | OFlags::WRONLY,
+        Access::Exclusive => OFlags::CREATE | OFlags::EXCL | OFlags::RDWR,
     };
     Ok(File::from(fs::openat(
         dir,

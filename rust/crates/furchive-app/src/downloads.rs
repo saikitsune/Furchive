@@ -17,6 +17,9 @@ pub struct JobView {
     pub eta_seconds: Option<f64>,
     pub relative_path: String,
     pub error: Option<String>,
+    pub metadata_status: String,
+    pub metadata_error: Option<String>,
+    pub metadata_retry_available: bool,
     pub group_id: Option<String>,
     pub group_label: Option<String>,
     pub group_position: Option<u32>,
@@ -134,6 +137,11 @@ impl Downloads {
                 .map(furchive_downloads::ExpectedHash::Md5),
         )
         .map_err(|e| e.to_string())?;
+        let intent = if settings.save_metadata {
+            intent.with_metadata(post).map_err(|e| e.to_string())?
+        } else {
+            intent
+        };
         // Persist paused first: explicit Resume is the network-start intent. No restored
         // queued job can run before the host directory has again been granted.
         value
@@ -223,6 +231,11 @@ impl Downloads {
                         .map(furchive_downloads::ExpectedHash::Md5),
                 )
                 .map_err(|e| e.to_string())?;
+                let intent = if settings.save_metadata {
+                    intent.with_metadata(post).map_err(|e| e.to_string())?
+                } else {
+                    intent
+                };
                 intents.push((
                     u32::try_from(entry.position).map_err(|_| "pool position too large")?,
                     intent,
@@ -344,6 +357,11 @@ impl Downloads {
                     eta_seconds: rate.eta_seconds,
                     relative_path: j.relative_path,
                     error: j.error,
+                    metadata_status: format!("{:?}", j.metadata_status),
+                    metadata_error: j.metadata_error,
+                    metadata_retry_available: j.state == furchive_downloads::State::Completed
+                        && j.metadata_status == furchive_downloads::MetadataStatus::Failed
+                        && j.metadata_attempts < 3,
                     group_id: j.group_id,
                     group_label: j.group_label,
                     group_position: j.group_position,
@@ -356,6 +374,7 @@ impl Downloads {
             "pause" => Control::Pause,
             "resume" => Control::Resume,
             "cancel" => Control::Cancel,
+            "retry_metadata" => Control::RetryMetadata,
             _ => return Err("unknown download control".into()),
         };
         let active = self.active.lock().await;

@@ -6,6 +6,9 @@ Working e621-focused Windows/Linux/macOS desktop app with Rust engine, Tauri 2 a
 ## Constraints
 Preserve old C# source, user data, art and history. No production/server changes, license choice, model/provider changes, main merge or release publication without approval. Test-first behavior slices; real artifacts/tests required. Read scoped repository AGENTS.md if present. Keep milestone-scale progress and honest platform gaps.
 
+## Current combined capability candidate
+Owner integrating corrected reviewed cross-page cursor/required viewable_ids/viewer lifetime with normalized metadata sidecars/retry; source gates individuallyPASS, originalBLOCKs preserved. Combinedowner133workspace/85default86fixturecore+doc/9desktopRust/50component15unit pass; realHTTPcursor->Rename+sidecar->restartserverclosed->localmedia+oldartpreservation tested. Neutral fourconflicthunksunion29+11productchecks retained. Currentcombined packaged-native allOSUNRUN; fullplatform/finalwholeproduct acceptance stillopen. No globaldoneclaim.
+
 ## Phases
 - [complete] 0: Durable execution records and scoped tooling; unprivileged native SDK recovered (runtime sandbox remains blocked).
 - [in_progress] 1: Basic native image/video play+seek and10,000-item/40DOM gallery proof PASS on three hosted OS runners at b1e5b40. Extracted Debian/macOS.app/Windows portable payload proof also PASS at1367d40; animation/lifecycle/performance/platform breadth gates remain before full UI commitment.
@@ -14,10 +17,7 @@ Preserve old C# source, user data, art and history. No production/server changes
 - [in_progress] 4: Product UI/IPC integrated with packaged search/media/settings/legacy/account/download/group contracts; whole-pool native25+8/runtime proof atbc7cf3d/run43343132832 owner-verified; metadata and platform breadth acceptance open.
 - [pending] 5: Independent milestone review, native build/package matrix, release readiness (human release approval).
 
-## Current verified local-media checkpoint
-05d1bf3/run43361536749 ownerverified9successfuljobs/9actualZIPs/3package+binaryidentities/26+10productUI+6realaccountchecksperOS/108frames/exactsource/core/vault. Freshprocesslocalimage decode succeedswithALLmediaHTTPdeniedafterexplicitrootregrantandnormalfilteredmetadataSearch. Independent correctedsource43afeefePASS, originalNYX-LM-01BLOCKremains. Metadataimplementationisolatedt_1850e170/returnt_6048ada1worktree next-metadata-sidecars; crosspageviewer/broaderplatform/finalwholeproduct acceptance stillopen. No completeappclaim.
-
-## Historical local-media repair
+## Active next milestone
 Local completed-media URL/publication/nativeidentity/size/hash authority implemented and Linux-tested, currentpage and explicitrootregrant required. Nyx originalfc96441 review demonstrated MAJOR NYX-LM-01 stale-miss regrant; originalBLOCK preserved. Owner4test deterministicregression RED2fail/2pass thenGREEN4pass by retaining capturedgrantandsemaphore in fallback. Correctedcandidate fresh review/packagedmatrix pending. OriginalC# remains; metadata/crosspageviewer/platformbreadth/fullreview stayopen.
 
 ## Current ownership

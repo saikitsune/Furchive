@@ -360,8 +360,9 @@ pub(super) fn mkdir(dir: &File, name: &str, private: bool) -> io::Result<()> {
 pub(super) fn file(dir: &File, name: &str, access: Access) -> io::Result<File> {
     let (access, disposition, private) = match access {
         Access::Read => (1, OPEN, false),
+        Access::PublicationRead => (1 | DELETE, OPEN, false),
         Access::Create => (1 | 2 | DELETE, OPEN_IF, true),
-        Access::Exclusive => (1 | 2, CREATE, true),
+        Access::Exclusive => (1 | 2 | DELETE, CREATE, true),
     };
     open(
         Some(dir),

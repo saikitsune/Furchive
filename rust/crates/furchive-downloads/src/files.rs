@@ -20,6 +20,7 @@ pub(crate) enum FileIdentity {
 #[derive(Clone, Copy)]
 enum Access {
     Read,
+    PublicationRead,
     Create,
     Exclusive,
 }
@@ -39,6 +40,7 @@ pub(crate) fn relative(path: &str) -> Result<()> {
                 || s == "."
                 || s == ".."
                 || s.eq_ignore_ascii_case(".furchive-downloads")
+                || s.to_ascii_lowercase().starts_with(".furchive-metadata-")
                 || s.contains(':')
                 || s.chars().any(char::is_control)
         })
@@ -81,6 +83,91 @@ pub(crate) fn database_outside_grant(path: &Path, grant: &Grant) -> Result<()> {
 }
 
 impl Grant {
+    pub fn metadata_read(&self, dir: &File, name: &str) -> Result<File> {
+        Ok(platform::file(dir, name, Access::Read)?)
+    }
+    pub fn metadata_exists(&self, dir: &File, name: &str) -> Result<bool> {
+        Ok(platform::exists(dir, name)?.is_some())
+    }
+    pub fn match_metadata(&self, dir: &File, name: &str, bytes: &[u8]) -> Result<FileIdentity> {
+        use std::io::Read;
+        let file = platform::file(dir, name, Access::Read)?;
+        if !file.metadata()?.is_file() || file.metadata()?.len() != bytes.len() as u64 {
+            return Err(Error::Invalid(
+                "existing metadata differs; preserved".into(),
+            ));
+        }
+        let mut existing = Vec::new();
+        let identity = identity(&file)?;
+        file.take(crate::METADATA_LIMIT as u64 + 1)
+            .read_to_end(&mut existing)?;
+        if existing != bytes {
+            return Err(Error::Invalid(
+                "existing metadata differs; preserved".into(),
+            ));
+        }
+        Ok(identity)
+    }
+    pub fn metadata_stage(
+        &self,
+        dir: &File,
+        name: &str,
+        receipt: Option<&crate::model::Publication>,
+        bytes: &[u8],
+    ) -> Result<File> {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut file = match if receipt.is_some() {
+            Err(io::Error::from(io::ErrorKind::AlreadyExists))
+        } else {
+            platform::file(dir, name, Access::Exclusive)
+        } {
+            Ok(file) => file,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                let (expected, digest) = receipt
+                    .cloned()
+                    .ok_or_else(|| Error::Invalid("unclaimed metadata stage; preserved".into()))?
+                    .parts();
+                use sha2::Digest;
+                if digest != format!("{:x}", sha2::Sha256::digest(bytes)) {
+                    return Err(Error::Invalid("metadata stage receipt mismatch".into()));
+                }
+                let mut file = platform::file(dir, name, Access::PublicationRead)?;
+                if !platform::private(&file)? || identity(&file)? != expected {
+                    return Err(Error::Invalid("metadata stage identity changed".into()));
+                }
+                let mut old = Vec::new();
+                (&mut file)
+                    .take(crate::METADATA_LIMIT as u64 + 1)
+                    .read_to_end(&mut old)?;
+                if old != bytes {
+                    return Err(Error::Invalid("metadata stage bytes changed".into()));
+                }
+                file
+            }
+            Err(e) => return Err(e.into()),
+        };
+        if !platform::private(&file)? {
+            return Err(Error::Invalid(
+                "metadata stage is not private regular file".into(),
+            ));
+        }
+        file.seek(SeekFrom::Start(0))?;
+        sync_directory(dir)?;
+        Ok(file)
+    }
+    pub fn publish_metadata(&self, dir: &File, temp: &str, file: &File, name: &str) -> Result<()> {
+        let source = platform::file(dir, temp, Access::Read)?;
+        if !platform::private(&source)? || identity(&source)? != identity(file)? {
+            return Err(Error::Invalid("metadata stage namespace changed".into()));
+        }
+        match platform::publish(dir, temp, file, dir, name, false) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(Error::Invalid(
+                "metadata collision; existing file preserved".into(),
+            )),
+            Err(e) => Err(e.into()),
+        }
+    }
     pub fn open(path: &Path) -> Result<Self> {
         let root = platform::root(path)?;
         // Probe before creating staging or opening the database. Unsupported sync is
@@ -163,8 +250,16 @@ impl Grant {
         }
     }
     pub fn destination(&self, path: &str) -> Result<File> {
+        let (parent, name) = self.read_parent(path)?;
+        let file = platform::file(&parent, &name, Access::Read)?;
+        if !file.metadata()?.is_file() {
+            return Err(Error::Invalid("destination is not regular".into()));
+        }
+        Ok(file)
+    }
+    pub fn read_parent(&self, path: &str) -> Result<(File, String)> {
         relative(path)?;
-        // Resolve read-only: unlike parent(), reconciliation never creates ancestors.
+        // Read/retry/reconciliation never creates missing ancestors.
         let (parents, name) = path.rsplit_once('/').unwrap_or(("", path));
         let mut parent = self.root.try_clone()?;
         if !parents.is_empty() {
@@ -179,11 +274,7 @@ impl Grant {
             }
         }
         self.ensure_media_directory(&parent)?;
-        let file = platform::file(&parent, name, Access::Read)?;
-        if !file.metadata()?.is_file() {
-            return Err(Error::Invalid("destination is not regular".into()));
-        }
-        Ok(file)
+        Ok((parent, name.to_owned()))
     }
     pub fn ensure_media_directory(&self, dir: &File) -> Result<()> {
         if identity(dir)? == identity(&self.stage)? {

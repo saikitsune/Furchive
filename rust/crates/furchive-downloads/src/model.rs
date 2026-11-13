@@ -52,6 +52,7 @@ pub enum ExpectedHash {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Intent {
     pub(crate) key: PostKey,
     pub(crate) url: String,
@@ -59,10 +60,15 @@ pub struct Intent {
     pub(crate) policy: DuplicatePolicy,
     pub(crate) size: Option<u64>,
     pub(crate) hash: Option<ExpectedHash>,
+    #[serde(default)]
+    pub(crate) metadata: Option<crate::NormalizedMetadata>,
 }
 impl Intent {
     pub(crate) fn validate(&self) -> Result<()> {
         validate_url(&self.url)?;
+        if let Some(snapshot) = &self.metadata {
+            snapshot.validate_for(self)?;
+        }
         crate::files::relative(&self.relative)?;
         if self.size.is_some_and(|n| n > i64::MAX as u64) {
             return Err(Error::Invalid("size too large".into()));
@@ -98,6 +104,7 @@ impl Intent {
             policy,
             size: media.file_size_bytes,
             hash,
+            metadata: None,
         })
     }
 }
@@ -121,6 +128,14 @@ pub struct Job {
     pub bytes: u64,
     pub relative_path: String,
     pub error: Option<String>,
+    #[serde(default)]
+    pub metadata_status: crate::MetadataStatus,
+    #[serde(default)]
+    pub metadata_error: Option<String>,
+    #[serde(default)]
+    pub metadata_attempts: u8,
+    #[serde(default)]
+    pub(crate) metadata_publication: Option<Publication>,
     #[serde(default)]
     pub group_id: Option<String>,
     #[serde(default)]
@@ -268,6 +283,7 @@ impl Engine {
                 job.state = State::Queued;
                 engine.save(&job)?;
             }
+            engine.finish_metadata(&mut job)?;
             if matches!(job.state, State::Cancelled | State::Skipped) {
                 engine.grant.remove_part(job.id)?;
             }
@@ -348,6 +364,14 @@ impl Engine {
             bytes: 0,
             relative_path: intent.relative.clone(),
             error: None,
+            metadata_status: if intent.metadata.is_some() {
+                crate::MetadataStatus::Pending
+            } else {
+                crate::MetadataStatus::NotRequested
+            },
+            metadata_error: None,
+            metadata_attempts: 0,
+            metadata_publication: None,
             group_id: None,
             group_label: None,
             group_position: None,
@@ -417,6 +441,14 @@ impl Engine {
                 bytes: 0,
                 relative_path: intent.relative.clone(),
                 error: None,
+                metadata_status: if intent.metadata.is_some() {
+                    crate::MetadataStatus::Pending
+                } else {
+                    crate::MetadataStatus::NotRequested
+                },
+                metadata_error: None,
+                metadata_attempts: 0,
+                metadata_publication: None,
                 intent,
                 validator: None,
                 total: None,
@@ -451,6 +483,24 @@ impl Engine {
                 || job.total.is_some_and(|n| n > i64::MAX as u64)
             {
                 return Err(Error::Invalid("inconsistent persisted job".into()));
+            }
+            use crate::MetadataStatus;
+            if job.metadata_attempts > 3
+                || (job.intent.metadata.is_none()
+                    && (job.metadata_status != MetadataStatus::NotRequested
+                        || job.metadata_publication.is_some()
+                        || job.metadata_error.is_some()
+                        || job.metadata_attempts != 0))
+                || (job.intent.metadata.is_some()
+                    && job.metadata_status == MetadataStatus::NotRequested)
+                || (job.metadata_status == MetadataStatus::Written
+                    && (job.state != State::Completed
+                        || job.metadata_publication.is_none()
+                        || job.metadata_error.is_some()))
+                || (job.metadata_status == MetadataStatus::Failed
+                    && (job.state != State::Completed || job.metadata_error.is_none()))
+            {
+                return Err(Error::Invalid("inconsistent metadata lifecycle".into()));
             }
             match (&job.group_id, &job.group_label, job.group_position) {
                 (None, None, None) => {}

@@ -161,6 +161,23 @@ The final gate is actually exercised with this option on Linux. Cross cfg checks
 `python .../scripts/windows_crate_check.py`, `windows_clippy_check.py`,
 `windows_cfg_probe.py`; these explicitly use existing `+stable`, no native claims.
 
+## Normalized metadata milestone inventory (current source)
+
+The earlier counts above are historical portable-core evidence, not the current
+sidecar candidate. Current reviewed `test-inventory.json` counts are Linux **85**,
+macOS **84**, Windows **86**, plus one explicit fixture-http test per platform.
+The sidecar milestone adds 21 named tests; the REY-META-01 correction adds the
+unchanged two reviewer regressions and six retry boundary tests, including its
+real-process-kill harness. Linux current receipts exercise these tests;
+macOS/Windows current build/runtime and all packaged-WebView sidecar campaigns
+remain **UNRUN**.
+`metadata_inventory.py` enumerates intentional additions explicitly rather than
+learning expectations from discovery. `metadata_source.py` freezes the current
+source-manifest against the isolated `metadata-repair/verification.json` logs;
+original `metadata-evidence` receipts and BLOCK verdict are historical, unchanged;
+`milestone_evidence.py` is retained only for its earlier historical milestone.
+See [sidecar lifecycle and limits](../../../docs/normalized-metadata-sidecars.md).
+
 ## Changed-file / hash inventory
 
 `contracts/source-manifest.json` contains exact changed deliverables and SHA256

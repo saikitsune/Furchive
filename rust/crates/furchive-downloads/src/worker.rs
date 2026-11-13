@@ -24,7 +24,7 @@ fn hashes(file: &mut std::fs::File) -> Result<(String, String)> {
         format!("{:x}", md5.finalize()),
     ))
 }
-fn validate_file(file: &mut std::fs::File, job: &Job) -> Result<String> {
+pub(crate) fn validate_file(file: &mut std::fs::File, job: &Job) -> Result<String> {
     let length = file.metadata()?.len();
     if length != job.bytes
         || job.intent.size.is_some_and(|n| n != length)
@@ -86,6 +86,7 @@ pub enum Control {
     Pause,
     Cancel,
     Resume,
+    RetryMetadata,
 }
 struct Command {
     id: i64,
@@ -154,6 +155,25 @@ impl Engine {
             commands,
         })
     }
+    fn metadata_retry_conflicts(&self, id: i64, active_ids: &[i64]) -> Result<bool> {
+        let jobs = self.jobs()?;
+        let job = jobs
+            .iter()
+            .find(|j| j.id == id)
+            .ok_or_else(|| Error::Invalid("unknown job".into()))?;
+        let (parent, _) = self.grant.read_parent(&job.relative_path)?;
+        let identity = crate::files::identity(&parent)?;
+        for other in jobs.iter().filter(|j| {
+            active_ids.contains(&j.id)
+                || (j.id != id && matches!(j.state, State::Running | State::Publishing))
+        }) {
+            let (parent, _) = self.grant.read_parent(&other.relative_path)?;
+            if crate::files::identity(&parent)? == identity {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
     fn apply_control(&self, command: Command) {
         let result = (|| {
             let mut job = self
@@ -161,6 +181,13 @@ impl Engine {
                 .into_iter()
                 .find(|j| j.id == command.id)
                 .ok_or_else(|| Error::Invalid("unknown job".into()))?;
+            if matches!(command.control, Control::RetryMetadata) {
+                if self.metadata_retry_conflicts(job.id, &[])? {
+                    return Err(Error::Busy);
+                }
+                self.retry_metadata(&mut job)?;
+                return Ok(job);
+            }
             if matches!(
                 job.state,
                 State::Queued | State::Running | State::Paused | State::Failed
@@ -177,6 +204,7 @@ impl Engine {
                         job.error = None;
                     }
                     Control::Resume => {}
+                    Control::RetryMetadata => unreachable!(),
                 }
                 self.save(&job)?;
             }
@@ -223,7 +251,7 @@ impl Engine {
                             biased;
                             _ = stopped.changed() => break Event::Stop,
                             Some(command) = commands.recv() => {
-                                if command.id == id && !matches!(command.control, Control::Resume) { break Event::Control(command); }
+                                if command.id == id && matches!(command.control, Control::Pause | Control::Cancel) { break Event::Control(command); }
                                 self.apply_control(command);
                             },
                             result = &mut transfer => break Event::Done(result),
@@ -243,7 +271,7 @@ impl Engine {
                     }
                 };
                 if let Err(error) = outcome {
-                    if job.state != State::Publishing {
+                    if !matches!(job.state, State::Publishing | State::Completed) {
                         job.state = State::Failed;
                     }
                     job.error = Some(error.to_string());
@@ -293,17 +321,24 @@ impl Engine {
                     job.state=State::Running;self.save(&job)?;
                     let engine=self.clone();let http=client.clone();let id=job.id;
                     let handle=tasks.spawn(async move{
-                        if let Err(error)=engine.transfer(&http,&mut job).await{if job.state!=State::Publishing{job.state=State::Failed;}job.error=Some(error.to_string());engine.save(&job)?;}
+                        if let Err(error)=engine.transfer(&http,&mut job).await{if !matches!(job.state,State::Publishing|State::Completed){job.state=State::Failed;}job.error=Some(error.to_string());engine.save(&job)?;}
                         Ok::<_,Error>(())
                     });active.insert(handle.id(),(id,handle));
                 }
                 tokio::select!{biased;
                     _=stopped.changed()=>{},
                     Some(command)=commands.recv()=>{
+                        // Media Completed is not a writer-join receipt: optional
+                        // metadata still owns the directory until its task exits.
+                        if matches!(command.control,Control::RetryMetadata){
+                            let active_ids=active.values().map(|(id,_)|*id).collect::<Vec<_>>();
+                            let conflict=self.metadata_retry_conflicts(command.id,&active_ids);
+                            match conflict{Ok(false)=>{},Ok(true)=>{let _=command.reply.send(Err(Error::Busy));continue;},Err(error)=>{let _=command.reply.send(Err(error));continue;}}
+                        }
                         if matches!(command.control,Control::Resume)&&active.values().any(|(id,_)|*id==command.id){
                             let result=self.jobs()?.into_iter().find(|j|j.id==command.id).ok_or_else(||Error::Invalid("unknown job".into()));let _=command.reply.send(result);continue;
                         }
-                        if !matches!(command.control,Control::Resume){
+                        if matches!(command.control,Control::Pause | Control::Cancel){
                             if let Some((_,handle))=active.values().find(|(id,_)|*id==command.id){
                                 let target=handle.id();handle.abort();
                                 while active.contains_key(&target){
@@ -489,7 +524,8 @@ impl Engine {
         crate::files::sync_directory(&self.grant.stage)?;
         job.state = State::Completed;
         job.error = None;
-        self.save(job)
+        self.save(job)?;
+        self.finish_metadata(job)
     }
     fn publish(&self, job: &mut Job, part: &mut std::fs::File) -> Result<()> {
         let sha = validate_file(part, job)?;
@@ -556,7 +592,8 @@ impl Engine {
                         return Err(Error::Invalid("injected crash after directory sync".into()));
                     }
                     job.state = State::Completed;
-                    return self.save(job);
+                    self.save(job)?;
+                    return self.finish_metadata(job);
                 }
                 Err(e)
                     if e.kind() == std::io::ErrorKind::AlreadyExists

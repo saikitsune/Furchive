@@ -4,10 +4,22 @@ No live artwork, accounts, browser surrogate, installs or sandbox changes.
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3,time
-CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','presentation-preferences','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','whole-pool-queue','viewer-cross-page-search','viewer-cross-page-pool','download-pause-ack','download-complete','download-cancel',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart','local-completed-media-restart']}
+CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','presentation-preferences','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','whole-pool-queue','viewer-cross-page-search','viewer-cross-page-pool','download-pause-ack','download-complete','download-cancel','normalized-metadata-rename',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart','local-completed-media-restart','normalized-metadata-restart']}
 def validate(receipt,phase):
  if receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase]):raise ValueError('missing or invalid native browsing receipt')
  return True
+
+def validate_metadata(downloads,jobs,media):
+ """Fixed harmless campaign contract; never a production renderer path API."""
+ by_id={j['id']:j for j in jobs};failed=by_id[8];written=by_id[9]
+ if any(by_id[i].get('metadata_status','NotRequested')!='NotRequested' for i in by_id if i<8):raise ValueError('old jobs adopted metadata')
+ if failed['state']!='Completed' or failed['metadata_status']!='Failed' or not failed['metadata_error'] or written['state']!='Completed' or written['metadata_status']!='Written' or written['metadata_error'] is not None:raise ValueError('metadata acknowledgement mismatch')
+ if failed['relative_path']!='e621/100.png' or written['relative_path']!='e621/100 (1).png':raise ValueError('metadata Rename target mismatch')
+ if (downloads/'e621/100.png').read_bytes()!=media or (downloads/'e621/100 (1).png').read_bytes()!=media or (downloads/'e621/100.png.metadata.json').read_bytes()!=b'owned unrelated metadata must survive':raise ValueError('metadata collision/art preservation mismatch')
+ data=(downloads/'e621/100 (1).png.metadata.json').read_bytes();value=json.loads(data)
+ if len(data)>1048576 or value['representation']!='normalized-furchive-v1' or value['key']!={'source':'e621','id':'100'} or value['url']!='https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png':raise ValueError('normalized metadata shape/URL mismatch')
+ if set(downloads.rglob('*.metadata.json'))!={downloads/'e621/100.png.metadata.json',downloads/'e621/100 (1).png.metadata.json'}:raise ValueError('unexpected metadata export')
+ return data
 
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('binary',type=Path);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args();out=args.output.resolve();binary=args.binary.resolve()
@@ -17,6 +29,8 @@ def main():
  (legacy/'settings.json').write_text(json.dumps({'SavedSearches':json.dumps([{'Name':'Migrated fixture search','IncludeTags':['fox'],'ExcludeTags':[],'RatingFilterIndex':3}]),'E621ApiKey':'synthetic-key-must-not-import'}))
  legacy_hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in legacy.iterdir()}
  downloads=out/'downloads-fixture';downloads.mkdir();(downloads/'existing-art.bin').write_bytes(b'owned existing download must survive')
+ collision=downloads/'e621/100.png.metadata.json';collision.parent.mkdir();collision.write_bytes(b'owned unrelated metadata must survive')
+ metadata_before_restart=None
  class Handler(BaseHTTPRequestHandler):
   def log_message(self,format,*args):pass
   def do_GET(self):
@@ -69,6 +83,11 @@ def main():
    with (out/f'phase-{phase}.log').open('w') as log:
     subprocess.run([str(binary)],env=env,stdout=log,stderr=log,check=True,timeout=60)
    validate(json.loads(receipt.read_text()),phase)
+   with sqlite3.connect(out/'profile/downloads.sqlite') as db:
+    jobs=[json.loads(row[0]) for row in db.execute('SELECT payload FROM jobs ORDER BY id')]
+   current_metadata=validate_metadata(downloads,jobs,(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures/still.png').read_bytes())
+   if phase==1:metadata_before_restart=current_metadata
+   elif current_metadata!=metadata_before_restart:raise ValueError('metadata changed across restart')
   settings=json.loads((out/'profile/settings.json').read_text())
   if settings['gallery_scale']!=1.5 or settings['cache_limit_bytes']!=16777216 or settings['start_muted'] is not False or settings['duplicates']!='rename':raise ValueError('persisted presentation preference mismatch')
   with sqlite3.connect(out/'profile/state.sqlite') as db:
