@@ -6,7 +6,10 @@ Working e621-focused Windows/Linux/macOS desktop app with Rust engine, Tauri 2 a
 ## Constraints
 Preserve old C# source, user data, art and history. No production/server changes, license choice, model/provider changes, main merge or release publication without approval. Test-first behavior slices; real artifacts/tests required. Read scoped repository AGENTS.md if present. Keep milestone-scale progress and honest platform gaps.
 
-## Current combined capability candidate
+## Verified combined capability milestone
+Exact6ecfaf2/run43393039602 ownerverifiedall9jobs/9actualZIPs/packageexecutablebindings/sourcefingerprints,29+11product+6realaccountchecksperOS/108frames/nativecorevault; nativequality135workspace+6catalog+9desktopRust/55component15unitfmtstrictClippycheckbuild. Crosspageandnormalizedmetadata/workflowboundedmilestonePASS; macOS741ms atunchanged1000msgate. Hostharnessvalidatessidecarbytes/preservation/restart, rawsidecarsnotexportedforownerindependentreread. This is notfullproduct/install/signing/accessibility/lockedstore/broaderarchitecture/filesystemapproval. Reviewedplanremainingparitybreadthandfinalindependentwholeproductreviewmuststillbeclosed. Originalfailuresretained.
+
+## Historical combined capability candidate
 Owner integrating corrected reviewed cross-page cursor/required viewable_ids/viewer lifetime with normalized metadata sidecars/retry; source gates individuallyPASS, originalBLOCKs preserved. Combinedowner133workspace/85default86fixturecore+doc/9desktopRust/50component15unit pass; realHTTPcursor->Rename+sidecar->restartserverclosed->localmedia+oldartpreservation tested. Neutral fourconflicthunksunion29+11productchecks retained. Currentcombined packaged-native allOSUNRUN; fullplatform/finalwholeproduct acceptance stillopen. No globaldoneclaim.
 
 ## Phases
