@@ -1,5 +1,8 @@
 name: Default package smoke (bounded)
 on:
+  push:
+    branches: [rewrite/rust]
+    paths: ['.github/workflows/rust-default-package.yml']
   workflow_dispatch:
 permissions:
   contents: read

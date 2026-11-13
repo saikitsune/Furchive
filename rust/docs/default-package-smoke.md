@@ -8,7 +8,7 @@ IPC, permissions, capabilities and security policy are unchanged. The existing
 `rust-qualification.yml` engineering campaign is unchanged. No TEST commands,
 fixture HTTP origins, injected JavaScript, CDP or browser surrogate are used.
 
-The new manually dispatched workflow is an **unfinished qualification lane**:
+The new workflow is an **unfinished qualification lane**:
 Windows and macOS intentionally return nonzero UNRUN before application launch;
 Linux returns nonzero UNRUN if unprivileged network isolation is denied. A static
 package success must never be counted as a default-runtime success. No CI push or
@@ -63,7 +63,7 @@ python rust/scripts/default-smoke.py --prepare-only --build-log build.log --outp
 See the workflow for exact pinned Actions, native dependencies, time budget,
 artifact allowlist and five-day retention. `sudo apt-get` there installs hosted
 builder prerequisites only; application execution never uses host root or a
-sandbox bypass. The workflow has only contents:read and no automatic push trigger.
+sandbox bypass. The workflow has only contents:read. GitHub returned404 when attempting manual dispatch of a new workflow absent from the default branch. Recovery adds an own-workflow-file-only push trigger on rewrite/rust; ordinary code/docs pushes do not launch this lane. No main-branch registration or merge is required, and no permissions/runtime/safety gates change.
 
 ## Linux native protocol (implemented, hosted execution still UNRUN)
 
