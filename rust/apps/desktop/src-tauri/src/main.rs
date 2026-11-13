@@ -196,6 +196,8 @@ fn main() {
             commands::legacy_confirm,
             commands::prepare_media,
             commands::viewer_step,
+            commands::browsing_session,
+            commands::forget_browsing_session,
             commands::clear_cache,
             commands::preview_templates,
             commands::preferences,

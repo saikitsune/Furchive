@@ -103,6 +103,7 @@ pub async fn viewer_step(
 ) -> Result<Option<furchive_app::viewer_cursor::NavigationPage>, String> {
     let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
+    let session_ticket = state.settings.session_ticket(cache.generation()?)?;
     let result = state
         .viewer_cursor
         .navigate(&state.browser, &cache, &id, delta)
@@ -112,6 +113,12 @@ pub async fn viewer_step(
             .pool_snapshot
             .lock()
             .map_err(|_| "pool snapshot poisoned")? = result.pool.clone();
+        if let Some(ticket) = session_ticket {
+            state.settings.remember_session(
+                ticket,
+                state.viewer_cursor.browsing_session(cache.generation()?)?,
+            )?;
+        }
     }
     Ok(result)
 }
@@ -251,6 +258,7 @@ pub async fn account_login(
     username: String,
     key: String,
 ) -> Result<furchive_e621::VerifiedIdentity, String> {
+    state.settings.invalidate_session_capture()?;
     state_cache(&app).begin_page()?;
     let vault = account_vault(&state)?;
     let result = state.account.login(&username, &key, &vault).await;
@@ -262,6 +270,7 @@ pub async fn account_restore(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<furchive_e621::VerifiedIdentity>, String> {
+    state.settings.invalidate_session_capture()?;
     state_cache(&app).begin_page()?;
     let vault = account_vault(&state)?;
     let result = state.account.restore(&vault).await;
@@ -273,6 +282,7 @@ pub async fn account_logout(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    state.settings.invalidate_session_capture()?;
     state_cache(&app).begin_page()?;
     state.account.deactivate().await;
     let vault = account_vault(&state)?;
@@ -390,6 +400,7 @@ pub async fn clear_cache(app: tauri::AppHandle, state: State<'_, AppState>) -> R
     // A write boundary drains currently admitted metadata operations before ACK.
     let _boundary = state.browse_boundary.write().await;
     let cache = state_cache(&app);
+    state.settings.invalidate_session_capture()?;
     cache.begin_page()?;
     state.viewer_cursor.clear()?;
     *state
@@ -397,6 +408,16 @@ pub async fn clear_cache(app: tauri::AppHandle, state: State<'_, AppState>) -> R
         .lock()
         .map_err(|_| "pool snapshot poisoned")? = None;
     state.db.clear_cache().await
+}
+#[tauri::command]
+pub fn browsing_session(
+    state: State<'_, AppState>,
+) -> Result<Option<furchive_app::browsing_session::BrowsingSession>, String> {
+    state.settings.browsing_session()
+}
+#[tauri::command]
+pub fn forget_browsing_session(state: State<'_, AppState>) -> Result<(), String> {
+    state.settings.forget_browsing_session()
 }
 #[tauri::command]
 pub fn preview_templates(
@@ -430,6 +451,7 @@ pub async fn search(
     let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
+    let session_ticket = state.settings.session_ticket(generation)?;
     *state
         .pool_snapshot
         .lock()
@@ -438,11 +460,20 @@ pub async fn search(
     cache.authorize_page(generation, &result.items)?;
     state.viewer_cursor.search(
         generation,
-        furchive_app::viewer_cursor::Intent::Search(query),
+        furchive_app::viewer_cursor::Intent::Search(query.clone()),
         page,
         result.next_page,
         viewable_ids(&result.items),
     )?;
+    if let Some(ticket) = session_ticket {
+        state.settings.remember_session(
+            ticket,
+            furchive_app::browsing_session::BrowsingSession::Search {
+                query: query.into(),
+                page,
+            },
+        )?;
+    }
     Ok(ViewablePage {
         viewable_ids: viewable_ids(&result.items),
         data: result,
@@ -466,6 +497,7 @@ pub async fn favorites(
     let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
+    let session_ticket = state.settings.session_ticket(generation)?;
     *state
         .pool_snapshot
         .lock()
@@ -474,11 +506,24 @@ pub async fn favorites(
     cache.authorize_page(generation, &result.items)?;
     state.viewer_cursor.search(
         generation,
-        furchive_app::viewer_cursor::Intent::Favorites { query, username },
+        furchive_app::viewer_cursor::Intent::Favorites {
+            query: query.clone(),
+            username: username.clone(),
+        },
         page,
         result.next_page,
         viewable_ids(&result.items),
     )?;
+    if let Some(ticket) = session_ticket {
+        state.settings.remember_session(
+            ticket,
+            furchive_app::browsing_session::BrowsingSession::Favorites {
+                query: query.into(),
+                username,
+                page,
+            },
+        )?;
+    }
     Ok(ViewablePage {
         viewable_ids: viewable_ids(&result.items),
         data: result,
@@ -496,6 +541,7 @@ pub async fn pool_page(
     let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
+    let session_ticket = state.settings.session_ticket(generation)?;
     *state
         .pool_snapshot
         .lock()
@@ -507,7 +553,7 @@ pub async fn pool_page(
     state.viewer_cursor.pool(
         generation,
         id,
-        ratings,
+        ratings.clone(),
         offset,
         result.total,
         result.next_offset,
@@ -538,6 +584,16 @@ pub async fn pool_page(
             .filter_map(|e| e.post.clone())
             .collect::<Vec<_>>(),
     );
+    if let Some(ticket) = session_ticket {
+        state.settings.remember_session(
+            ticket,
+            furchive_app::browsing_session::BrowsingSession::Pool {
+                id,
+                ratings,
+                offset,
+            },
+        )?;
+    }
     Ok(ViewablePage {
         data: result,
         viewable_ids: ids,

@@ -1,5 +1,6 @@
 pub mod account_session;
 pub mod browse;
+pub mod browsing_session;
 pub mod credentials;
 pub mod download_progress;
 pub mod downloads;

@@ -8,6 +8,7 @@ export type PoolPage={viewable_ids:string[];pool:{key:{source:string;id:string};
 export type NavigationPage={viewable_ids:string[];selected_id:string;page:number;offset:number;search:Omit<SearchPage,'viewable_ids'>|null;pool:Omit<PoolPage,'viewable_ids'>|null};
 export type Suggestion={name:string;category:unknown;post_count:number};
 export type Preferences={filename_template:string;pool_filename_template:string;concurrent_downloads:number;duplicates:'skip'|'overwrite'|'rename';gallery_scale:number;cache_limit_bytes:number;restore_session:boolean;save_metadata:boolean;start_muted:boolean};
+export type BrowsingSession={mode:'search';query:Query;page:number}|{mode:'favorites';query:Query;username:string;page:number}|{mode:'pool';id:number;ratings:RatingFilter;offset:number};
 export type LegacyPreview={digest:string;searches:SavedSearch[];pins:{key:{source:string;id:string};name:string;post_count:number}[];warnings:string[];queue:unknown};
 export type ImportReport={imported_searches:number;imported_pins:number;skipped_searches:number;skipped_pins:number};
 export type DownloadJob={id:number;post_id:string;state:string;bytes:number;total_bytes?:number|null;bytes_per_second?:number|null;eta_seconds?:number|null;relative_path:string;error:string|null;metadata_status?:'NotRequested'|'Pending'|'Written'|'Failed';metadata_error?:string|null;metadata_retry_available?:boolean;group_id?:string|null;group_label?:string|null;group_position?:number|null};
@@ -20,6 +21,8 @@ export class BrowserBridge {
  favorites(query:Query,username:string,page:number){return this.invoke<SearchPage>('favorites',{query,username,page});}
  pool(id:number,offset:number,ratings:RatingFilter){return this.invoke<PoolPage>('pool_page',{id,offset,limit:50,ratings});}
  suggestions(prefix:string){return this.invoke<Suggestion[]>('suggestions',{prefix});}
+ browsingSession(){return this.invoke<BrowsingSession|null>('browsing_session');}
+ forgetBrowsingSession(){return this.invoke<void>('forget_browsing_session');}
  clearCache(){return this.invoke<void>('clear_cache');}
  preferences(){return this.invoke<Preferences>('preferences');}
  previewTemplates(filenameTemplate:string,poolFilenameTemplate:string){return this.invoke<{filename:string;pool_filename:string}>('preview_templates',{filenameTemplate,poolFilenameTemplate});}

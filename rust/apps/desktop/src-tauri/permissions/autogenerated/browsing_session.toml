@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browsing-session"
+description = "Enables the browsing_session command without any pre-configured scope."
+commands.allow = ["browsing_session"]
+
+[[permission]]
+identifier = "deny-browsing-session"
+description = "Denies the browsing_session command without any pre-configured scope."
+commands.deny = ["browsing_session"]

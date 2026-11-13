@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-forget-browsing-session"
+description = "Enables the forget_browsing_session command without any pre-configured scope."
+commands.allow = ["forget_browsing_session"]
+
+[[permission]]
+identifier = "deny-forget-browsing-session"
+description = "Denies the forget_browsing_session command without any pre-configured scope."
+commands.deny = ["forget_browsing_session"]

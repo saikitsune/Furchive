@@ -3,10 +3,13 @@
  import Viewer from './Viewer.svelte';
  import Gallery from './Gallery.svelte';
  import {type MediaItem,createCatalog} from './media';
- import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview,type DownloadJob,type Identity} from './browser-bridge';
+ import {type BrowserBridge,type Query,type SearchPage,type PoolPage,type SavedSearch,type Suggestion,type Preferences,type LegacyPreview,type DownloadJob,type Identity,type BrowsingSession} from './browser-bridge';
  let {bridge}:{bridge:BrowserBridge}=$props();
  let include=$state<string[]>([]),exclude=$state<string[]>([]),includeInput=$state(''),excludeInput=$state('');
  let safe=$state(true),questionable=$state(false),explicit=$state(false),sort=$state<Query['sort']>('newest');
+ let remembered=$state<BrowsingSession|null>(null),sessionNotice=$state(''),artist=$state('');
+ let sessionRevision=0;
+ function editSession(){sessionRevision++;remembered=null;sessionNotice='';}
  let username=$state(''),poolId=$state(''),name=$state(''),saved=$state<SavedSearch[]>([]),pins=$state<{source:string;id:string}[]>([]),suggestions=$state<Suggestion[]>([]);
  let result=$state<SearchPage|null>(null),pool=$state<PoolPage|null>(null),error=$state(''),busy=$state(false),page=$state(1),mode=$state<'search'|'favorites'|'pool'>('search');
  let preferences=$state<Preferences|null>(null),applied=$state<Preferences|null>(null),preferenceNotice=$state('');
@@ -33,10 +36,10 @@
  let downloadGroups=$derived([...new Set(jobs.flatMap(j=>j.group_id?[j.group_id]:[]))].map(id=>({id,label:jobs.find(j=>j.group_id===id)?.group_label??id,members:jobs.filter(j=>j.group_id===id)})));
  let navigation=$derived({index:selectablePosts.findIndex(p=>p.key.id===selectedId),total:selectablePosts.length,hasPrevious:!busy&&(selectablePosts.findIndex(p=>p.key.id===selectedId)>0||(pool?poolOffset>0:page>1)),hasNext:!busy&&(selectablePosts.findIndex(p=>p.key.id===selectedId)<selectablePosts.length-1||(pool?pool.next_offset!==null:result?.next_page!=null))});
  let submitted:{query:Query;username:string;poolId:string}|null=null;
- const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
- onMount(()=>{void refresh();void readAppliedPreferences();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;preferenceGeneration++;templateGeneration++;};});
+ const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:artist||null,sort});
+ onMount(()=>{void refresh();void readAppliedPreferences();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;preferenceGeneration++;templateGeneration++;sessionRevision++;};});
  async function refresh(){try{[saved,pins]=await Promise.all([bridge.searches(),bridge.pins()]);}catch(e){error=String(e);}}
- function chip(which:'include'|'exclude',value:string){
+ function chip(which:'include'|'exclude',value:string){editSession();
   const token=value.trim();if(!token||/\s/.test(token)||token.startsWith('-')){error='Enter one unsigned tag at a time.';return;}
   if(which==='include'){if(!include.includes(token))include=[...include,token];includeInput='';}else{if(!exclude.includes(token))exclude=[...exclude,token];excludeInput='';}suggestions=[];suggestionGeneration++;
  }
@@ -45,7 +48,7 @@
  // A newer selection/close can occur after Rust committed an edge but before its
  // receipt arrives. Re-establish the submitted old page; never reopen after close.
  async function restoreAfterTurn(request:number,oldPage:number,oldOffset:number){
-  if(!submitted||request!==generation)return;const intent=submitted;
+  if(!submitted||request!==generation)return;editSession();const intent=submitted;
   try{if(mode==='pool'){const p=await bridge.pool(Number(intent.poolId),oldOffset,intent.query.ratings);if(request!==generation)return;pool=p;result=null;viewableIds=p.viewable_ids;poolOffset=oldOffset;}
    else{const p=mode==='favorites'?await bridge.favorites(intent.query,intent.username,oldPage):await bridge.search(intent.query,oldPage);if(request!==generation)return;result=p;pool=null;viewableIds=p.viewable_ids;page=oldPage;}
    const desired=desiredId;mediaGeneration++;selectedId=null;prepared=[];grants=[];if(desired&&viewableIds.includes(desired))await view(desired);
@@ -53,19 +56,19 @@
  }
  async function step(delta:number){
   if(cacheClearing||busy||!selectedId)return;const index=selectablePosts.findIndex(p=>p.key.id===selectedId);const next=selectablePosts[index+delta];if(next){await view(next.key.id);return;}
-  const id=selectedId,request=++generation,viewerRequest=++mediaGeneration,oldPage=page,oldOffset=poolOffset;selectedId=null;prepared=[];grants=[];busy=true;error='';
+  editSession();const id=selectedId,request=++generation,viewerRequest=++mediaGeneration,oldPage=page,oldOffset=poolOffset;selectedId=null;prepared=[];grants=[];busy=true;error='';
   try{const nextPage=await bridge.step(id,delta);if(request!==generation)return;if(viewerRequest!==mediaGeneration){await restoreAfterTurn(request,oldPage,oldOffset);return;}if(!nextPage){error='No more viewable media in this direction.';return;}
    thumbnails={};requestedPreviews.clear();pool=nextPage.pool?{...nextPage.pool,viewable_ids:nextPage.viewable_ids}:null;result=nextPage.search?{...nextPage.search,viewable_ids:nextPage.viewable_ids}:null;viewableIds=nextPage.viewable_ids;poolOffset=nextPage.offset;page=nextPage.page;await view(nextPage.selected_id);
   }catch(e){if(request===generation)error=String(e);}finally{if(request===generation)busy=false;}
  }
- async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){if(cacheClearing)return;const id=++generation;mediaGeneration++;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
-  const intent=paginate&&submitted?submitted:{query:query(),username,poolId};
+ async function run(nextMode:typeof mode,next=1,offset=0,paginate=false,restored:BrowsingSession|null=null){if(cacheClearing)return;editSession();const id=++generation;mediaGeneration++;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
+  const intent=restored?{query:restored.mode==='pool'?{include:[],exclude:[],ratings:restored.ratings,artist:null,sort:'newest' as const}:restored.query,username:restored.mode==='favorites'?restored.username:'',poolId:restored.mode==='pool'?String(restored.id):''}:paginate&&submitted?submitted:{query:query(),username,poolId};
   const q=intent.query;if(q.ratings!=='any'&&!q.ratings.only.length)throw Error('Select at least one rating.');
   if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;viewableIds=p.viewable_ids;poolOffset=offset;result=null;}
   else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;viewableIds=p.viewable_ids;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
- function clearAccountView(){generation++;mediaGeneration++;busy=false;result=null;pool=null;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();}
+ function clearAccountView(){editSession();generation++;mediaGeneration++;busy=false;result=null;pool=null;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();}
  async function login(){clearAccountView();error='';const key=accountKey;accountKey='';await tick();try{identity=await bridge.login(accountUser,key);}catch(e){error=String(e);}}
  async function restoreAccount(){clearAccountView();error='';try{identity=await bridge.restoreAccount();}catch(e){error=String(e);}}
  async function logout(){clearAccountView();identity=null;accountKey='';try{await bridge.logout();}catch(e){error=String(e);}}
@@ -80,30 +83,34 @@
  async function clearCache(){if(!cacheConfirmed||cacheClearing)return;cacheConfirmed=false;cacheClearing=true;cacheNotice='';error='';clearAccountView();busy=true;viewableIds=[];submitted=null;suggestions=[];suggestionGeneration++;try{await bridge.clearCache();cacheNotice='Cleared cached browsing data. Artwork, downloads, account, saved searches and pins were preserved.';}catch(e){cacheNotice='Cache clear failed: '+String(e);}finally{cacheClearing=false;busy=false;}}
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
  async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
- async function readAppliedPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request===preferenceGeneration)applied=value;}catch(e){if(request===preferenceGeneration)error=String(e);}}
+ function loadSessionControls(session:BrowsingSession){if(session.mode==='pool'){poolId=String(session.id);const q:Query={include:[],exclude:[],ratings:session.ratings,artist:null,sort:'newest'};restore({id:'',name:'',query:q},false);}else{restore({id:'',name:'',query:session.query},false);if(session.mode==='favorites')username=session.username;}}
+ async function forgetSession(){const revision=++sessionRevision;remembered=null;sessionNotice='';try{await bridge.forgetBrowsingSession();if(revision===sessionRevision)sessionNotice='Remembered browsing forgotten.';}catch(e){if(revision===sessionRevision)sessionNotice='Forget failed: '+String(e);}}
+ async function openRemembered(){const session=$state.snapshot(remembered);if(!session||cacheClearing)return;loadSessionControls(session);remembered=null;await run(session.mode,session.mode==='pool'?1:session.page,session.mode==='pool'?session.offset:0,false,session);}
+ async function readAppliedPreferences(){const revision=sessionRevision,request=++preferenceGeneration;try{const value=await bridge.preferences();if(request!==preferenceGeneration)return;applied=value;if(value.restore_session){const session=await bridge.browsingSession();if(request===preferenceGeneration&&revision===sessionRevision&&session){remembered=session;loadSessionControls(session);sessionNotice='Remembered controls loaded. Open remembered page explicitly to make a fresh request; account filters still apply.';}}}catch(e){if(request===preferenceGeneration&&revision===sessionRevision)error=String(e);}}
  async function loadPreferences(){invalidateTemplatePreview();const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request!==preferenceGeneration)return;invalidateTemplatePreview();preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='';}catch(e){if(request===preferenceGeneration)error=String(e);}}
  async function previewTemplates(){if(!preferences)return;invalidateTemplatePreview();const request=templateGeneration;try{const value=await bridge.previewTemplates(preferences.filename_template,preferences.pool_filename_template);if(request===templateGeneration)templatePreview=value;}catch(e){if(request===templateGeneration)templateError=String(e);}}
- async function savePreferences(){if(!preferences)return;invalidateTemplatePreview();const request=++preferenceGeneration;try{const value=await bridge.savePreferences($state.snapshot(preferences));if(request!==preferenceGeneration)return;invalidateTemplatePreview();preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='Preferences saved';}catch(e){if(request===preferenceGeneration)error=String(e);}}
+ async function savePreferences(){if(!preferences)return;invalidateTemplatePreview();const request=++preferenceGeneration;try{const value=await bridge.savePreferences($state.snapshot(preferences));if(request!==preferenceGeneration)return;invalidateTemplatePreview();preferences=structuredClone(value);applied=structuredClone(value);if(!value.restore_session){sessionRevision++;remembered=null;sessionNotice='';}preferenceNotice='Preferences saved';}catch(e){if(request===preferenceGeneration)error=String(e);}}
  async function save(){error='';try{const value=name.trim();if(!value)throw Error('Name this search first.');await bridge.save({id:crypto.randomUUID(),name:value,query:query()});name='';await refresh();}catch(e){error=String(e);}}
  async function remove(id:string){try{await bridge.delete(id);await refresh();}catch(e){error=String(e);}}
  async function pin(){if(!pool)return;const id=Number(pool.pool.key.id);try{await bridge.pin(id,!pins.some(p=>p.id===String(id)));await refresh();}catch(e){error=String(e);}}
- function restore(s:SavedSearch){include=[...s.query.include];exclude=[...s.query.exclude];sort=s.query.sort;safe=s.query.ratings==='any'||s.query.ratings.only.includes('safe');questionable=s.query.ratings==='any'||s.query.ratings.only.includes('questionable');explicit=s.query.ratings==='any'||s.query.ratings.only.includes('explicit');}
+ function restore(s:SavedSearch,dirty=true){if(dirty)editSession();artist=s.query.artist??'';include=[...s.query.include];exclude=[...s.query.exclude];sort=s.query.sort;safe=s.query.ratings==='any'||s.query.ratings.only.includes('safe');questionable=s.query.ratings==='any'||s.query.ratings.only.includes('questionable');explicit=s.query.ratings==='any'||s.query.ratings.only.includes('explicit');}
 </script>
 <section class="browser" aria-label="Furchive artwork browser">
  <header><strong>Furchive</strong><small>RUST ALPHA · e621</small><span>Artwork browser · scoped media cache · durable download queue</span></header>
  <div class="layout">
   <aside>
-   <h2>Search</h2>
-   <label>Include tags<input aria-label="Include tags" bind:value={includeInput} oninput={complete} onkeydown={e=>{if(e.key==='Enter')chip('include',includeInput)}}></label><button onclick={()=>chip('include',includeInput)}>Add include</button>
+   {#if sessionNotice}<p role="status" data-session-notice>{sessionNotice}</p>{/if}{#if remembered}<button onclick={openRemembered} disabled={cacheClearing}>Open remembered page</button>{/if}<button onclick={forgetSession}>Forget remembered browsing</button>
+   <h2>Search</h2><label>Artist<input aria-label="Artist" bind:value={artist} oninput={editSession}></label>
+   <label>Include tags<input aria-label="Include tags" bind:value={includeInput} oninput={()=>{editSession();void complete();}} onkeydown={e=>{if(e.key==='Enter')chip('include',includeInput)}}></label><button onclick={()=>chip('include',includeInput)}>Add include</button>
    <div class="suggestions">{#each suggestions as s}<button onclick={()=>chip('include',s.name)}>{s.name} <small>{s.post_count}</small></button>{/each}</div>
-   <div class="chips">{#each include as tag}<button aria-label={'Remove include '+tag} onclick={()=>include=include.filter(t=>t!==tag)}>{tag} ×</button>{/each}</div>
-   <label>Exclude tags<input aria-label="Exclude tags" bind:value={excludeInput} onkeydown={e=>{if(e.key==='Enter')chip('exclude',excludeInput)}}></label><button onclick={()=>chip('exclude',excludeInput)}>Add exclude</button>
-   <div class="chips excludes">{#each exclude as tag}<button aria-label={'Remove exclude '+tag} onclick={()=>exclude=exclude.filter(t=>t!==tag)}>{tag} ×</button>{/each}</div>
-   <fieldset><legend>Ratings</legend><label><input type="checkbox" bind:checked={safe}>Safe</label><label><input type="checkbox" bind:checked={questionable}>Questionable</label><label><input type="checkbox" bind:checked={explicit}>Explicit</label></fieldset>
-   <label>Order<select aria-label="Sort order" bind:value={sort}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="score">Score</option><option value="favorites">Favorites count</option><option value="random">Random</option></select></label>
+   <div class="chips">{#each include as tag}<button aria-label={'Remove include '+tag} onclick={()=>{editSession();include=include.filter(t=>t!==tag);}}>{tag} ×</button>{/each}</div>
+   <label>Exclude tags<input aria-label="Exclude tags" bind:value={excludeInput} oninput={editSession} onkeydown={e=>{if(e.key==='Enter')chip('exclude',excludeInput)}}></label><button onclick={()=>chip('exclude',excludeInput)}>Add exclude</button>
+   <div class="chips excludes">{#each exclude as tag}<button aria-label={'Remove exclude '+tag} onclick={()=>{editSession();exclude=exclude.filter(t=>t!==tag);}}>{tag} ×</button>{/each}</div>
+   <fieldset><legend>Ratings</legend><label><input type="checkbox" bind:checked={safe} onchange={editSession}>Safe</label><label><input type="checkbox" bind:checked={questionable} onchange={editSession}>Questionable</label><label><input type="checkbox" bind:checked={explicit} onchange={editSession}>Explicit</label></fieldset>
+   <label>Order<select aria-label="Sort order" bind:value={sort} onchange={editSession}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="score">Score</option><option value="favorites">Favorites count</option><option value="random">Random</option></select></label>
    <button class="primary" disabled={busy} onclick={()=>run('search')}>Search</button>
-   <label>Favorites username<input aria-label="Favorites username" bind:value={username}></label><button disabled={busy} onclick={()=>run('favorites')}>Browse favorites</button>
-   <label>Pool ID<input aria-label="Pool ID" inputmode="numeric" bind:value={poolId}></label><button disabled={busy} onclick={()=>run('pool')}>Open pool</button>
+   <label>Favorites username<input aria-label="Favorites username" bind:value={username} oninput={editSession}></label><button disabled={busy} onclick={()=>run('favorites')}>Browse favorites</button>
+   <label>Pool ID<input aria-label="Pool ID" inputmode="numeric" bind:value={poolId} oninput={editSession}></label><button disabled={busy} onclick={()=>run('pool')}>Open pool</button>
    <h2>Saved searches</h2><label>Search name<input aria-label="Saved search name" bind:value={name}></label><button onclick={save}>Save search</button>
    {#each saved as s}<div class="saved"><button onclick={()=>restore(s)}>{s.name}</button><button aria-label={'Delete '+s.name} onclick={()=>remove(s.id)}>×</button></div>{/each}
    <h2>Account</h2><p>Anonymous until explicitly verified. API keys stay in your OS credential store, never settings or logs. Saved credentials are not restored automatically.</p>
@@ -120,6 +127,7 @@
     {#if templatePreview}<div aria-label="Filename template preview"><p>Post: <code data-template-preview="post">{templatePreview.filename}</code></p><p>Pool: <code data-template-preview="pool">{templatePreview.pool_filename}</code></p></div>{/if}
     <label>Gallery scale<input aria-label="Gallery scale" type="number" min="0.5" max="2" step="0.25" bind:value={preferences.gallery_scale}></label>
     <label>Resident media cache (MiB)<input aria-label="Resident media cache MiB" type="number" min="16" max="512" step="16" value={Math.min(512,preferences.cache_limit_bytes/1048576)} onchange={event=>{if(preferences)preferences.cache_limit_bytes=Number(event.currentTarget.value)*1048576;}}></label>
+    <label class="import-row"><input aria-label="Remember browsing controls" type="checkbox" bind:checked={preferences.restore_session}>Remember browsing controls</label><p>Opt-in: store the last successfully submitted query and page or pool position locally. Restart loads controls only; Open remembered page makes a fresh filtered request. Credentials, media, directory grants and downloads are never restored automatically. Turning this off and saving forgets the stored intent.</p>
     <label class="import-row"><input aria-label="Start videos muted" type="checkbox" bind:checked={preferences.start_muted}>Start videos muted</label>
     <label class="import-row"><input aria-label="Save metadata sidecars" type="checkbox" bind:checked={preferences.save_metadata}>Save metadata sidecars</label>
     <p>Normalized Furchive v1 JSON for new jobs only, beside the exact completed filename. Raw upstream JSON is unavailable (deferred). Existing jobs are not exported automatically.</p>

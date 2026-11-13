@@ -32,6 +32,24 @@ struct Page {
 #[derive(Default)]
 pub struct ViewerCursor(std::sync::Mutex<Option<Page>>);
 impl ViewerCursor {
+    /// Only submitted intent/position; selected ID and grants are deliberately omitted.
+    pub fn browsing_session(
+        &self,
+        generation: u64,
+    ) -> Result<crate::browsing_session::BrowsingSession, String> {
+        let current = self.0.lock().map_err(|_| "viewer cursor poisoned")?;
+        let page = current
+            .as_ref()
+            .filter(|p| p.generation == generation)
+            .ok_or("viewer cursor expired")?;
+        let session = crate::browsing_session::BrowsingSession::from_cursor(
+            &page.intent,
+            page.page,
+            page.offset,
+        );
+        session.validate()?;
+        Ok(session)
+    }
     pub fn clear(&self) -> Result<(), String> {
         *self.0.lock().map_err(|_| "viewer cursor poisoned")? = None;
         Ok(())

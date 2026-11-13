@@ -1,5 +1,16 @@
 # Execution progress
 
+## Remembered-browsing cursor feedback follow-through
+- Corrected4561d9ce review stillBLOCKNYX-BS-01 on crosspage cursor host-capture path missingUIrevisionfence. Ownerreproducedunchanged9Search/Favorites/PooldelayedACK/error/alreadyACKcasesRED9fail=>GREEN9 byadvancingsameintentfencebeforeviewer_step andpage-reconciliation metadata submission. Full92component/Svelte0errorsPASS; firstcorrected andoriginalBLOCKevidence retained; freshfinalsourceassessment/native31+13required, no credential/media bypassclaim.
+
+
+## Remembered browsing completion-feedback correction
+- Originalbb35ebf8BLOCKonMAJORNYX-BS-01oldForgetsuccess/error+startupreadrejectionoverwritesnewerprivacyfeedback; originalreport/reprosretained. Ownermatrix7canonicalcasesRED7fail=>GREEN7,full83component15unit/Svelte0errorsbuildPASS aftertwoUIrevisionfences; hostpersistence/authoritysourcenotchanged. Correctedsourcewholere-review/native31+13pending, no reinterpretationoforiginalBLOCK.
+
+## Remembered browsing controls local capability
+- Addedopt-inRust-owned boundedSearch/Favoritesquery+page/PoolIDratings+offset snapshot; no renderer-writeDTO/selectedmedia/URLs/credentials/grants/downloadresume. Restartloadscontrolsonly,explicitOpenrememberedpagefreshfilterednetworkrequest;Forget/disableatomicdropandrequest-revisionfences,latehydrateUIguards,artistpreserved. Local149workspace9desktopRust/76component15unitfmtstrictClippySvelte0errorsbuildPASS;31+13nativefixture+on-diskchecks prepared, actualGUIUNRUN pending independentreview. Cacheclear doesnotremove separatelyopt-in remembered history;Forgetcontrolscope disclosed.
+
+
 ## Verified packaged cache privacy milestone
 - Exact9d19fb0a4a398e1083569703acd48d07d073c43d/run43407975497:all9jobsSUCCESS, ownerdownloaded9actualZIP/providerdigests/nested3packages+executables/sourcefingerprints/currentreceipts. EachOS30+12product+6nativeaccountUI/36hostframes(108total); newcache-clear-preservation requirescurrentclearACK/renderedpreservation andhostSQLiteposts/pools/pool_postszero afterfinalclear witholdmedia/sidecar/download/stateassertionsretained. RawDBnotexported;ownerboundharness/receiptsnotpostdownloadrawDBreread. Logicalnotsecureerasure.
 - Eachnativequality158namedRust=143workspace6catalog9desktop,71component15unitfmtstrictClippySveltecheckbuildPASS. CoreLinux85/86macOS84/85Windows86/87+docsevenlogs/vault4phasesPASS. InitialLinux523/macOS818/Windows51.8ms<=1000;scroll73/117/31.5<=250;mounted<=48. Original32ffe5beNYX-CP-01BLOCKandLinuxWindowsdiagnosticsretained;corrected0c0e7aaesourceNyx+returnPASSonly. OptimizeddefaultLinuxpackagebuiltstaticbutGUIUNRUN. WholeappNOTCOMPLETE broadinstalledplatform/sessionprivacy/migration/accessibility/finalreviewopen. Evidence rust/test-artifacts/ci-run-43407975497/owner-report.md;80baselinefilespreserved.

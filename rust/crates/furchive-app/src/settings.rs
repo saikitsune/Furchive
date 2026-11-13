@@ -22,6 +22,7 @@ pub struct Settings {
     pub gallery_scale: f64,
     pub cache_limit_bytes: u64,
     pub restore_session: bool,
+    pub last_session: Option<crate::browsing_session::BrowsingSession>,
     pub save_metadata: bool,
     pub start_muted: bool,
 }
@@ -38,6 +39,7 @@ impl Default for Settings {
             gallery_scale: 1.0,
             cache_limit_bytes: 512 * 1024 * 1024,
             restore_session: false,
+            last_session: None,
             save_metadata: false,
             start_muted: true,
         }
@@ -104,20 +106,97 @@ pub fn preview_templates(
 
 pub struct SettingsStore {
     path: PathBuf,
-    value: std::sync::Mutex<Settings>,
+    value: std::sync::Mutex<SettingsState>,
+}
+struct SettingsState {
+    settings: Settings,
+    revision: u64,
+    request: u64,
 }
 impl SettingsStore {
     pub fn open(path: &Path) -> Result<Self, String> {
         Ok(Self {
             path: path.to_owned(),
-            value: std::sync::Mutex::new(Settings::load(path)?),
+            value: std::sync::Mutex::new(SettingsState {
+                settings: Settings::load(path)?,
+                revision: 0,
+                request: 0,
+            }),
         })
     }
     pub fn current(&self) -> Result<Settings, String> {
         self.value
             .lock()
-            .map(|s| s.clone())
+            .map(|s| s.settings.clone())
             .map_err(|_| "settings lock poisoned".into())
+    }
+    pub fn browsing_session(
+        &self,
+    ) -> Result<Option<crate::browsing_session::BrowsingSession>, String> {
+        let state = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        Ok(if state.settings.restore_session {
+            state.settings.last_session.clone()
+        } else {
+            None
+        })
+    }
+    pub fn session_ticket(
+        &self,
+        request: u64,
+    ) -> Result<Option<crate::browsing_session::SessionTicket>, String> {
+        let mut state = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        if request < state.request {
+            return Err("browsing request superseded".into());
+        }
+        state.request = request;
+        Ok(state
+            .settings
+            .restore_session
+            .then_some(crate::browsing_session::SessionTicket {
+                revision: state.revision,
+                request,
+            }))
+    }
+    pub fn remember_session(
+        &self,
+        ticket: crate::browsing_session::SessionTicket,
+        session: crate::browsing_session::BrowsingSession,
+    ) -> Result<(), String> {
+        session.validate()?;
+        let mut state = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        if !state.settings.restore_session
+            || state.revision != ticket.revision
+            || state.request != ticket.request
+        {
+            return Err("remembered session superseded".into());
+        }
+        let mut next = state.settings.clone();
+        next.last_session = Some(session);
+        next.save(&self.path)?;
+        state.settings = next;
+        Ok(())
+    }
+    /// Revoke in-flight capture across account/cache boundaries, without deleting saved intent.
+    pub fn invalidate_session_capture(&self) -> Result<(), String> {
+        let mut state = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        state.revision = state
+            .revision
+            .checked_add(1)
+            .ok_or("session revision exhausted")?;
+        Ok(())
+    }
+    pub fn forget_browsing_session(&self) -> Result<(), String> {
+        let mut state = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        let revision = state
+            .revision
+            .checked_add(1)
+            .ok_or("session revision exhausted")?;
+        let mut next = state.settings.clone();
+        next.last_session = None;
+        next.save(&self.path)?;
+        state.settings = next;
+        state.revision = revision;
+        Ok(())
     }
     pub fn apply(&self, p: Preferences) -> Result<Settings, String> {
         self.apply_inner(p, None)
@@ -134,7 +213,12 @@ impl SettingsStore {
         p: Preferences,
         cache: Option<&crate::media_cache::MediaCache>,
     ) -> Result<Settings, String> {
-        let mut current = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        let mut state = self.value.lock().map_err(|_| "settings lock poisoned")?;
+        let revision = state
+            .revision
+            .checked_add(1)
+            .ok_or("session revision exhausted")?;
+        let current = &mut state.settings;
         let next = Settings {
             version: current.version,
             download_directory: current.download_directory.clone(),
@@ -145,6 +229,11 @@ impl SettingsStore {
             gallery_scale: p.gallery_scale,
             cache_limit_bytes: p.cache_limit_bytes,
             restore_session: p.restore_session,
+            last_session: if p.restore_session {
+                current.last_session.clone()
+            } else {
+                None
+            },
             save_metadata: p.save_metadata,
             start_muted: p.start_muted,
         };
@@ -155,6 +244,7 @@ impl SettingsStore {
             next.save(&self.path)?;
         }
         *current = next.clone();
+        state.revision = revision;
         Ok(next)
     }
 }
@@ -176,6 +266,12 @@ impl Settings {
         }
         if !(16 * 1024 * 1024..=16 * 1024 * 1024 * 1024).contains(&self.cache_limit_bytes) {
             return Err("cache budget must be 16MiB–16GiB".into());
+        }
+        if let Some(session) = &self.last_session {
+            session.validate()?;
+        }
+        if !self.restore_session && self.last_session.is_some() {
+            return Err("remembered session requires opt-in".into());
         }
         FilenameTemplate::parse(&self.filename_template).map_err(|e| e.to_string())?;
         FilenameTemplate::parse(&self.pool_filename_template).map_err(|e| e.to_string())?;
