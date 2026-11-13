@@ -1,7 +1,7 @@
 import {test as nodeTest,after} from 'node:test';
 const test=(name,fn)=>nodeTest(name,{timeout:8000},fn);
 import assert from 'node:assert/strict';
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,mkdtemp} from 'node:fs/promises';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import path from 'node:path';
 
@@ -13,7 +13,7 @@ for(const key of ['window','document','navigator','HTMLElement','Element','Node'
 globalThis.ResizeObserver=class {observe(){} disconnect(){}};
 const {compile}=await import('svelte/compiler');
 const {mount,unmount,flushSync}=await import('svelte');
-const output=path.join(fileURLToPath(new URL('../../../test-artifacts/',import.meta.url)),'furchive-components'); await mkdir(output,{recursive:true});
+const outputRoot=fileURLToPath(new URL('../../../test-artifacts/',import.meta.url));await mkdir(outputRoot,{recursive:true});const output=await mkdtemp(path.join(outputRoot,'furchive-components-'));
 async function component(name){
  let result=compile(await readFile(new URL(`../src/lib/${name}.svelte`,import.meta.url),'utf8'),{filename:name+'.svelte',generate:'client',dev:true}).js.code;
  result=result.replace(/import (['"])(svelte[^'"]*)\1/g,(_,q,spec)=>`import '${import.meta.resolve(spec)}'`).replace(/from (['"])(svelte[^'"]*)\1/g,(_,q,spec)=>`from '${import.meta.resolve(spec)}'`)
@@ -234,4 +234,38 @@ test('rendered Viewer fit, 100 percent and bounded zoom reset operate on media t
  const buttons=[...viewer.querySelectorAll('button:not(:disabled)')];buttons.at(-1).focus();
  buttons.at(-1).dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));flushSync();assert.equal(document.activeElement,buttons[0]);
  await unmount(active);active=null;
+});
+
+
+test('rendered Viewer volume controls the live video independently of mute and resets on replacement',async()=>{
+ const Host=await viewerHost();
+ active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'First'},{id:'w',kind:'video',src:'/fixtures/vp8.webm',title:'Second'}],grants:['/fixtures/h264.mp4','/fixtures/vp8.webm']}});flushSync();
+ try{
+  const video=document.querySelector('video');const volume=document.querySelector('[aria-label="Video volume"]');
+  assert.ok(volume,'explicit Video volume control required');assert.equal(volume.disabled,true);assert.equal(video.volume,1);
+  Object.defineProperties(video,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2}});video.dispatchEvent(new Event('loadeddata'));flushSync();
+  assert.equal(volume.disabled,false);volume.value='0.25';volume.dispatchEvent(new Event('input',{bubbles:true}));flushSync();
+  assert.equal(video.volume,.25);assert.equal(video.muted,true,'volume adjustment never implicitly unmutes');
+  document.querySelector('[aria-label="Unmute video"]').click();flushSync();assert.equal(video.muted,false);assert.equal(video.volume,.25);
+  document.querySelector('[aria-label="Mute video"]').click();flushSync();assert.equal(video.muted,true);assert.equal(video.volume,.25);
+  volume.value='0';volume.dispatchEvent(new Event('input',{bubbles:true}));flushSync();assert.equal(video.volume,0);assert.equal(video.muted,true);
+  active.select('w');flushSync();const replacement=document.querySelector('video');assert.notEqual(replacement,video);assert.equal(replacement.volume,1);assert.equal(replacement.muted,true);
+  assert.equal(document.querySelector('[aria-label="Video volume"]').value,'1');assert.equal(document.querySelector('[aria-label="Video volume"]').disabled,true);
+ }finally{if(active)await unmount(active);active=null;}
+});
+
+
+test('rendered Viewer volume rejects malformed or stale control events without changing media state',async()=>{
+ const Host=await viewerHost();active=mount(Host,{target:document.body,props:{items:[{id:'v',kind:'video',src:'/fixtures/h264.mp4',title:'Video'},{id:'i',kind:'image',src:'/fixtures/still.png',title:'Image'}],grants:['/fixtures/h264.mp4','/fixtures/still.png']}});flushSync();
+ try{
+  const v=document.querySelector('video'),input=document.querySelector('[aria-label="Video volume"]');assert.ok(input);
+  input.value='.25';input.dispatchEvent(new Event('input',{bubbles:true}));flushSync();assert.equal(v.volume,1,'loading state does not admit volume input');
+  Object.defineProperties(v,{videoWidth:{value:320},videoHeight:{value:200},duration:{value:2}});v.dispatchEvent(new Event('loadeddata'));flushSync();
+  input.value='.4';input.dispatchEvent(new Event('input',{bubbles:true}));flushSync();assert.equal(v.volume,.4);
+  for(const value of ['', ' ', 'NaN', 'Infinity','-1','1.1']){
+   Object.defineProperty(input,'value',{value,configurable:true});input.dispatchEvent(new Event('input',{bubbles:true}));flushSync();assert.equal(v.volume,.4,'refuse '+JSON.stringify(value));assert.equal(v.muted,true);delete input.value;
+  }
+  active.select('i');flushSync();assert.equal(document.querySelector('[aria-label="Video volume"]'),null);input.value='.9';input.dispatchEvent(new Event('input',{bubbles:true}));flushSync();assert.equal(v.volume,.4);assert.equal(v.hasAttribute('src'),false);
+  active.select('v');flushSync();const current=document.querySelector('video');assert.equal(current.volume,1);input.dispatchEvent(new Event('input',{bubbles:true}));flushSync();assert.equal(current.volume,1,'detached old control cannot affect replacement');
+ }finally{if(active)await unmount(active);active=null;}
 });

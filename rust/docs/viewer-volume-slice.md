@@ -1,0 +1,9 @@
+# Explicit viewer video volume
+
+An accessible Video volume range0..1(step.01) changes only the current decoded HTMLVideoElement volume. It never unmutes implicitly; mute remains a separate explicit intent. Initial/replacement video volume is1 and follows startMuted independently. Loading/error/image paths do not admit input; empty/nonfinite/out-of-range events are refused. Detached old controls cannot affect the current replacement. Existing video release/seek/speed/navigation/error handling is preserved.
+
+This is presentation state, not Rust business logic or a persisted preference. No new IPC, URL/path/grant, capability, credential, network or filesystem authority. No autoplay or audible-output assertion. Setting element.volume does not prove speaker/mixer/audible audio behavior.
+
+Tests first: missing control RED1; receipt validator originally accepted absent/wrong volume RED1. Corrected compiled tests cover independent mute/current volume/endpoints/replacement/loading/malformed/stale controls. Canonical frontend94component16unit passes, Rust149workspace9desktop/fmtstrictClippy unchanged. Native fixed media campaign adjusts the rendered control to.35 and measures live video.volume=.35 while remaining muted for VP8/VP9/H264. Validator requires that exact observed value in addition to all previous play/seek/speed/mute/release proof; older receipts without it are rejected. Native images/animation/lifecycle/dataset/windowownership/timing thresholds and31+13browse/account checks remain unchanged.
+
+Current slice source review and new actual3OSnative qualification pending. Prior currentverifiedc007fa5/run43418057594 remains immutable and is not retroactively failed or sufficient for this new requirement. No wholeproduct/install/audio/GPU/platformbreadth acceptance implied. Existingdefault-package work proceeds separately in an isolatedworktree.

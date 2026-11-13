@@ -12,7 +12,7 @@
  let status=$state<'loading'|'ready'|'error'>('loading'),message=$state('');
  let w=$state(1),h=$state(1),vw=$state(640),vh=$state(400);
  let fit=$state(true),scale=$state(1),x=$state(0),y=$state(0);
- let muted=$state(true),speed=$state(1),playing=$state(false),time=$state(0),duration=$state(0);
+ let muted=$state(true),volume=$state(1),speed=$state(1),playing=$state(false),time=$state(0),duration=$state(0);
  let drag:{id:number;x:number;y:number;px:number;py:number}|null=null;
  const scope=new LoadScope();
  let transform=$derived(clampTransform(w,h,vw,vh,fit?fitScale(w,h,vw,vh):scale,x,y));
@@ -20,7 +20,7 @@
   const selected=item,container=stage;
   if(!selected||!container)return;
   return untrack(()=>{
-   status='loading';message='';w=1;h=1;fit=true;scale=1;x=0;y=0;playing=false;time=0;duration=0;muted=startMuted;speed=1;drag=null;
+   status='loading';message='';w=1;h=1;fit=true;scale=1;x=0;y=0;playing=false;time=0;duration=0;muted=startMuted;volume=1;speed=1;drag=null;
    const media=selected.kind==='video'?document.createElement('video'):document.createElement('img');
    let timer:ReturnType<typeof setTimeout>;
    const events: Array<[string,EventListener]>=[];
@@ -40,7 +40,7 @@
    });}
    media.style.cssText='position:absolute;left:50%;top:50%;max-width:none;max-height:none;visibility:hidden;transform-origin:center;user-select:none;pointer-events:none;';
    media.setAttribute('data-media',selected.kind);
-   if(media instanceof HTMLVideoElement){media.preload='auto';media.defaultMuted=muted;if(muted)media.setAttribute('muted','');media.muted=muted;media.playsInline=true;on('loadeddata',ready);on('timeupdate',()=>token.commit(()=>time=media.currentTime));on('seeked',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('volumechange',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('play',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;playing=true;}));on('pause',()=>token.commit(()=>playing=false));on('ended',()=>token.commit(()=>playing=false));}
+   if(media instanceof HTMLVideoElement){media.preload='auto';media.volume=volume;media.defaultMuted=muted;if(muted)media.setAttribute('muted','');media.muted=muted;media.playsInline=true;on('loadeddata',ready);on('timeupdate',()=>token.commit(()=>time=media.currentTime));on('seeked',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('volumechange',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;}));on('play',()=>token.commit(()=>{if(media.muted!==muted)media.muted=muted;playing=true;}));on('pause',()=>token.commit(()=>playing=false));on('ended',()=>token.commit(()=>playing=false));}
    else{media.alt=selected.title;media.draggable=false;on('load',ready);}
    on('error',()=>{const native=media instanceof HTMLVideoElement?media.error:null;fail(native?`Media error ${native.code}: ${native.message||'native decoder failure'}`:'Media could not be decoded (corrupt, truncated or unsupported).');});
    element=media;container.append(media);timer=setTimeout(()=>fail('Media load timed out.'),8000);media.src=selected.src;dialog?.focus();
@@ -72,6 +72,7 @@
  function pointerEnd(){drag=null;}
  async function play(){const video=element;if(!(video instanceof HTMLVideoElement))return;if(!video.paused){video.pause();return;}try{await video.play();}catch(error){if(element===video&&status!=='error'){const reason=error instanceof Error?error.name:'UnknownError';message=`Playback was refused (${reason}). Use Play again with a direct gesture.`;}}}
  function changeMute(){muted=!muted;if(element instanceof HTMLVideoElement)element.muted=muted;}
+ function changeVolume(event:Event){const input=event.target as HTMLInputElement;const value=Number(input.value);if(status!=='ready'||!(element instanceof HTMLVideoElement)||!input.value.trim()||!Number.isFinite(value)||value<0||value>1)return;element.volume=value;volume=value;}
  function changeSpeed(event:Event){speed=Number((event.target as HTMLSelectElement).value);if(element instanceof HTMLVideoElement)element.playbackRate=speed;}
  function seek(event:Event){const value=Number((event.target as HTMLInputElement).value);if(element instanceof HTMLVideoElement&&Number.isFinite(value))element.currentTime=Math.max(0,Math.min(duration,value));}
 </script>
@@ -84,7 +85,7 @@
   <p class="status" role="status">{status==='loading'?'Loading…':status==='error'?message:`${w} × ${h} · ${Math.round(transform.scale*100)}%${fit?' · fit':''}`}</p>
   <div class="bar controls"><button onclick={reset}>Fit / reset</button><button onclick={()=>{fit=false;scale=1;x=0;y=0}}>100%</button><button aria-label="Zoom out" onclick={()=>zoom(1/1.25)}>−</button><button aria-label="Zoom in" onclick={()=>zoom(1.25)}>+</button></div>
   {#if item.kind==='video'}
-   <div class="bar controls"><button aria-label={playing?'Pause video':'Play video'} disabled={status!=='ready'} onclick={play}>{playing?'Pause':'Play'}</button><button aria-label={muted?'Unmute video':'Mute video'} onclick={changeMute}>{muted?'Muted':'Sound on'}</button><label>Speed<select aria-label="Playback speed" value={speed} onchange={changeSpeed}>{#each [0.25,0.5,1,1.5,2] as rate}<option value={rate}>{rate}×</option>{/each}</select></label><input aria-label="Seek video" type="range" min="0" max={duration||1} step="0.01" value={time} oninput={seek} disabled={status!=='ready'}><span>{time.toFixed(1)} / {duration.toFixed(1)}s</span></div>
+   <div class="bar controls"><button aria-label={playing?'Pause video':'Play video'} disabled={status!=='ready'} onclick={play}>{playing?'Pause':'Play'}</button><button aria-label={muted?'Unmute video':'Mute video'} onclick={changeMute}>{muted?'Muted':'Sound on'}</button><label>Volume<input aria-label="Video volume" type="range" min="0" max="1" step="0.01" value={volume} oninput={changeVolume} disabled={status!=='ready'}></label><label>Speed<select aria-label="Playback speed" value={speed} onchange={changeSpeed}>{#each [0.25,0.5,1,1.5,2] as rate}<option value={rate}>{rate}×</option>{/each}</select></label><input aria-label="Seek video" type="range" min="0" max={duration||1} step="0.01" value={time} oninput={seek} disabled={status!=='ready'}><span>{time.toFixed(1)} / {duration.toFixed(1)}s</span></div>
    {#if message&&status!=='error'}<p role="status" data-playback-message>{message}</p>{/if}
   {/if}
  </div>

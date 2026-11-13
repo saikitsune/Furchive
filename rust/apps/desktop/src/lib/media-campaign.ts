@@ -50,7 +50,8 @@ export async function runMediaCampaign(capture:(checkpoint:Checkpoint,request:Ca
   let seeked=false;v.addEventListener('seeked',()=>seeked=true,{once:true});
   const seek=demand(document.querySelector<HTMLInputElement>('[aria-label="Seek video"]'),'seek');seek.value='0.5';seek.dispatchEvent(new Event('input',{bubbles:true}));
   await until(()=>seeked&&v.currentTime>=0.45,'video seek did not complete');
-  const row={name,played,seeked,speed:v.playbackRate,muted:v.muted,time:v.currentTime,released:false};
+  const volume=demand(document.querySelector<HTMLInputElement>('[aria-label="Video volume"]'),'volume');demand(!volume.disabled,'volume not enabled after decode');volume.value='0.35';volume.dispatchEvent(new Event('input',{bubbles:true}));await painted();demand(v.volume===.35&&v.muted,'volume adjustment changed mute intent or failed');
+  const row={name,played,seeked,speed:v.playbackRate,muted:v.muted,volume:v.volume,time:v.currentTime,released:false};
   campaignDiagnostics.afterSeek=videoState(v);await close();row.released=released(v);videos.push(row);campaignDiagnostics.videos=[...videos];
  }
  const lifecycle:MediaEvidence['lifecycle']=[];

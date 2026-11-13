@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,mkdtemp} from 'node:fs/promises';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {Window} from 'happy-dom';
 const window=new Window({url:'http://localhost'});
 for(const key of ['window','document','navigator','HTMLElement','Element','Node','Text','Comment','Event','MouseEvent','KeyboardEvent','CustomEvent','MutationObserver','HTMLMediaElement','HTMLVideoElement','HTMLImageElement','getComputedStyle'])Object.defineProperty(globalThis,key,{value:key==='getComputedStyle'?window.getComputedStyle.bind(window):window[key],configurable:true});
 globalThis.ResizeObserver=class{observe(){}disconnect(){}};
 const {compile}=await import('svelte/compiler');const {mount,unmount,flushSync}=await import('svelte');
-const output=new URL('../../../test-artifacts/browser-components/',import.meta.url);await mkdir(output,{recursive:true});
+const outputRoot=new URL('../../../test-artifacts/',import.meta.url);await mkdir(outputRoot,{recursive:true});const output=pathToFileURL((await mkdtemp(fileURLToPath(new URL('browser-components-',outputRoot))))+'/');
 let viewerCode=compile(await readFile(new URL('../src/lib/Viewer.svelte',import.meta.url),'utf8'),{filename:'Viewer.svelte',generate:'client',dev:true}).js.code;
 viewerCode=viewerCode.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>`from '${new URL('../src/lib/'+spec.slice(2)+'.ts',import.meta.url)}'`);
 await writeFile(new URL('Viewer.mjs',output),viewerCode);
