@@ -4,7 +4,7 @@ No live artwork, accounts, browser surrogate, installs or sandbox changes.
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3,time
-CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','download-pause-ack','download-complete','download-cancel',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart']}
+CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','download-pause-ack','download-complete','download-cancel',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart']}
 def validate(receipt,phase):
  if receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase]):raise ValueError('missing or invalid native browsing receipt')
  return True
@@ -12,7 +12,7 @@ def validate(receipt,phase):
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('binary',type=Path);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args();out=args.output.resolve();binary=args.binary.resolve()
  if out.exists():raise SystemExit('refusing stale browsing evidence')
- out.mkdir(parents=True);requests=[]
+ out.mkdir(parents=True);requests=[];transfer_lock=threading.Lock();active_transfers=0;peak_transfers=0
  legacy=out/'legacy-fixture';legacy.mkdir();(legacy/'artwork.bin').write_bytes(b'owned harmless preservation sentinel')
  (legacy/'settings.json').write_text(json.dumps({'SavedSearches':json.dumps([{'Name':'Migrated fixture search','IncludeTags':['fox'],'ExcludeTags':[],'RatingFilterIndex':3}]),'E621ApiKey':'synthetic-key-must-not-import'}))
  legacy_hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in legacy.iterdir()}
@@ -20,6 +20,7 @@ def main():
  class Handler(BaseHTTPRequestHandler):
   def log_message(self,format,*args):pass
   def do_GET(self):
+   nonlocal active_transfers,peak_transfers
    url=urllib.parse.urlparse(self.path);pairs=urllib.parse.parse_qs(url.query);requests.append({'path':url.path,'query':pairs,'authorization':self.headers.get('Authorization') is not None,'userAgent':self.headers.get('User-Agent',''),'range':self.headers.get('Range'),'ifRange':self.headers.get('If-Range'),'identity':self.headers.get('Accept-Encoding')=='identity'})
    if 'filter_id' in pairs or (self.headers.get('Authorization') and url.path!='/users/me.json'):self.send_error(403);return
    if url.path=='/users/me.json':
@@ -29,12 +30,17 @@ def main():
     if fixture is None:self.send_error(404);return
     data=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures'/fixture).read_bytes()
     if self.headers.get('Accept-Encoding')=='identity':
+     with transfer_lock:active_transfers+=1;peak_transfers=max(peak_transfers,active_transfers)
      start=int(self.headers.get('Range','bytes=0-').removeprefix('bytes=').split('-')[0]);part=data[start:];self.send_response(206 if start else 200);self.send_header('Content-Length',str(len(part)));self.send_header('ETag','"owned-v1"')
      if start:self.send_header('Content-Range',f'bytes {start}-{len(data)-1}/{len(data)}')
      self.end_headers()
      try:
-      half=max(1,len(part)//2);self.wfile.write(part[:half]);self.wfile.flush();time.sleep(1.5);self.wfile.write(part[half:])
+      cuts=[0,max(1,len(part)//3),max(2,2*len(part)//3),len(part)]
+      for a,b in zip(cuts,cuts[1:]):
+       self.wfile.write(part[a:b]);self.wfile.flush();time.sleep(0.6)
      except (BrokenPipeError,ConnectionResetError):pass
+     finally:
+      with transfer_lock:active_transfers-=1
      return
     self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
    def post(id):
@@ -63,9 +69,13 @@ def main():
   expected=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures/still.png').read_bytes()
   if (downloads/'e621/local_fixture/100.png').read_bytes()!=expected or (downloads/'existing-art.bin').read_bytes()!=b'owned existing download must survive':raise ValueError('download artifact/preservation mismatch')
   if (downloads/'e621/pools/local_fixture/Native_fixture_pool/2_2.png').read_bytes()!=expected:raise ValueError('pool group ordinal/artifact mismatch')
+  if peak_transfers<2 or peak_transfers>4:raise ValueError('actual native parallel-transfer bound not demonstrated')
+  for id,fixture in [('100','still.png'),('101','viewer-animation.gif')]:
+   ext='png' if id=='100' else 'gif';expected_parallel=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures'/fixture).read_bytes()
+   if (downloads/f'e621/parallel/{id}/{id}.{ext}').read_bytes()!=expected_parallel:raise ValueError('parallel download bytes mismatch')
   tags=[q['query'].get('tags',[''])[0] for q in requests if q['path']=='/posts.json'];required=['fox -comic rating:s order:id_desc','fox fav:fixture_user -comic rating:s order:id_desc','id:10,2,30']
   if not all(t in tags for t in required) or any((q['authorization'] and q['path']!='/users/me.json') or 'filter_id' in q['query'] or not q['userAgent'].startswith('Furchive/') for q in requests):raise ValueError('native HTTP/query policy mismatch')
-  (out/'accepted.json').write_text(json.dumps({'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':[1,2],'requests':requests,'scope':'native metadata browsing and restart only','full_app_complete':False},indent=2))
+  (out/'accepted.json').write_text(json.dumps({'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':[1,2],'peak_parallel_transfers':peak_transfers,'requests':requests,'scope':'native metadata browsing and restart only','full_app_complete':False},indent=2))
   print('NATIVE BROWSING PASS: actual UI/IPC/Rust/HTTP/restart contracts; media/download/settings product integration incomplete')
  finally:
   (out/'requests.json').write_text(json.dumps(requests,indent=2));server.shutdown();server.server_close();thread.join(timeout=3)

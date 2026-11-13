@@ -87,12 +87,15 @@
    {#if preferences}
     <label>Filename template<input aria-label="Filename template" bind:value={preferences.filename_template}></label>
     <label>Pool filename template<input aria-label="Pool filename template" bind:value={preferences.pool_filename_template}></label>
-    <p>Directory grants, account keys and automatic session restoration are not edited here. Download/cache/gallery controls will be enabled when their product integration is ready.</p>
+    <label>Concurrent downloads<select aria-label="Concurrent downloads" value={preferences.concurrent_downloads} onchange={event=>{if(preferences)preferences.concurrent_downloads=Number(event.currentTarget.value);}}>{#each [1,2,3,4] as n}<option value={n}>{n}</option>{/each}</select></label>
+    <p>Concurrency is applied when granting a download directory. Restart before changing an active worker. Jobs sharing the same native destination directory are conservatively serialized to protect aliases and Rename collisions. Account keys/directory grants/session restoration are not edited here.</p>
     <button onclick={savePreferences}>Save preferences</button>{#if preferenceNotice}<p role="status">{preferenceNotice}</p>{/if}
    {/if}
    <h2>Downloads</h2><button onclick={chooseDownloads}>Choose download directory</button><button onclick={refreshJobs}>Refresh downloads</button><p>New jobs start paused. Resume explicitly starts transfer. Reselect the same directory after restart to recover history.</p>
    {#each downloadGroups as group}<div data-download-group={group.id}><b>{group.label}</b><p>{group.members.filter(j=>j.state==='Completed').length} / {group.members.length} complete</p><button onclick={()=>controlGroup(group.id,'resume')}>Resume group</button><button onclick={()=>controlGroup(group.id,'pause')}>Pause group</button><button onclick={()=>controlGroup(group.id,'cancel')}>Cancel group</button></div>{/each}
-   {#each jobs as job}<div data-job-id={job.id} data-job-bytes={job.bytes} data-group-position={job.group_position??undefined}><b>Post {job.post_id} · {job.state}</b><p>{job.bytes} bytes · {job.relative_path}</p>{#if job.error}<p>{job.error}</p>{/if}
+   {#each jobs as job}<div data-job-id={job.id} data-job-bytes={job.bytes} data-group-position={job.group_position??undefined}><b>Post {job.post_id} · {job.state}</b><p>{job.bytes}{job.total_bytes!=null?' / '+job.total_bytes:''} bytes · {job.relative_path}</p>
+    {#if job.total_bytes!=null&&job.total_bytes>0}<progress aria-label={'Download progress '+job.id} max={job.total_bytes} value={job.bytes}></progress>{/if}
+    <p>{job.bytes_per_second!=null?Math.round(job.bytes_per_second)+' B/s':'Rate unavailable'} · {job.eta_seconds!=null?'ETA '+Math.ceil(job.eta_seconds)+'s':'ETA unavailable'}</p>{#if job.error}<p>{job.error}</p>{/if}
     <button disabled={!['Paused','Failed'].includes(job.state)} onclick={()=>control(job.id,'resume')}>Resume</button><button disabled={!['Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'pause')}>Pause</button><button disabled={!['Paused','Failed','Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'cancel')}>Cancel</button>
    </div>{/each}
    <h2>Recover old data</h2><p>Choose the old Furchive data folder in the system picker. Preview first; artwork, keys, settings and queued downloads are never imported automatically.</p><button onclick={previewLegacy}>Preview legacy data</button>

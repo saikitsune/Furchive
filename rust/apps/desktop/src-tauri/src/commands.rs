@@ -188,7 +188,13 @@ pub async fn choose_download_directory(state: State<'_, AppState>) -> Result<boo
             .ok_or("missing fixture parent")?
             .join("downloads-fixture");
         std::fs::create_dir_all(&root).map_err(|_| "cannot create test download root")?;
-        state.downloads.select_root(&root).await?;
+        state
+            .downloads
+            .select_root_with_concurrency(
+                &root,
+                state.settings.current()?.concurrent_downloads.into(),
+            )
+            .await?;
         return Ok(true);
     }
     let Some(folder) = rfd::AsyncFileDialog::new()
@@ -198,7 +204,13 @@ pub async fn choose_download_directory(state: State<'_, AppState>) -> Result<boo
     else {
         return Ok(false);
     };
-    state.downloads.select_root(folder.path()).await?;
+    state
+        .downloads
+        .select_root_with_concurrency(
+            folder.path(),
+            state.settings.current()?.concurrent_downloads.into(),
+        )
+        .await?;
     Ok(true)
 }
 #[tauri::command]

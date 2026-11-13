@@ -127,6 +127,288 @@ fn paused_group_is_atomic_ordered_and_retained_after_reopen() {
         ids
     );
 }
+#[tokio::test]
+async fn bounded_parallel_transfers_preserve_collision_order_and_acknowledged_shutdown() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let count = Arc::new(AtomicUsize::new(0));
+    let counter = count.clone();
+    let release = Arc::new(tokio::sync::Notify::new());
+    let gate = release.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let counter = counter.clone();
+            let gate = gate.clone();
+            tokio::spawn(async move {
+                let mut b = [0; 4096];
+                let n = socket.read(&mut b).await.unwrap();
+                assert!(n > 0);
+                counter.fetch_add(1, Ordering::SeqCst);
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"parallel\"\r\nConnection: close\r\n\r\n").await.unwrap();
+                gate.notified().await;
+                let _ = socket.write_all(b"data").await;
+            });
+        }
+    });
+    let temp = OwnedTemp::new();
+    let engine = Arc::new(Engine::open_test(temp.database("queue"), temp.path(), &origin).unwrap());
+    for id in ["1", "2", "3"] {
+        let mut job = intent(id, DuplicatePolicy::Skip);
+        job.relative = format!("folder-{id}/{id}.jpg");
+        engine.enqueue(job).unwrap();
+    }
+    let mut collision = intent("4", DuplicatePolicy::Overwrite);
+    collision.relative = "folder-1/1.jpg".into();
+    engine.enqueue(collision).unwrap();
+    let worker = engine.start_with_concurrency(2).unwrap();
+    let reached = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while count.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    if reached.is_err() {
+        worker.shutdown().await.unwrap();
+        server.abort();
+        panic!("two real HTTP transfers never became concurrent");
+    }
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        engine
+            .jobs()
+            .unwrap()
+            .iter()
+            .filter(|j| j.state == State::Running)
+            .count(),
+        2
+    );
+    worker.control(1, Control::Pause).await.unwrap();
+    assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while count.load(Ordering::SeqCst) < 3 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    let jobs = engine.jobs().unwrap();
+    assert!(jobs.iter().all(|j| j.state != State::Running));
+    assert!(jobs.iter().all(|j| j.state != State::Completed));
+    assert!(!temp.path().join("folder-1/1.jpg").exists());
+    server.abort();
+    release.notify_waiters();
+}
+#[tokio::test]
+async fn concurrency_limit_refuses_invalid_values_and_same_destination_has_one_writer() {
+    let temp = OwnedTemp::new();
+    let fixture = fixture(vec![response("one"), response("two")]).await;
+    let engine = std::sync::Arc::new(
+        Engine::open_test(temp.database("q"), temp.path(), &fixture.origin).unwrap(),
+    );
+    assert!(engine.start_with_concurrency(0).is_err());
+    assert!(engine.start_with_concurrency(5).is_err());
+    let mut one = intent("1", DuplicatePolicy::Overwrite);
+    one.relative = "same.jpg".into();
+    let mut two = intent("2", DuplicatePolicy::Overwrite);
+    two.relative = "same.jpg".into();
+    engine.enqueue(one).unwrap();
+    engine.enqueue(two).unwrap();
+    let worker = engine.start_with_concurrency(4).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while engine
+            .jobs()
+            .unwrap()
+            .iter()
+            .any(|j| j.state != State::Completed)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    assert_eq!(std::fs::read(temp.path().join("same.jpg")).unwrap(), b"two");
+    assert_eq!(fixture.requests.lock().unwrap().len(), 2);
+}
+#[tokio::test]
+async fn paused_predecessor_does_not_reserve_idle_native_directory_forever() {
+    let temp = OwnedTemp::new();
+    let fixture = fixture(vec![response("next")]).await;
+    let engine = std::sync::Arc::new(
+        Engine::open_test(temp.database("q"), temp.path(), &fixture.origin).unwrap(),
+    );
+    engine
+        .enqueue_paused(intent("1", DuplicatePolicy::Skip))
+        .unwrap();
+    engine.enqueue(intent("2", DuplicatePolicy::Skip)).unwrap();
+    let worker = engine.start_with_concurrency(2).unwrap();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while engine.jobs().unwrap()[1].state != State::Completed {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    worker.shutdown().await.unwrap();
+    assert!(
+        result.is_ok(),
+        "paused predecessor blocked an unrelated queued job"
+    );
+    assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
+    assert_eq!(std::fs::read(temp.path().join("2.jpg")).unwrap(), b"next");
+}
+#[tokio::test]
+async fn parallel_resume_is_idempotent_and_cancel_joins_only_target_writer() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let count = Arc::new(AtomicUsize::new(0));
+    let counter = count.clone();
+    let release = Arc::new(tokio::sync::Notify::new());
+    let gate = release.clone();
+    let server = tokio::spawn(async move {
+        let mut clients = tokio::task::JoinSet::new();
+        for _ in 0..2 {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let counter = counter.clone();
+            let gate = gate.clone();
+            clients.spawn(async move{let mut buffer=[0;4096];assert!(socket.read(&mut buffer).await.unwrap()>0);socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"owned\"\r\nConnection: close\r\n\r\n").await.unwrap();counter.fetch_add(1,Ordering::SeqCst);gate.notified().await;let _=socket.write_all(b"data").await;});
+        }
+        while clients.join_next().await.is_some() {}
+    });
+    let temp = OwnedTemp::new();
+    let engine = Arc::new(Engine::open_test(temp.database("q"), temp.path(), &origin).unwrap());
+    for id in ["1", "2"] {
+        let mut job = intent(id, DuplicatePolicy::Skip);
+        job.relative = format!("target-{id}/{id}.jpg");
+        engine.enqueue(job).unwrap();
+    }
+    let worker = engine.start_with_concurrency(2).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while count.load(Ordering::SeqCst) != 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    for _ in 0..3 {
+        assert_eq!(
+            worker.control(1, Control::Resume).await.unwrap().state,
+            State::Running
+        );
+    }
+    assert_eq!(
+        worker.control(1, Control::Cancel).await.unwrap().state,
+        State::Cancelled
+    );
+    assert_eq!(engine.jobs().unwrap()[1].state, State::Running);
+    release.notify_waiters();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while engine.jobs().unwrap()[1].state != State::Completed {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    server.await.unwrap();
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    assert!(!temp.path().join("target-1/1.jpg").exists());
+    assert_eq!(
+        std::fs::read(temp.path().join("target-2/2.jpg")).unwrap(),
+        b"data"
+    );
+}
+#[tokio::test]
+async fn independent_native_directories_complete_in_parallel_with_exact_bytes() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(AtomicUsize::new(0));
+    let count = seen.clone();
+    let release = Arc::new(tokio::sync::Notify::new());
+    let gate = release.clone();
+    let server = tokio::spawn(async move {
+        let mut clients = tokio::task::JoinSet::new();
+        for _ in 0..4 {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let gate = gate.clone();
+            let count = count.clone();
+            clients.spawn(async move {
+                let mut b = [0; 4096];
+                let n = socket.read(&mut b).await.unwrap();
+                assert!(n > 0);
+                count.fetch_add(1, Ordering::SeqCst);
+                gate.notified().await;
+                socket
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\ndata",
+                    )
+                    .await
+                    .unwrap();
+            });
+        }
+        while let Some(r) = clients.join_next().await {
+            r.unwrap();
+        }
+    });
+    let temp = OwnedTemp::new();
+    let engine = Arc::new(Engine::open_test(temp.database("q"), temp.path(), &origin).unwrap());
+    for id in ["1", "2", "3", "4"] {
+        let mut value = intent(id, DuplicatePolicy::Skip);
+        value.relative = format!("independent-{id}/{id}.jpg");
+        engine.enqueue(value).unwrap();
+    }
+    let worker = engine.start_with_concurrency(4).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while seen.load(Ordering::SeqCst) != 4 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        engine
+            .jobs()
+            .unwrap()
+            .iter()
+            .filter(|j| j.state == State::Running)
+            .count(),
+        4
+    );
+    release.notify_waiters();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while engine
+            .jobs()
+            .unwrap()
+            .iter()
+            .any(|j| j.state != State::Completed)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    server.await.unwrap();
+    for id in ["1", "2", "3", "4"] {
+        assert_eq!(
+            std::fs::read(temp.path().join(format!("independent-{id}/{id}.jpg"))).unwrap(),
+            b"data"
+        );
+    }
+}
 struct OwnedTemp {
     _temp: tempfile::TempDir,
     media: std::path::PathBuf,
@@ -903,53 +1185,56 @@ async fn crash_windows_before_and_after_atomic_publication_reconcile_without_red
 
 #[tokio::test]
 async fn pause_mid_body_ack_freezes_bytes_and_resume_uses_real_range() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let origin = format!("http://{}", listener.local_addr().unwrap());
-    let (headers, got_headers) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (mut first, _) = listener.accept().await.unwrap();
-        let mut request = [0; 4096];
-        assert!(first.read(&mut request).await.unwrap() > 0);
-        first.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\nabc").await.unwrap();
-        headers.send(()).unwrap();
-        let (mut second, _) = listener.accept().await.unwrap();
-        let n = second.read(&mut request).await.unwrap();
-        let text = String::from_utf8_lossy(&request[..n]).to_lowercase();
-        assert!(text.contains("range: bytes=3-"));
-        assert!(text.contains("if-range: \"v1\""));
-        second.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\ndef").await.unwrap();
-    });
-    let temp = OwnedTemp::new();
-    let engine =
-        std::sync::Arc::new(Engine::open_test(temp.database("db"), temp.path(), &origin).unwrap());
-    let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
-    let worker = engine.start().unwrap();
-    got_headers.await.unwrap();
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        loop {
-            if engine.jobs().unwrap()[0].bytes == 3 {
-                break;
+    for limit in [1, 2, 4] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (headers, got_headers) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            assert!(first.read(&mut request).await.unwrap() > 0);
+            first.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\nabc").await.unwrap();
+            headers.send(()).unwrap();
+            let (mut second, _) = listener.accept().await.unwrap();
+            let n = second.read(&mut request).await.unwrap();
+            let text = String::from_utf8_lossy(&request[..n]).to_lowercase();
+            assert!(text.contains("range: bytes=3-"));
+            assert!(text.contains("if-range: \"v1\""));
+            second.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 3-5/6\r\nETag: \"v1\"\r\nConnection: close\r\n\r\ndef").await.unwrap();
+        });
+        let temp = OwnedTemp::new();
+        let engine = std::sync::Arc::new(
+            Engine::open_test(temp.database("db"), temp.path(), &origin).unwrap(),
+        );
+        let id = engine.enqueue(intent("1", DuplicatePolicy::Skip)).unwrap();
+        let worker = engine.start_with_concurrency(limit).unwrap();
+        got_headers.await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if engine.jobs().unwrap()[0].bytes == 3 {
+                    break;
+                }
+                tokio::task::yield_now().await;
             }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(worker.control(id, Control::Pause).await.unwrap().bytes, 3);
-    assert_eq!(
-        std::fs::read(temp.path().join(".furchive-downloads/1.part")).unwrap(),
-        b"abc"
-    );
-    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
-    assert_eq!(
-        worker.control(id, Control::Resume).await.unwrap().state,
-        State::Queued
-    );
-    assert_eq!(terminal(&engine, id).await.state, State::Completed);
-    assert_eq!(std::fs::read(temp.path().join("1.jpg")).unwrap(), b"abcdef");
-    server.await.unwrap();
-    worker.shutdown().await.unwrap();
+        })
+        .await
+        .unwrap();
+        assert_eq!(worker.control(id, Control::Pause).await.unwrap().bytes, 3);
+        assert_eq!(
+            std::fs::read(temp.path().join(".furchive-downloads/1.part")).unwrap(),
+            b"abc"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        assert_eq!(engine.jobs().unwrap()[0].state, State::Paused);
+        assert_eq!(
+            worker.control(id, Control::Resume).await.unwrap().state,
+            State::Queued
+        );
+        assert_eq!(terminal(&engine, id).await.state, State::Completed);
+        assert_eq!(std::fs::read(temp.path().join("1.jpg")).unwrap(), b"abcdef");
+        server.await.unwrap();
+        worker.shutdown().await.unwrap();
+    }
 }
 
 #[tokio::test]

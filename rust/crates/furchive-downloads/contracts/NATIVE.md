@@ -148,8 +148,8 @@ The native gate bounds each command to240s, logs exact command/exit, and runs:
 `cargo clippy --all-targets --locked -- -D warnings`.
 It compares discovery **and actual success names** against the checked-in inventory,
 rejecting duplicates, missing/ignored/filtered tests and warning/error transcripts.
-No inventory regeneration occurs in the runner. Expected counts: Linux44,
-macOS43, Windows45. Differences are explicit cfg contracts, never ignored tests:
+No inventory regeneration occurs in the runner. Expected counts: Linux53,
+macOS52, Windows54 (plus one explicit fixture-http test on each OS). Differences are explicit cfg contracts, never ignored tests:
 Linux2 in-grant DB cases vs native outside-grant DB rejection; Windows adds2
 junction/flush/UNC checks. All common HTTP/control/recovery contracts run natively.
 Retain `test-artifacts/native-<sys.platform>/*` including receipt.json and bind it to

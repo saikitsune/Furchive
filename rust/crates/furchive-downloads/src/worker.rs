@@ -123,6 +123,12 @@ impl Drop for Worker {
 }
 impl Engine {
     pub fn start(self: &Arc<Self>) -> Result<Worker> {
+        self.start_with_concurrency(1)
+    }
+    pub fn start_with_concurrency(self: &Arc<Self>, limit: usize) -> Result<Worker> {
+        if !(1..=4).contains(&limit) {
+            return Err(Error::Invalid("concurrency must be 1–4".into()));
+        }
         let runtime = tokio::runtime::Handle::try_current()
             .map_err(|_| Error::Invalid("start requires a Tokio runtime".into()))?;
         self.started
@@ -132,7 +138,13 @@ impl Engine {
         let (commands, mut received) = tokio::sync::mpsc::channel(64);
         let engine = self.clone();
         let join = runtime.spawn(async move {
-            let result = engine.run(&mut stopped, &mut received).await;
+            let result = if limit == 1 {
+                engine.run(&mut stopped, &mut received).await
+            } else {
+                engine
+                    .run_parallel(&mut stopped, &mut received, limit)
+                    .await
+            };
             engine.started.store(false, Ordering::SeqCst);
             result
         });
@@ -241,6 +253,83 @@ impl Engine {
                 tokio::select! { biased; _ = stopped.changed() => {}, Some(command) = commands.recv() => self.apply_control(command), _ = self.wake.notified() => {} }
             }
         }
+    }
+    /// The manager exclusively owns admission, cancellation and join receipts.
+    /// Transfers own their Job snapshots; a control ACK follows writer join/drop.
+    async fn run_parallel(
+        self: &Arc<Self>,
+        stopped: &mut tokio::sync::watch::Receiver<bool>,
+        commands: &mut tokio::sync::mpsc::Receiver<Command>,
+        limit: usize,
+    ) -> Result<()> {
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(60))
+            .user_agent("Furchive/0.1 (durable-download-core)")
+            .build()
+            .map_err(|e| Error::Invalid(e.to_string()))?;
+        let mut tasks = tokio::task::JoinSet::new();
+        let mut active =
+            std::collections::HashMap::<tokio::task::Id, (i64, tokio::task::AbortHandle)>::new();
+        let outcome=async{
+            loop{
+                if *stopped.borrow(){break;}
+                let jobs=self.jobs()?;
+                for mut job in jobs.iter().filter(|j|j.state==State::Queued).cloned(){
+                    if active.len()>=limit{break;}
+                    // Native case aliases and Rename suffix publication share a
+                    // destination namespace. Reserve conservatively, FIFO across
+                    // pending queued/running predecessors; paused jobs hold no writer.
+                    let conflicts=|other:&Job|{
+                        if other.id==job.id{return false;}
+                        let a=self.grant.parent(&other.relative_path).and_then(|(parent,_)|crate::files::identity(&parent).map_err(Into::into));
+                        let b=self.grant.parent(&job.relative_path).and_then(|(parent,_)|crate::files::identity(&parent).map_err(Into::into));
+                        match (a,b){(Ok(a),Ok(b))=>a==b,_=>true}
+                    };
+                    if jobs.iter().any(|other|((other.id<job.id&&matches!(other.state,State::Queued|State::Running|State::Publishing))||active.values().any(|(id,_)|*id==other.id))&&conflicts(other)){continue;}
+                    job.state=State::Running;self.save(&job)?;
+                    let engine=self.clone();let http=client.clone();let id=job.id;
+                    let handle=tasks.spawn(async move{
+                        if let Err(error)=engine.transfer(&http,&mut job).await{if job.state!=State::Publishing{job.state=State::Failed;}job.error=Some(error.to_string());engine.save(&job)?;}
+                        Ok::<_,Error>(())
+                    });active.insert(handle.id(),(id,handle));
+                }
+                tokio::select!{biased;
+                    _=stopped.changed()=>{},
+                    Some(command)=commands.recv()=>{
+                        if matches!(command.control,Control::Resume)&&active.values().any(|(id,_)|*id==command.id){
+                            let result=self.jobs()?.into_iter().find(|j|j.id==command.id).ok_or_else(||Error::Invalid("unknown job".into()));let _=command.reply.send(result);continue;
+                        }
+                        if !matches!(command.control,Control::Resume){
+                            if let Some((_,handle))=active.values().find(|(id,_)|*id==command.id){
+                                let target=handle.id();handle.abort();
+                                while active.contains_key(&target){
+                                    if let Some(result)=tasks.join_next_with_id().await{match result{Ok((id,result))=>{active.remove(&id);result?;},Err(error)=>{active.remove(&error.id());if !error.is_cancelled(){return Err(Error::Stopped);}}}}
+                                }
+                            }
+                        }
+                        self.apply_control(command);
+                    },
+                    result=tasks.join_next_with_id(),if !active.is_empty()=>{
+                        if let Some(result)=result{match result{Ok((id,result))=>{active.remove(&id);result?;},Err(error)=>{active.remove(&error.id());return Err(Error::Stopped);}}}
+                    },
+                    _=self.wake.notified()=>{}
+                }
+            }Ok(())
+        }.await;
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
+        // Persist only after all affected writer futures have been dropped.
+        for mut job in self.jobs()? {
+            if job.state == State::Running {
+                job.state = State::Paused;
+                self.save(&job)?;
+            }
+        }
+        outcome
     }
     async fn transfer(&self, client: &reqwest::Client, job: &mut Job) -> Result<()> {
         if job.intent.policy == DuplicatePolicy::Skip && self.grant.exists(&job.relative_path)? {

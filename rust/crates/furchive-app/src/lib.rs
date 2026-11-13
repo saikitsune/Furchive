@@ -1,6 +1,7 @@
 pub mod account_session;
 pub mod browse;
 pub mod credentials;
+pub mod download_progress;
 pub mod downloads;
 pub mod legacy;
 pub mod legacy_session;

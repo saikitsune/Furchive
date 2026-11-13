@@ -9,7 +9,7 @@ export type Suggestion={name:string;category:unknown;post_count:number};
 export type Preferences={filename_template:string;pool_filename_template:string;concurrent_downloads:number;duplicates:'skip'|'overwrite'|'rename';gallery_scale:number;cache_limit_bytes:number;restore_session:boolean;save_metadata:boolean;start_muted:boolean};
 export type LegacyPreview={digest:string;searches:SavedSearch[];pins:{key:{source:string;id:string};name:string;post_count:number}[];warnings:string[];queue:unknown};
 export type ImportReport={imported_searches:number;imported_pins:number;skipped_searches:number;skipped_pins:number};
-export type DownloadJob={id:number;post_id:string;state:string;bytes:number;relative_path:string;error:string|null;group_id?:string|null;group_label?:string|null;group_position?:number|null};
+export type DownloadJob={id:number;post_id:string;state:string;bytes:number;total_bytes?:number|null;bytes_per_second?:number|null;eta_seconds?:number|null;relative_path:string;error:string|null;group_id?:string|null;group_label?:string|null;group_position?:number|null};
 export type Identity={id:number;name:string};
 export type Invoke=<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class BrowserBridge {

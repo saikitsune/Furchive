@@ -12,6 +12,9 @@ pub struct JobView {
     pub post_id: String,
     pub state: String,
     pub bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub bytes_per_second: Option<f64>,
+    pub eta_seconds: Option<f64>,
     pub relative_path: String,
     pub error: Option<String>,
     pub group_id: Option<String>,
@@ -22,10 +25,12 @@ struct Active {
     engine: Arc<Engine>,
     worker: Worker,
     root: PathBuf,
+    concurrency: usize,
 }
 pub struct Downloads {
     db: PathBuf,
     active: tokio::sync::Mutex<Option<Active>>,
+    progress: std::sync::Mutex<crate::download_progress::ProgressSampler>,
     #[cfg(feature = "fixture-downloads")]
     origin: Option<String>,
 }
@@ -34,6 +39,7 @@ impl Downloads {
         Self {
             db,
             active: tokio::sync::Mutex::new(None),
+            progress: std::sync::Mutex::new(Default::default()),
             #[cfg(feature = "fixture-downloads")]
             origin: None,
         }
@@ -45,9 +51,19 @@ impl Downloads {
         Ok(result)
     }
     pub async fn select_root(&self, root: &Path) -> Result<(), String> {
+        self.select_root_with_concurrency(root, 1).await
+    }
+    pub async fn select_root_with_concurrency(
+        &self,
+        root: &Path,
+        concurrency: usize,
+    ) -> Result<(), String> {
+        if !(1..=4).contains(&concurrency) {
+            return Err("download concurrency must be 1–4".into());
+        }
         let mut active = self.active.lock().await;
         if let Some(value) = active.as_ref() {
-            return if value.root == root {
+            return if value.root == root && value.concurrency == concurrency {
                 Ok(())
             } else {
                 Err("download root already granted; restart before selecting another root".into())
@@ -67,11 +83,14 @@ impl Downloads {
             .hold_restored()
             .map_err(|_| "cannot hold restored downloads")?;
         let engine = Arc::new(engine);
-        let worker = engine.start().map_err(|_| "download worker unavailable")?;
+        let worker = engine
+            .start_with_concurrency(concurrency)
+            .map_err(|_| "download worker unavailable")?;
         *active = Some(Active {
             engine,
             worker,
             root: root.to_owned(),
+            concurrency,
         });
         Ok(())
     }
@@ -231,21 +250,41 @@ impl Downloads {
         let Some(value) = active.as_ref() else {
             return Ok(Vec::new());
         };
-        value.engine.jobs().map_err(|e| e.to_string()).map(|jobs| {
-            jobs.into_iter()
-                .map(|j| JobView {
+        let jobs = value.engine.jobs().map_err(|e| e.to_string())?;
+        let mut sampler = self
+            .progress
+            .lock()
+            .map_err(|_| "download progress poisoned")?;
+        sampler.retain(&jobs.iter().map(|j| j.id).collect::<Vec<_>>());
+        Ok(jobs
+            .into_iter()
+            .map(|j| {
+                let total = j.expected_total();
+                let rate = sampler.sample(
+                    j.id,
+                    crate::download_progress::Observation {
+                        bytes: j.bytes,
+                        total,
+                        running: j.state == furchive_downloads::State::Running,
+                    },
+                    std::time::Instant::now(),
+                );
+                JobView {
                     id: j.id,
                     post_id: j.key.id().into(),
                     state: format!("{:?}", j.state),
                     bytes: j.bytes,
+                    total_bytes: total,
+                    bytes_per_second: rate.bytes_per_second,
+                    eta_seconds: rate.eta_seconds,
                     relative_path: j.relative_path,
                     error: j.error,
                     group_id: j.group_id,
                     group_label: j.group_label,
                     group_position: j.group_position,
-                })
-                .collect()
-        })
+                }
+            })
+            .collect())
     }
     pub async fn control(&self, id: i64, verb: &str) -> Result<(), String> {
         let control = match verb {

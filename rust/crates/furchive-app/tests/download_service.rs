@@ -100,6 +100,76 @@ async fn pool_group_uses_authoritative_page_numbers_and_persists_membership() {
     assert_eq!(hub.jobs().await.unwrap()[1].group_position, Some(2));
     hub.shutdown().await.unwrap();
 }
+#[cfg(feature = "fixture-downloads")]
+#[tokio::test]
+async fn service_uses_granted_concurrency_for_two_independent_transfers() {
+    use std::io::{Read, Write};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let dir = owned_temp();
+    let root = dir.path().join("art");
+    std::fs::create_dir(&root).unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let origin = format!("http://{}/", listener.local_addr().unwrap());
+    let seen = Arc::new(AtomicUsize::new(0));
+    let count = seen.clone();
+    let server = std::thread::spawn(move || {
+        let mut threads = vec![];
+        for _ in 0..2 {
+            let (mut s, _) = listener.accept().unwrap();
+            let count = count.clone();
+            threads.push(std::thread::spawn(move || {
+                let mut b = [0; 4096];
+                let n = s.read(&mut b).unwrap();
+                assert!(n > 0);
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n")
+                    .unwrap();
+                count.fetch_add(1, Ordering::SeqCst);
+                let end = std::time::Instant::now() + std::time::Duration::from_secs(3);
+                while count.load(Ordering::SeqCst) < 2 {
+                    assert!(std::time::Instant::now() < end);
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                s.write_all(b"data").unwrap();
+            }));
+        }
+        for t in threads {
+            t.join().unwrap();
+        }
+    });
+    let hub = Downloads::fixture(dir.path().join("queue.sqlite"), origin).unwrap();
+    hub.select_root_with_concurrency(&root, 2).await.unwrap();
+    let settings = Settings {
+        filename_template: "{source}/{id}/{id}.{ext}".into(),
+        ..Default::default()
+    };
+    for id in ["1", "2"] {
+        let mut p = post();
+        p.key = PostKey::new("e621", id).unwrap();
+        let job = hub.enqueue(&p, &settings).await.unwrap();
+        hub.control(job, "resume").await.unwrap();
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while hub
+            .jobs()
+            .await
+            .unwrap()
+            .iter()
+            .any(|j| j.state != "Completed")
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(seen.load(Ordering::SeqCst), 2);
+    hub.shutdown().await.unwrap();
+    server.join().unwrap();
+    assert_eq!(std::fs::read(root.join("e621/1/1.png")).unwrap(), b"data");
+    assert_eq!(std::fs::read(root.join("e621/2/2.png")).unwrap(), b"data");
+}
 fn post() -> MediaItem {
     let mut p = MediaItem::new(PostKey::new("e621", "1").unwrap());
     p.full_url =

@@ -134,6 +134,12 @@ pub struct Job {
     pub(crate) publication: Option<Publication>,
 }
 
+impl Job {
+    pub fn expected_total(&self) -> Option<u64> {
+        self.total.or(self.intent.size)
+    }
+}
+
 // Read existing schema-1 Unix tuples, write complete platform-native receipts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]

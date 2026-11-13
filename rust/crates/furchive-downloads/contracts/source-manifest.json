@@ -57,20 +57,20 @@
       "bytes": 395
     },
     "src/model.rs": {
-      "sha256": "78e11541281f2b33b6f4b2cdc172fc65fa5ded2d985cb896ceb44753811dd837",
-      "bytes": 16855
+      "sha256": "52de8cac99ffef123a4370bbcaba0efa0a5d37ffa9e898a65adef91051d7a184",
+      "bytes": 16965
     },
     "src/tests/native.rs": {
       "sha256": "62e394c8657cdfc7ab8212bc9459bac78b1aa5cb36f87a1f708c92b89a341929",
       "bytes": 6128
     },
     "src/tests.rs": {
-      "sha256": "76eef678dd09ed7771e3e108039c47479a1ac66337fb47cd53638324087b77a7",
-      "bytes": 55351
+      "sha256": "fdf3ef8b4e39673c4cd3e1c26cfde29f356b421b79baa062d411deaf17c9f3a2",
+      "bytes": 66484
     },
     "src/worker.rs": {
-      "sha256": "18e15d7e3ace6f2163de003d237a351e6989caf4d980dd5478d1723803f715e8",
-      "bytes": 19709
+      "sha256": "0b71c76661b721790c97ae3038327b7ba004da2737e84a62cbe81bc4614b4e41",
+      "bytes": 24765
     },
     "scripts/check.py": {
       "sha256": "68b0240d9cdee14f4f537d0cce62f83ae25105b4fae91da85bc36327cc6a2107",
@@ -113,34 +113,34 @@
       "bytes": 884
     },
     "contracts/NATIVE.md": {
-      "sha256": "ff028dcf48b236707a30b868a733cf33f68a680bc74403aa5030cd6509ddb7bb",
-      "bytes": 12648
+      "sha256": "1673bfcf45186011ba602e1661b27514082b01e72e662806ac6573866d2da16f",
+      "bytes": 12697
     },
     "contracts/test-inventory.json": {
-      "sha256": "c83ecdc1a1fd62933825d913f6e961dc1bdb0fc35f2e23bd19084b066674676c",
-      "bytes": 11041
+      "sha256": "c17ee88c3b1875e034015aef2d0a0c318703187453c569cfa5c3de2f41cfd7d9",
+      "bytes": 12319
     }
   },
   "inventory": {
     "linux": {
-      "count": 48,
-      "sha256": "a98375cdd31a80135d8230b981e4114b9694e01bd71000ec8514c75c76c94747"
+      "count": 53,
+      "sha256": "6a6e2c3c0c34737c2e6f142b5754f9d6f7a5fa0c77d75fc8410bc9ecb1f3dd39"
     },
     "darwin": {
-      "count": 47,
-      "sha256": "68ff6082dc7576c29fe89d7dd2bfcbf439fb65738e7342e6d5afb5a5f93d0031"
+      "count": 52,
+      "sha256": "a68927b50c26a78e4feff361e4821e9e38f898cfc347d3dbf8454cf8ac1933be"
     },
     "win32": {
-      "count": 49,
-      "sha256": "ec8aa1666e5fac676e1c8fdd82c44b9f5c1f37d6df80763d1059bef7b795bd0e"
+      "count": 54,
+      "sha256": "0e97f73f1420a32076361c000df7dcf4108f4154d32031411b579710f09e89da"
     }
   },
   "verification": {
-    "linux": "new group candidate local suites pending final native runner",
-    "windows": "group candidate actual native pending",
-    "macos": "group candidate actual native pending"
+    "linux": "53 default +54 fixture tests, one doctest/fmt/strict Clippy; current local gate passed",
+    "windows": "concurrency candidate actual native pending",
+    "macos": "concurrency candidate actual native pending"
   },
   "native_receipt": "test-artifacts/native-linux/receipt.json",
-  "previous_manifest_sha256": "1689795910ac10b3c31027ac6789db30faf916ed84f19a000bd294c215efa9ae",
-  "integration_base": "4aa5af99e60a477395bc264ae915bc8a602d797e"
+  "previous_manifest_sha256": "7932815514641f85e780fc094f44b9e52f6084c721e7a01a0a5b245982a80b48",
+  "integration_base": "96fb77d3fcf9e100b13b89e012827ee428113963"
 }
