@@ -31,7 +31,8 @@ class AccountReceipt(unittest.TestCase):
    with tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp)/'evidence';binary=Path(tmp)/'binary';binary.write_bytes(b'labeled child double, never native acceptance');probe=Path(tmp)/'probe'
     def dispatch(argv,**kwargs):
-     if argv[0]==str(probe.resolve()):argv=['fixture-probe',*argv[1:]]
+     if len(argv)>1 and argv[1]=='--native-vault-probe':argv=['fixture-probe',*argv[2:]]
+     elif argv[0]==str(probe.resolve()):argv=['fixture-probe',*argv[1:]]
      return child(argv,**kwargs)
     with patch.object(sys,'argv',['account-ui-run-native.py',str(binary),'--output',str(root),'--probe',str(probe)]),patch.object(m.subprocess,'run',side_effect=dispatch),patch.object(m.subprocess,'check_output',return_value='owned-test-source'),contextlib.redirect_stdout(io.StringIO()):
      if fault!='none':
@@ -40,6 +41,10 @@ class AccountReceipt(unittest.TestCase):
     self.assertEqual((root/'accepted.json').exists(),fault=='none')
     self.assertEqual(calls,['probe:absent','ui:3','probe:read','ui:4']+([] if fault in ['restore-fails','missing-receipt'] else ['probe:absent'])+['probe:delete'])
     self.assertTrue((root/'vault-initial-absent.log').exists());self.assertTrue((root/'cleanup.log').exists())
+
+ def test_macos_probe_uses_same_packaged_executable_identity_without_weakening_keychain_acl(self):
+  self.assertEqual(m.probe_command(Path('owned.app/Contents/MacOS/furchive-desktop'),Path('different-probe'),'read','qualification-'+'a'*32,'macos'),['owned.app/Contents/MacOS/furchive-desktop','--native-vault-probe','read','qualification-'+'a'*32])
+  self.assertEqual(m.probe_command(Path('owned.exe'),Path('probe.exe'),'absent','qualification-'+'a'*32,'windows'),['probe.exe','absent','qualification-'+'a'*32])
 
  def test_account_fixture_refuses_unexpected_authority_and_never_records_credentials(self):
   self.assertFalse(m.allowed_request('/users/me.json',False));self.assertFalse(m.allowed_request('/posts.json',True));self.assertFalse(m.allowed_request('/users/me.json?filter_id=0',True));self.assertTrue(m.allowed_request('/users/me.json',True));self.assertTrue(m.allowed_request('/users/me.json?',True));self.assertFalse(m.allowed_request('/users/me.json?filter_id=',True));self.assertFalse(m.allowed_request('/users/me.json#fragment',True))

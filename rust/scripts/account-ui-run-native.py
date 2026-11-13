@@ -9,6 +9,8 @@ def validate(receipt,phase,scope,system):
  if (receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or receipt.get('credential_store')!='native' or receipt.get('native_store')!=system or receipt.get('namespace')!=scope or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase])):raise ValueError('native account UI receipt invalid')
  return True
 def allowed_request(path,authorized):return path in ('/users/me.json','/users/me.json?') and authorized is True
+def probe_command(binary,probe,phase,scope,system):
+ return [str(binary),'--native-vault-probe',phase,scope] if system=='macos' else [str(probe),phase,scope]
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('binary',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--probe',type=Path,required=True);a=p.parse_args();root=a.output.resolve()
  if root.exists():raise SystemExit('refusing stale account UI evidence')
@@ -22,7 +24,7 @@ def main():
    body=b'{"id":123,"name":"fixture_user"}';self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
  server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
  def vault(phase,label=None):
-  result=subprocess.run([str(probe),phase,scope],capture_output=True,text=True,timeout=20);(root/f'vault-{label or phase}.log').write_text(result.stdout+result.stderr)
+  result=subprocess.run(probe_command(binary,probe,phase,scope,system),capture_output=True,text=True,timeout=20);(root/f'vault-{label or phase}.log').write_text(result.stdout+result.stderr)
   if result.returncode:raise RuntimeError('native vault readback failed: '+phase)
   row=json.loads(result.stdout)
   if row!={'schema':1,'phase':phase,'namespace':scope,'native_store':system,'ok':True,'synthetic_data':True}:raise ValueError('native vault readback receipt')
@@ -38,11 +40,11 @@ def main():
   if len(requests)!=2 or not all(r['authorized'] and allowed_request(r['path'],True) and r['user_agent'].startswith('Furchive/') for r in requests):raise ValueError('actual account UI request inventory')
   for path in (root/'profile').glob('*.json'):
    if synthetic in path.read_text():raise ValueError('synthetic credential persisted as plaintext settings')
-  accepted={'schema':1,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':completed,'namespace':scope,'native_store':system,'credential_store':'native','synthetic_data':True,'entry_deleted':True,'requests':requests,'full_app_complete':False}
+  accepted={'schema':1,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':completed,'namespace':scope,'native_store':system,'credential_store':'native','probe_identity':'same-packaged-executable' if system=='macos' else 'separate-helper','synthetic_data':True,'entry_deleted':True,'requests':requests,'full_app_complete':False}
  finally:
   try:
    if owned:
-    cleanup=subprocess.run([str(probe),'delete',scope],capture_output=True,text=True,timeout=20);(root/'cleanup.log').write_text(cleanup.stdout+cleanup.stderr)
+    cleanup=subprocess.run(probe_command(binary,probe,'delete',scope,system),capture_output=True,text=True,timeout=20);(root/'cleanup.log').write_text(cleanup.stdout+cleanup.stderr)
     if cleanup.returncode:raise RuntimeError('qualification entry cleanup failed')
   finally:
    (root/'requests.json').write_text(json.dumps(requests,indent=2));server.shutdown();server.server_close();thread.join(timeout=3)

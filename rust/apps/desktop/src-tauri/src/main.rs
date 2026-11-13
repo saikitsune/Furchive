@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[cfg(feature = "self-test")]
+mod account_probe;
 mod commands;
 mod media_geometry;
 mod media_loopback;
@@ -71,6 +73,14 @@ fn qualification_media_base(state: tauri::State<'_, media_loopback::MediaServer>
     state.base_url()
 }
 fn main() {
+    #[cfg(feature = "self-test")]
+    if account_probe::requested() {
+        if let Err(error) = account_probe::run() {
+            eprintln!("NATIVE ACCOUNT PROBE FAILED: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     // Permit only this launch's exact media origin, preserving the rest of the CSP.
     let cache =
         furchive_app::media_cache::MediaCache::new(128 * 1024 * 1024).expect("bounded media cache");
