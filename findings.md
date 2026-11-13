@@ -21,5 +21,8 @@ Whole-pool metadata holds account identity through batches/pausedcommit, with100
 ## Applied presentation/cache preferences
 Applied runtime preferences are distinct from editable draft, generation-fenced against late local settings reads. Gallery scale .5–2 retains <=108 tiles using row/column-aware bounds; video mute applies on next open with no autoplay. Cache preference bounds resident compressed bytes only, effective max512MiB even for legacy16GiB settings; active Arc response buffers and webview-decoded surfaces are not claimed within that resident count. Settings lock -> cache lock -> atomic persistence precedes memory/budget/eviction acknowledgment; persistence failure leaves prior runtime budget and settings unchanged. No new remote authority or session restoration.
 
+## Account UI native qualification policy
+Selftestpairedphases3/4 isolatequalification-onlynativeentry, actualUIverify/save/restart/explicitrestore/logout plusseparateprobe exactread/absence. Memoryfixturephases1/2 remain labeledseparate. LinuxprivateSecretServiceHOME/XDG anddisposablehostedWindows/macOS namespaces, no active-account authority oruserstore reuse. Hostacceptedreceipt follows successfulcleanup, exactlytwoidentityrequests and no plaintextkeysettings; realkeyringprompts/lockedstores remainopen.
+
 ## Decisions
 Desktop first; e621 only; safe first-run rating, account filters respected; no telemetry. Harmless generated media/HTTP fixtures only in repeatable tests. Native media support must be qualified per actual WebView engine.

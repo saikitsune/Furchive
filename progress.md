@@ -1,5 +1,8 @@
 # Execution progress
 
+## Native account UI pairing in progress
+- Rendered login/save process3 then anonymousrestart/explicitrestore/logout process4 uses real isolatedOSprotectedstore, separateprobe initialabsence/exactread/finalabsence andcleanup, no active-accountnamespace. Harmlesslocalhostidentity endpoint records booleans only, noAuthheader/key. Host/parser/campaign tests REDmissingfiles/API then GREEN; packagegate failure remains combinedFAIL even if independentaccountpathpasses. Local119workspace/8nativeRust/28DOM+15unit/check/build/strictClippy pass; actualhostedUI+nativevaultnotyetqualified. Missinglocalgnomekeyringdaemon is testresourcegap, not bypassed; use authorizedhostedLinuxprivateHOME/XDG/SecretService. Strictunusedvariable/rangepattern failures fixedwithoutallow; temporarypatchsyntaxerror correctedbeforeexecution.
+
 ## Verified settings behavior checkpoint
 - 49f920f/run43347441407 all9jobs SUCCESS; owner downloaded and checked all9ZIP/providerdigests/threeactualpackages+executables/26+9nativeUIeachOS/108hostframes/sourcefingerprints/nativecore+vault. Native quality logs119workspace+6catalog+7desktopRust,27DOM+15unit plusfmt/strictClippy/check/build pass eachOS. macOSinitial722ms,maxscroll67ms; original1024msfailure remainshistoricalnonpass. FullproductNOTCOMPLETE; metadata/localresolution/crosspageviewer/UIvaultpairing/platformbreadth/finalreview open. Evidence rust/test-artifacts/ci-run-43347441407/owner-report.md.
 

@@ -88,7 +88,7 @@ def prepare(output:Path,platform:str)->tuple[Path,Path]:
     else:raise ValueError('unknown platform')
     return artifact,locate_binary(payload,platform)
 
-def exercise_campaigns(binary:Path,output:Path,runner=subprocess.run)->None:
+def exercise_campaigns(binary:Path,output:Path,runner=subprocess.run,account_probe:Path|None=None)->None:
     # Independent paths retain evidence even if a peer gate fails. This NEVER
     # converts a partial pass to combined acceptance or retries a failed gate.
     outcomes={}
@@ -99,11 +99,21 @@ def exercise_campaigns(binary:Path,output:Path,runner=subprocess.run)->None:
         except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
             outcomes[name]={'status':'FAIL','error':type(error).__name__}
         (output/'campaigns.json').write_text(json.dumps(outcomes,indent=2))
+    if account_probe is not None:
+        argv=[sys.executable,str(Path(__file__).with_name('account-ui-run-native.py')),str(binary),'--output',str(output/'account'),'--probe',str(account_probe)]
+        if host_platform.system()=='Linux':
+            argv=[sys.executable,str(Path(__file__).with_name('native-vault-linux.py')),str(binary),'--output',str(output/'account'),'--account-ui','--probe',str(account_probe)]
+        try:
+            runner(argv,check=True,timeout=230);outcomes['account']={'status':'PASS'}
+        except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+            outcomes['account']={'status':'FAIL','error':type(error).__name__}
+        (output/'campaigns.json').write_text(json.dumps(outcomes,indent=2))
     if any(row['status']!='PASS' for row in outcomes.values()):raise RuntimeError('one or more required native campaigns failed; inspect campaigns.json')
 
 def main()->None:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--account-probe',type=Path,help='require real native store UI pairing with isolated separate-process readback')
     parser.add_argument('--prepare-only',action='store_true',help='prepare bytes only; explicitly NOT a runtime pass')
     parser.add_argument('--media-campaign',action='store_true',help='exercise viewer lifecycle and actual rendered animation frames')
     args=parser.parse_args();output=args.output.resolve()
@@ -120,7 +130,7 @@ def main()->None:
     subprocess.run([sys.executable,str(Path(__file__).with_name('run-native-qualification.py')),
                     str(binary),'--output',str(output/'native.json')],check=True,timeout=120)
     if args.media_campaign:
-        exercise_campaigns(binary,output)
+        exercise_campaigns(binary,output,account_probe=args.account_probe.resolve() if args.account_probe else None)
         record['viewer_campaign']='PASS: actual native frames, lifecycle and bounded gallery observations'
         record['browse_campaign']='PASS: actual product controls, IPC, Rust HTTP/SQLite and restart'
     record['native_runtime']='PASS: extracted payload image decode/video playback+seek/virtualized DOM only'

@@ -114,6 +114,13 @@ test('preferences controls send only non-secret non-directory preferences and sh
  }finally{await unmount(app);window.happyDOM.abort();}
 });
 
+test('native account UI campaign verifies and saves, then explicitly restores and removes the account after restart',async()=>{
+ const {runAccountCampaign}=await import('../src/lib/account-campaign.ts');let stored=false;const calls=[];
+ const bridge=new BrowserBridge(async(command,args)=>{calls.push(command);if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='preferences')return {filename_template:'{id}',pool_filename_template:'{id}',concurrent_downloads:1,duplicates:'skip',gallery_scale:1,cache_limit_bytes:16777216,restore_session:false,save_metadata:false,start_muted:true};if(command==='account_login'){stored=true;return {id:123,name:'fixture_user'};}if(command==='account_restore'){assert.equal(stored,true);return {id:123,name:'fixture_user'};}if(command==='account_logout'){stored=false;return;}throw Error(command);});
+ for(const phase of [3,4]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const result=await runAccountCampaign(phase);assert.deepEqual(result.checks,phase===3?['anonymous-start','verified-login-native-save','masked-key-cleared']:['anonymous-restart','explicit-native-restore','logout-native-delete']);assert.equal(result.ok,true);}finally{await unmount(app);}}
+ assert.deepEqual(calls.filter(c=>c.startsWith('account_')),['account_login','account_restore','account_logout']);assert.equal(stored,false);window.happyDOM.abort();
+});
+
 test('native campaign driver reaches both rendered phases with labeled in-memory provider double',async()=>{
  const oldSetAttribute=window.Element.prototype.setAttribute;window.Element.prototype.setAttribute=function(name,value){oldSetAttribute.call(this,name,value);if(this instanceof window.HTMLImageElement&&name==='src'){Object.defineProperties(this,{naturalWidth:{value:320,configurable:true},naturalHeight:{value:200,configurable:true},currentSrc:{value,configurable:true},complete:{value:true,configurable:true}});queueMicrotask(()=>this.dispatchEvent(new Event('load')));}};
  const imageSrc=Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype,'src');const videoSrc=Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype,'src');const oldPlay=window.HTMLMediaElement.prototype.play;const oldPause=window.HTMLMediaElement.prototype.pause;const oldLoad=window.HTMLMediaElement.prototype.load;

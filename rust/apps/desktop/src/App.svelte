@@ -1,6 +1,7 @@
 <script lang="ts">
  import {onMount,tick} from 'svelte';
  import {runBrowseCampaign} from './lib/browse-campaign';
+ import {runAccountCampaign} from './lib/account-campaign';
  import {invoke} from '@tauri-apps/api/core';
  import Qualification from './Qualification.svelte';
  import Engineering from './Engineering.svelte';
@@ -13,7 +14,7 @@
   try{nativeTest=await invoke<boolean>('media_test_mode');if(nativeTest){mode='engineering';return;}}catch{/* Older native shell has no media driver seam. */}
   try{
    const phase=await invoke<number>('browse_test_phase');
-   if(phase){await tick();try{await invoke('qualification_result',{result:await runBrowseCampaign(phase)});}catch(e){await invoke('qualification_result',{result:{schema:1,ok:false,phase,error:String(e)}});}return;}
+   if(phase){await tick();try{await invoke('qualification_result',{result:await (phase>=3?runAccountCampaign(phase):runBrowseCampaign(phase))});}catch(e){await invoke('qualification_result',{result:{schema:1,ok:false,phase,error:String(e)}});}return;}
   }catch{/* Production build has no active test phase. */}
   try{if(await invoke<boolean>('qualification_mode'))mode='qualification';}catch{/* Ordinary browser engineering harness. */}
  });

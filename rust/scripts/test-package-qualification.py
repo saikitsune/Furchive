@@ -21,6 +21,20 @@ class PackageLayout(unittest.TestCase):
             with self.assertRaises(RuntimeError):module.exercise_campaigns(Path('owned-binary'),Path(tmp),runner)
         self.assertEqual([Path(c[1]).name for c in calls],['media-run-native.py','browse-run-native.py'])
 
+    def test_real_account_campaign_is_required_separately_and_runs_after_peer_failure(self):
+        import subprocess
+        calls=[]
+        def runner(argv,**kwargs):
+            calls.append(argv)
+            if 'media-run-native.py' in argv[1]:raise subprocess.CalledProcessError(1,argv)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):module.exercise_campaigns(Path('owned-binary'),Path(tmp),runner,account_probe=Path('owned-probe'))
+            receipt=__import__('json').loads((Path(tmp)/'campaigns.json').read_text())
+            self.assertEqual(receipt['account']['status'],'PASS')
+            self.assertEqual(receipt['media']['status'],'FAIL')
+        self.assertEqual(len(calls),3)
+        self.assertTrue(any('account-ui-run-native.py' in str(v) or 'native-vault-linux.py' in str(v) for v in calls[2]))
+
     def test_bundle_executable_must_exist_in_exact_platform_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)

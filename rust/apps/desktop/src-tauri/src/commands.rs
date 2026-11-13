@@ -135,9 +135,58 @@ pub async fn legacy_confirm(
     let confirmed = state.legacy.confirmed(&digest, search_ids, pool_ids)?;
     state.db.import_legacy(confirmed).await
 }
+#[cfg(feature = "self-test")]
+pub(crate) fn account_ui_namespace() -> Result<Option<String>, String> {
+    let Some(scope) = std::env::var("FURCHIVE_ACCOUNT_UI_NAMESPACE").ok() else {
+        return Ok(None);
+    };
+    if !matches!(crate::browse_test_phase(), 3 | 4)
+        || std::env::var_os("FURCHIVE_TEST_DATA_ROOT").is_none()
+        || std::env::var_os("FURCHIVE_BROWSE_FIXTURE_ORIGIN").is_none()
+    {
+        return Err("native account UI test requires paired isolated fixture".into());
+    }
+    validate_account_ui_scope(&scope)?;
+    Ok(Some(scope))
+}
+#[cfg(feature = "self-test")]
+fn validate_account_ui_scope(scope: &str) -> Result<(), String> {
+    let suffix = scope
+        .strip_prefix("qualification-")
+        .ok_or("invalid native account UI namespace")?;
+    if suffix.len() != 32
+        || !suffix
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err("invalid native account UI namespace".into());
+    }
+    Ok(())
+}
+#[cfg(all(test, feature = "self-test"))]
+mod account_scope_tests {
+    #[test]
+    fn rejects_production_or_malformed_qualification_names_before_native_entry() {
+        assert!(
+            super::validate_account_ui_scope(&format!("qualification-{}", "a".repeat(32))).is_ok()
+        );
+        for bad in [
+            "active-account",
+            "qualification-",
+            "qualification-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "qualification-../active-account",
+            "qualification-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaag",
+        ] {
+            assert!(super::validate_account_ui_scope(bad).is_err());
+        }
+    }
+}
 fn account_vault(state: &AppState) -> Result<furchive_app::credentials::Vault, String> {
     #[cfg(feature = "self-test")]
     if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
+        if let Some(scope) = account_ui_namespace()? {
+            return furchive_app::credentials::Vault::native_qualification(&scope);
+        }
         return Ok(state.test_vault.clone());
     }
     let _ = state;

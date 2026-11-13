@@ -11,7 +11,7 @@ fn browse_test_phase() -> u8 {
         return std::env::var("FURCHIVE_BROWSE_TEST_PHASE")
             .ok()
             .and_then(|s| s.parse().ok())
-            .filter(|n| matches!(n, 1 | 2))
+            .filter(|n| matches!(n, 1..=4))
             .unwrap_or(0);
     }
     0
@@ -24,6 +24,7 @@ fn qualification_mode() -> bool {
 fn qualification_result(app: tauri::AppHandle, result: serde_json::Value) -> Result<(), String> {
     #[cfg(feature = "self-test")]
     {
+        let mut result = result;
         if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
             use tauri::Manager;
             let state = app.state::<commands::AppState>();
@@ -32,6 +33,22 @@ fn qualification_result(app: tauri::AppHandle, result: serde_json::Value) -> Res
             if cache.budget_bytes()? != expected || cache.resident_bytes()? > expected {
                 return Err("actual cache budget not applied".into());
             }
+        }
+        if matches!(browse_test_phase(), 3 | 4) {
+            let scope = commands::account_ui_namespace()?
+                .ok_or("missing isolated native store namespace")?;
+            let vault = furchive_app::credentials::Vault::native_qualification(&scope)?;
+            let expected = browse_test_phase() == 3;
+            if vault.qualification_matches(
+                "fixture_user",
+                "synthetic-native-vault-qualification-only",
+            )? != expected
+            {
+                return Err("actual native entry state differs from account UI".into());
+            }
+            result["credential_store"] = serde_json::json!("native");
+            result["native_store"] = serde_json::json!(std::env::consts::OS);
+            result["namespace"] = serde_json::json!(scope);
         }
         let path = std::env::var_os("FURCHIVE_QUALIFICATION_OUTPUT")
             .ok_or("missing qualification output")?;
