@@ -3,6 +3,7 @@ import {tick} from 'svelte';
  * caller enables this only through native compile-time guarded test commands. */
 export async function runBrowseCampaign(phase:number){
  const checks:string[]=[];
+ let template_preview:{filename:string;pool_filename:string;invalid_rejected:boolean;unsaved:boolean}|undefined;
  const wait=async(predicate:()=>boolean)=>{const end=performance.now()+7000;while(!predicate()){if(performance.now()>end)throw Error('native browse condition timed out');await new Promise(r=>setTimeout(r,20));await tick();}};
  const button=(name:string)=>{const b=[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.trim()===name);if(!b||b.disabled)throw Error('missing or disabled '+name);b.click();};
  const input=(label:string,value:string)=>{const e=document.querySelector<HTMLInputElement>(`[aria-label="${label}"]`);if(!e)throw Error('missing '+label);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));};
@@ -37,7 +38,13 @@ export async function runBrowseCampaign(phase:number){
   button('Queue visible pool page');await wait(()=>document.querySelector('[data-job-id="3"]')?.textContent?.includes('Paused')===true);if(document.querySelector<HTMLElement>('[data-job-id="3"]')?.dataset.groupPosition!=='1')throw Error('pool download ordinal compacted');button('Resume group');await wait(()=>document.querySelector('[data-job-id="3"]')?.textContent?.includes('Completed')===true);checks.push('pool-download-group');
   button('Pin pool');await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Unpin pool'));checks.push('pin-persist');
   input('Saved search name','Native fixture search');await tick();button('Save search');await wait(()=>document.querySelector('[aria-label="Delete Native fixture search"]')!==null);checks.push('saved-search-persist');
-  button('Load preferences');await wait(()=>document.querySelector('[aria-label="Filename template"]')!==null);input('Filename template','{source}/{id}.{ext}');await tick();button('Save preferences');await wait(()=>document.body.textContent?.includes('Preferences saved')===true);checks.push('preferences-save');
+  button('Load preferences');await wait(()=>document.querySelector('[aria-label="Filename template"]')!==null);
+  input('Filename template','../unsafe');await tick();button('Preview filenames');await wait(()=>document.querySelector('[data-template-error]')!==null);if(document.querySelector('[data-template-preview]'))throw Error('invalid template preview accepted');
+  input('Filename template','preview/{id}.{ext}');await tick();button('Preview filenames');await wait(()=>document.querySelector('[data-template-preview="post"]')?.textContent==='preview/12345.png');
+  const previewPool=document.querySelector('[data-template-preview="pool"]')?.textContent;if(previewPool!=='e621/pools/sample_artist/Sample_pool/7_12345.png')throw Error('pool preview did not use Rust sample values');
+  button('Load preferences');await wait(()=>document.querySelector<HTMLInputElement>('[aria-label="Filename template"]')?.value==='{source}/{artist}/{id}.{ext}');if(document.querySelector('[data-template-preview]')||document.querySelector('[data-template-error]'))throw Error('reloaded preview not invalidated');
+  template_preview={filename:'preview/12345.png',pool_filename:previewPool,invalid_rejected:true,unsaved:true};checks.push('filename-template-preview');
+  input('Filename template','{source}/{id}.{ext}');await tick();button('Save preferences');await wait(()=>document.body.textContent?.includes('Preferences saved')===true);checks.push('preferences-save');
   input('Filename template','{source}/parallel/{id}/{id}.{ext}');await tick();button('Save preferences');await tick();button('Search');await wait(()=>idle()&&document.querySelectorAll('[data-post-id]').length===50);
   for(const id of ['100','101']){const row=document.querySelector(`[data-post-id="${id}"]`)!;[...row.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent==='Queue download')!.click();await tick();}
   await wait(()=>document.querySelector('[data-job-id="4"]')?.textContent?.includes('Paused')===true&&document.querySelector('[data-job-id="5"]')?.textContent?.includes('Paused')===true);
@@ -70,5 +77,5 @@ export async function runBrowseCampaign(phase:number){
   button('Pool 3');await wait(()=>idle()&&[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Unpin pool'));button('Unpin pool');await wait(()=>![...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Pool 3'));checks.push('unpin');
  }else throw Error('unknown native browse phase');
  if(document.querySelector('[role="alert"]'))throw Error('native product displayed an error: '+document.querySelector('[role="alert"]')?.textContent);
- return {schema:1,ok:true,phase,checks};
+ return {schema:1,ok:true,phase,checks,...(template_preview?{template_preview}:{})};
 }

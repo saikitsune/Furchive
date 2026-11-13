@@ -7,6 +7,7 @@ fn main() {
             "qualification_mode",
             "qualification_media_base",
             "qualification_result",
+            "preview_templates",
             "search",
             "suggestions",
             "saved_searches",

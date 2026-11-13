@@ -5,8 +5,17 @@ spec=importlib.util.spec_from_file_location('browse',Path(__file__).with_name('b
 if spec is None or spec.loader is None:raise RuntimeError('missing browse driver')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Receipt(unittest.TestCase):
+ def test_template_preview_is_required_with_real_rendered_output_and_unsaved_state(self):
+  self.assertIn('filename-template-preview',m.CHECKS[1])
+  good={'schema':1,'ok':True,'phase':1,'checks':list(m.CHECKS[1]),'template_preview':{'filename':'preview/12345.png','pool_filename':'e621/pools/sample_artist/Sample_pool/7_12345.png','invalid_rejected':True,'unsaved':True}}
+  self.assertTrue(m.validate(good,1))
+  for payload in [None,{},dict(good['template_preview'],filename='wrong'),dict(good['template_preview'],unsaved=False),dict(good['template_preview'],invalid_rejected=False)]:
+   with self.assertRaises(ValueError):m.validate(dict(good,template_preview=payload),1)
+  with self.assertRaises(ValueError):m.validate({k:v for k,v in good.items() if k!='template_preview'},1)
+
  def test_requires_every_named_ui_path_not_process_exit_alone(self):
-  good={'schema':1,'ok':True,'phase':1,'checks':['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','presentation-preferences','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','whole-pool-queue','viewer-cross-page-search','viewer-cross-page-pool','download-pause-ack','download-complete','download-cancel','normalized-metadata-rename',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]]}
+  good={'schema':1,'ok':True,'phase':1,'checks':['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','filename-template-preview','presentation-preferences','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','whole-pool-queue','viewer-cross-page-search','viewer-cross-page-pool','download-pause-ack','download-complete','download-cancel','normalized-metadata-rename',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]]}
+  good['template_preview']={'filename':'preview/12345.png','pool_filename':'e621/pools/sample_artist/Sample_pool/7_12345.png','invalid_rejected':True,'unsaved':True}
   self.assertTrue(m.validate(good,1))
   for bad in [{},dict(good,ok=False),dict(good,phase=2),dict(good,checks=good['checks'][:-1]),dict(good,checks=good['checks']+good['checks'][:1])]:
    with self.assertRaises(ValueError):m.validate(bad,1)
@@ -22,6 +31,7 @@ class Receipt(unittest.TestCase):
   for phase,name in [(1,'normalized-metadata-rename'),(2,'normalized-metadata-restart')]:
    self.assertIn(name,m.CHECKS[phase])
    good={'schema':1,'ok':True,'phase':phase,'checks':list(m.CHECKS[phase])}
+   if phase==1:good['template_preview']={'filename':'preview/12345.png','pool_filename':'e621/pools/sample_artist/Sample_pool/7_12345.png','invalid_rejected':True,'unsaved':True}
    self.assertTrue(m.validate(good,phase))
    for checks in [good['checks'][:-1],good['checks']+[name],[n for n in good['checks'] if n!=name]]:
     with self.assertRaises(ValueError):m.validate(dict(good,checks=checks),phase)

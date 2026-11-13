@@ -1,5 +1,8 @@
 # Execution progress
 
+## Filename preview source correction and advisory triage
+- Implemented Rust-owned read-only ordinary/pool sample filename preview. Initialsource dbe02b66BLOCK MAJORNYX-TP-01delayedLoad/Save replacement stalepreview/error; originalreport/archive/eightorderingfails retained. Ownercanonicalregression4RED2pass then correctedacknowledgmentfence,67DOM15unitcheckbuildPASS. Native30+11UNRUN, correctedindependentreviewpending. Separatelycargo-auditfoundRUSTSEC-2026-0459baselinebundledSQLite3.50.2, isolatedmilestone/sqlite-advisorycandidate3.54.1workspace136/core86+doc/audit0vulnerabilitiespass; notintegrated, GLibunsound/unmaintained/devLOWwarningsstillopen. WholeappNOTCOMPLETE.
+
 ## Verified combined viewer and normalized-sidecar milestone
 - Exact6ecfaf2/run43393039602all9jobsSUCCESS; ownerdownloaded9actualZIP/providerdigests/3nestedpackages+executables/sourcefingerprints,29+11productchecks+6realnativeaccountchecksperOS/108hostframes/corevaultbindings. Eachnativequality150namedRust=135workspace+6catalog+9desktop,55DOM15unitfmtstrictClippycheckbuildPASS. InitialLinux297ms/Windows60.4/macOS741all<=unchanged1000ms;scrollmax58/31.7/79<=250;DOM<=48. Crosspage/nullURL/poolholes andnormalizedmetadataRename/collision/restartpass;actualsidecarbytescheckedhostharness,rawsidecarsnotexportedsoownerclaimsreceipt/sourcebindingnotrawpostdownloadsidecarread. CoreLinux85/86macOS84/85Windows86/87+doc7cleanlogs verified. OriginalBLOCKs/failedruns/diagnostics preserved;wholeappNOTCOMPLETE, broadplatform/install/accessibility/lockedstore/fullparity/finalreviewopen. Evidence rust/test-artifacts/ci-run-43393039602/owner-report.md.
 

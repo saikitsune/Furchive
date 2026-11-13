@@ -21,6 +21,7 @@ export class BrowserBridge {
  pool(id:number,offset:number,ratings:RatingFilter){return this.invoke<PoolPage>('pool_page',{id,offset,limit:50,ratings});}
  suggestions(prefix:string){return this.invoke<Suggestion[]>('suggestions',{prefix});}
  preferences(){return this.invoke<Preferences>('preferences');}
+ previewTemplates(filenameTemplate:string,poolFilenameTemplate:string){return this.invoke<{filename:string;pool_filename:string}>('preview_templates',{filenameTemplate,poolFilenameTemplate});}
  savePreferences(preferences:Preferences){return this.invoke<Preferences>('save_preferences',{preferences});}
  step(id:string,delta:number){return this.invoke<NavigationPage|null>('viewer_step',{id,delta});}
  prepare(id:string,variant:'preview'|'full'){return this.invoke<{id:string;kind:'image'|'video';src:string;title:string}>('prepare_media',{id,variant});}

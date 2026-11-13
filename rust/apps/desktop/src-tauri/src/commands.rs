@@ -380,6 +380,13 @@ pub async fn download_control(
     state.downloads.control(id, &verb).await
 }
 #[tauri::command]
+pub fn preview_templates(
+    filename_template: String,
+    pool_filename_template: String,
+) -> Result<furchive_app::settings::TemplatePreview, String> {
+    furchive_app::settings::preview_templates(&filename_template, &pool_filename_template)
+}
+#[tauri::command]
 pub fn preferences(state: State<'_, AppState>) -> Result<Preferences, String> {
     Ok(state.settings.current()?.into())
 }

@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-product-commands"
 description = "Validated e621 and application-state intents; no arbitrary file or URL access"
-commands.allow = ["viewer_step", "queue_whole_pool", "queue_pool_page", "download_group_control", "account_status", "account_login", "account_restore", "account_logout", "choose_download_directory", "queue_download", "download_jobs", "download_control", "legacy_preview", "legacy_confirm", "prepare_media", "preferences", "save_preferences", "browse_test_phase", "search", "favorites", "pool_page", "delete_search", "suggestions", "saved_searches", "save_search", "pinned_pools", "set_pin"]
+commands.allow = ["preview_templates", "viewer_step", "queue_whole_pool", "queue_pool_page", "download_group_control", "account_status", "account_login", "account_restore", "account_logout", "choose_download_directory", "queue_download", "download_jobs", "download_control", "legacy_preview", "legacy_confirm", "prepare_media", "preferences", "save_preferences", "browse_test_phase", "search", "favorites", "pool_page", "delete_search", "suggestions", "saved_searches", "save_search", "pinned_pools", "set_pin"]

@@ -10,6 +10,9 @@
  let username=$state(''),poolId=$state(''),name=$state(''),saved=$state<SavedSearch[]>([]),pins=$state<{source:string;id:string}[]>([]),suggestions=$state<Suggestion[]>([]);
  let result=$state<SearchPage|null>(null),pool=$state<PoolPage|null>(null),error=$state(''),busy=$state(false),page=$state(1),mode=$state<'search'|'favorites'|'pool'>('search');
  let preferences=$state<Preferences|null>(null),applied=$state<Preferences|null>(null),preferenceNotice=$state('');
+ let templatePreview=$state<{filename:string;pool_filename:string}|null>(null),templateError=$state('');
+ let templateGeneration=0;
+ function invalidateTemplatePreview(){templateGeneration++;templatePreview=null;templateError='';}
  let legacy=$state<LegacyPreview|null>(null),importSearches=$state<string[]>([]),importPools=$state<string[]>([]),importNotice=$state('');
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
  let thumbnails=$state<Record<string,MediaItem>>({});
@@ -30,7 +33,7 @@
  let navigation=$derived({index:selectablePosts.findIndex(p=>p.key.id===selectedId),total:selectablePosts.length,hasPrevious:!busy&&(selectablePosts.findIndex(p=>p.key.id===selectedId)>0||(pool?poolOffset>0:page>1)),hasNext:!busy&&(selectablePosts.findIndex(p=>p.key.id===selectedId)<selectablePosts.length-1||(pool?pool.next_offset!==null:result?.next_page!=null))});
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
- onMount(()=>{void refresh();void readAppliedPreferences();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;preferenceGeneration++;};});
+ onMount(()=>{void refresh();void readAppliedPreferences();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;preferenceGeneration++;templateGeneration++;};});
  async function refresh(){try{[saved,pins]=await Promise.all([bridge.searches(),bridge.pins()]);}catch(e){error=String(e);}}
  function chip(which:'include'|'exclude',value:string){
   const token=value.trim();if(!token||/\s/.test(token)||token.startsWith('-')){error='Enter one unsigned tag at a time.';return;}
@@ -76,8 +79,9 @@
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
  async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
  async function readAppliedPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request===preferenceGeneration)applied=value;}catch(e){if(request===preferenceGeneration)error=String(e);}}
- async function loadPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request!==preferenceGeneration)return;preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='';}catch(e){if(request===preferenceGeneration)error=String(e);}}
- async function savePreferences(){if(!preferences)return;const request=++preferenceGeneration;try{const value=await bridge.savePreferences($state.snapshot(preferences));if(request!==preferenceGeneration)return;preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='Preferences saved';}catch(e){if(request===preferenceGeneration)error=String(e);}}
+ async function loadPreferences(){invalidateTemplatePreview();const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request!==preferenceGeneration)return;invalidateTemplatePreview();preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='';}catch(e){if(request===preferenceGeneration)error=String(e);}}
+ async function previewTemplates(){if(!preferences)return;invalidateTemplatePreview();const request=templateGeneration;try{const value=await bridge.previewTemplates(preferences.filename_template,preferences.pool_filename_template);if(request===templateGeneration)templatePreview=value;}catch(e){if(request===templateGeneration)templateError=String(e);}}
+ async function savePreferences(){if(!preferences)return;invalidateTemplatePreview();const request=++preferenceGeneration;try{const value=await bridge.savePreferences($state.snapshot(preferences));if(request!==preferenceGeneration)return;invalidateTemplatePreview();preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='Preferences saved';}catch(e){if(request===preferenceGeneration)error=String(e);}}
  async function save(){error='';try{const value=name.trim();if(!value)throw Error('Name this search first.');await bridge.save({id:crypto.randomUUID(),name:value,query:query()});name='';await refresh();}catch(e){error=String(e);}}
  async function remove(id:string){try{await bridge.delete(id);await refresh();}catch(e){error=String(e);}}
  async function pin(){if(!pool)return;const id=Number(pool.pool.key.id);try{await bridge.pin(id,!pins.some(p=>p.id===String(id)));await refresh();}catch(e){error=String(e);}}
@@ -106,8 +110,12 @@
    {/if}
    <h2>Preferences</h2><button onclick={loadPreferences}>Load preferences</button>
    {#if preferences}
-    <label>Filename template<input aria-label="Filename template" bind:value={preferences.filename_template}></label>
-    <label>Pool filename template<input aria-label="Pool filename template" bind:value={preferences.pool_filename_template}></label>
+    <label>Filename template<input aria-label="Filename template" bind:value={preferences.filename_template} oninput={invalidateTemplatePreview}></label>
+    <label>Pool filename template<input aria-label="Pool filename template" bind:value={preferences.pool_filename_template} oninput={invalidateTemplatePreview}></label>
+    <button onclick={previewTemplates}>Preview filenames</button>
+    <p>Sample values only: source e621, artist sample_artist, ID 12345, title Sample artwork, pool Sample pool, page 7, extension png. Preview does not save settings or reserve a filename; actual duplicate handling may change the final name.</p>
+    {#if templateError}<p role="alert" data-template-error>{templateError}</p>{/if}
+    {#if templatePreview}<div aria-label="Filename template preview"><p>Post: <code data-template-preview="post">{templatePreview.filename}</code></p><p>Pool: <code data-template-preview="pool">{templatePreview.pool_filename}</code></p></div>{/if}
     <label>Gallery scale<input aria-label="Gallery scale" type="number" min="0.5" max="2" step="0.25" bind:value={preferences.gallery_scale}></label>
     <label>Resident media cache (MiB)<input aria-label="Resident media cache MiB" type="number" min="16" max="512" step="16" value={Math.min(512,preferences.cache_limit_bytes/1048576)} onchange={event=>{if(preferences)preferences.cache_limit_bytes=Number(event.currentTarget.value)*1048576;}}></label>
     <label class="import-row"><input aria-label="Start videos muted" type="checkbox" bind:checked={preferences.start_muted}>Start videos muted</label>

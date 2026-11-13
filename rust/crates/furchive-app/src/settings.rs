@@ -72,6 +72,36 @@ impl From<Settings> for Preferences {
         }
     }
 }
+/// Sample paths only: parsing/rendering grants no filesystem or network authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TemplatePreview {
+    pub filename: String,
+    pub pool_filename: String,
+}
+pub fn preview_templates(
+    filename_template: &str,
+    pool_filename_template: &str,
+) -> Result<TemplatePreview, String> {
+    let values = furchive_domain::TemplateValues {
+        source: "e621",
+        artist: "sample_artist",
+        id: "12345",
+        safe_title: "Sample artwork",
+        pool_name: "Sample pool",
+        page_number: "7",
+        ext: "png",
+    };
+    let render = |template: &str| {
+        FilenameTemplate::parse(template)
+            .and_then(|t| t.render(&values))
+            .map_err(|e| e.to_string())
+    };
+    Ok(TemplatePreview {
+        filename: render(filename_template)?,
+        pool_filename: render(pool_filename_template)?,
+    })
+}
+
 pub struct SettingsStore {
     path: PathBuf,
     value: std::sync::Mutex<Settings>,
