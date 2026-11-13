@@ -6,7 +6,10 @@ Working e621-focused Windows/Linux/macOS desktop app with Rust engine, Tauri 2 a
 ## Constraints
 Preserve old C# source, user data, art and history. No production/server changes, license choice, model/provider changes, main merge or release publication without approval. Test-first behavior slices; real artifacts/tests required. Read scoped repository AGENTS.md if present. Keep milestone-scale progress and honest platform gaps.
 
-## Current verified cache privacy milestone
+## Current verified remembered-browsing milestone
+Exactc007fa5/run43418057594 ownerverifiedall9jobs/9actualZIPs/currentpackageexecutables/Gitfingerprints/31+13product+6nativeaccountUIperOS/108hostframes/corevault. Optincontrolsonlyanonymousrestart/explicitfreshreopen/Forgetdisablepersistentnull verifiedwithcurrentharness; noautoauthorityrestore. Sourcewholefinale39cd363Nyx+returnPASS0security0logic;priorbb35ebf8and4561d9ceBLOCKimmutable. Actualnativequality164namedRust=149workspace6catalog9desktop,92component15unit/fmtstrictClippy/SveltebuildPASS. ActualmacOSthinarm64only,notx64approval. See rust/test-artifacts/ci-run-43418057594/owner-report.md. Wholeproductdefaultinstalled3OS/installerupgradeuninstall/accessibilitydisplayaudioGPU/lockedstore/nativepicker/broaderlegacycatalogopenerhistory/finalreviewstillopen; originalC#80files/history/userdatapreserved.
+
+## Previous verified cache privacy milestone
 Exact9d19fb0/run43407975497all9jobs/9actualZIPs/currentpackageexecutable/sourcebindingverified;30+12product+6realnativeaccountUIperOS/108frames/nativecorevaultPASS. Cacheclearhostpersistent3tablezero/renderedpreservation/currentACKvalidatedbyexactharnessandreceipts (rawDBnotexported). Sourcewholemilestoneapprovedcorrected0c0e7aaeonly,originalNYX-CP-01BLOCKretained. Quality143workspace6catalog9desktopRust/71component15unitstrictgatesPASS. See rust/test-artifacts/ci-run-43407975497/owner-report.md. Fullproduct/installedplatform/sessionhistoryprivacy/broaderlegacy/finalreviewremainopen.
 
 ## Previous verified runtime milestone
