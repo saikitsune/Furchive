@@ -1,0 +1,112 @@
+name: Default package smoke (bounded)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: furchive-default-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  default-package:
+    name: Default debug payload ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      CARGO_BUILD_JOBS: 3
+      RUSTUP_TOOLCHAIN: '1.99.1'
+      RUSTUP_AUTO_INSTALL: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Pinned Rust and owned temporary files
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          mkdir -p rust/test-artifacts/default-logs/tmp
+          printf 'TMPDIR=%s\n' "$PWD/rust/test-artifacts/default-logs/tmp" >> "$GITHUB_ENV"
+      - name: Named host contracts (no native acceptance)
+        run: |
+          set -o pipefail
+          python -m venv rust/test-artifacts/default-host-env
+          if [ "$RUNNER_OS" = "Windows" ]; then P="$PWD/rust/test-artifacts/default-host-env/Scripts"; else P="$PWD/rust/test-artifacts/default-host-env/bin"; fi
+          "$P/python" -m pip install psutil==7.2.2
+          printf '%s\n' "$P" >> "$GITHUB_PATH"
+          "$P/python" rust/scripts/default-test.py -v 2>&1 | tee rust/test-artifacts/default-logs/host-tests.log
+      - name: Actual Linux supervisor lost-parent and raw-exit contracts
+        if: runner.os == 'Linux'
+        run: |
+          set -o pipefail
+          python rust/scripts/default-supervision-test.py -v 2>&1 | tee rust/test-artifacts/default-logs/supervision-tests.log
+      - name: Linux build and isolated native UI prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb xauth dbus-x11 xdotool wmctrl openbox python3-pyatspi python3-xlib python3-psutil python3-pil
+      - name: Frontend default production resources
+        run: |
+          set -o pipefail
+          npm ci --prefix rust/apps/desktop 2>&1 | tee rust/test-artifacts/default-logs/npm-ci.log
+          npm run --prefix rust/apps/desktop check 2>&1 | tee rust/test-artifacts/default-logs/frontend-check.log
+          npm run --prefix rust/apps/desktop build 2>&1 | tee rust/test-artifacts/default-logs/frontend-build.log
+      - name: Default Debian payload (not installation)
+        if: runner.os == 'Linux'
+        working-directory: rust/apps/desktop
+        run: |
+          set -o pipefail
+          npm run tauri -- build --debug --features custom-protocol --bundles deb --ci -- --locked --message-format=json 2>&1 | tee ../../test-artifacts/default-logs/build.log
+      - name: Default unsigned complete macOS app (not installation)
+        if: runner.os == 'macOS'
+        working-directory: rust/apps/desktop
+        run: |
+          set -o pipefail
+          npm run tauri -- build --debug --features custom-protocol --bundles app --ci --no-sign -- --locked --message-format=json 2>&1 | tee ../../test-artifacts/default-logs/build.log
+      - name: Default Windows portable executable (not NSIS or MSI)
+        if: runner.os == 'Windows'
+        run: |
+          set -o pipefail
+          cargo +1.99.1 build --manifest-path rust/apps/desktop/src-tauri/Cargo.toml --features custom-protocol --locked --message-format=json 2>&1 | tee rust/test-artifacts/default-logs/build.log
+      - name: Restore known Tauri cosmetic manifest rewrite only
+        # Tauri reformats the self-test feature list even when not selected.
+        # Preserve all other drift for the subsequent failure check.
+        run: python rust/scripts/default-smoke.py --restore-cosmetic-manifest
+      - name: Verify no product source changed
+        run: git diff --exit-code HEAD -- rust/apps rust/crates rust/Cargo.toml rust/Cargo.lock .github/workflows/rust-qualification.yml
+      - name: Re-extract and bind distinct default artifact
+        run: python rust/scripts/default-smoke.py --prepare-only --build-log rust/test-artifacts/default-logs/build.log --output rust/test-artifacts/default-package-${{ runner.os }}
+      - name: Attempt Linux owned native smoke with no external network
+        if: runner.os == 'Linux'
+        # Namespace denial is non-success, never a sudo/unconfined fallback.
+        run: |
+          xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -c '
+            openbox > rust/test-artifacts/default-logs/openbox.log 2>&1 & WM=$!
+            trap "kill $WM 2>/dev/null || true; wait $WM 2>/dev/null || true" EXIT
+            /usr/bin/python3 rust/scripts/default-smoke.py --runtime-package rust/test-artifacts/default-package-Linux/package.json --output rust/test-artifacts/default-runtime-Linux'
+      - name: Record Windows or macOS prelaunch isolation gap (expected non-success)
+        if: runner.os != 'Linux'
+        run: python rust/scripts/default-smoke.py --runtime-package rust/test-artifacts/default-package-${{ runner.os }}/package.json --output rust/test-artifacts/default-runtime-${{ runner.os }}
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: default-debug-${{ runner.os }}
+          retention-days: 5
+          if-no-files-found: error
+          path: |
+            rust/test-artifacts/default-logs/*.log
+            rust/test-artifacts/default-package-*/*.json
+            rust/test-artifacts/default-package-*/*.deb
+            rust/test-artifacts/default-package-*/*.zip
+            rust/test-artifacts/default-package-*/*.tar.gz
+            rust/test-artifacts/default-runtime-*/*.json
+            rust/test-artifacts/default-runtime-*/*.log
+            rust/test-artifacts/default-runtime-*/namespace/*.json
+            rust/test-artifacts/default-runtime-*/namespace/*.log
+            rust/test-artifacts/default-runtime-*/namespace/*.png

@@ -6,7 +6,10 @@ Working e621-focused Windows/Linux/macOS desktop app with Rust engine, Tauri 2 a
 ## Constraints
 Preserve old C# source, user data, art and history. No production/server changes, license choice, model/provider changes, main merge or release publication without approval. Test-first behavior slices; real artifacts/tests required. Read scoped repository AGENTS.md if present. Keep milestone-scale progress and honest platform gaps.
 
-## Current verified remembered-browsing milestone
+## Current verified volume milestone
+Runtime017b21c/run43427455162 all9jobs/9actualZIPsourcepackagebinary/capture/account/corevaultownerverified. Actualrenderedvolume.5mutedforall3codecsonWebKitGTK/WebView2/WKWebView;31+13product+6account/36framesperOS,164namedRust94component17unitstrictquality. InitialLinux356/Windows37.8/macOS985ms<=1000,scroll53/32.5/158<=250;mac15msmarginretained. Sourceef389wholeNyx+returnPASS;originald047/run43423773747LinuxFAILpreserved. Default-packagequalificationtoolingcorrectedsourcecc2d5d3 hasboundedindependentdeltaPASS;nativeall3UNRUN,notinstalledapproval. Wholeproductgapsremain; no C#retirement/license/main/publication. See rust/test-artifacts/ci-run-43427455162/owner-report.md.
+
+## Previous verified remembered-browsing milestone
 Exactc007fa5/run43418057594 ownerverifiedall9jobs/9actualZIPs/currentpackageexecutables/Gitfingerprints/31+13product+6nativeaccountUIperOS/108hostframes/corevault. Optincontrolsonlyanonymousrestart/explicitfreshreopen/Forgetdisablepersistentnull verifiedwithcurrentharness; noautoauthorityrestore. Sourcewholefinale39cd363Nyx+returnPASS0security0logic;priorbb35ebf8and4561d9ceBLOCKimmutable. Actualnativequality164namedRust=149workspace6catalog9desktop,92component15unit/fmtstrictClippy/SveltebuildPASS. ActualmacOSthinarm64only,notx64approval. See rust/test-artifacts/ci-run-43418057594/owner-report.md. Wholeproductdefaultinstalled3OS/installerupgradeuninstall/accessibilitydisplayaudioGPU/lockedstore/nativepicker/broaderlegacycatalogopenerhistory/finalreviewstillopen; originalC#80files/history/userdatapreserved.
 
 ## Previous verified cache privacy milestone
