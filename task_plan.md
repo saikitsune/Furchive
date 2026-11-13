@@ -6,7 +6,10 @@ Working e621-focused Windows/Linux/macOS desktop app with Rust engine, Tauri 2 a
 ## Constraints
 Preserve old C# source, user data, art and history. No production/server changes, license choice, model/provider changes, main merge or release publication without approval. Test-first behavior slices; real artifacts/tests required. Read scoped repository AGENTS.md if present. Keep milestone-scale progress and honest platform gaps.
 
-## Active filename-preview and security follow-up
+## Current verified runtime milestone
+Exact `b903757` / run `43401673459` owner-verified all9jobs/9actualZIPs/threepackage-executable bindings/current source hashes,30+11product+6nativeaccountUIchecksperOS/108frames and download/core/vault proof. Filename previews and patched SQLite3.54.1 work through actual extracted packages; all quality gates passed. See `rust/test-artifacts/ci-run-43401673459/owner-report.md`. Broad installed-platform/accessibility/lockedstore/sessionprivacy/migration/finalwholeproduct acceptance remains open; no C#retirement/mainmerge/license/publication approval.
+
+## Historical filename-preview and security follow-up
 Latest: independentpreview+SQLitereviewsandreturnsPASS, exactdisjointsourceintegrated. Primary139workspace6catalog9desktopRust/67component15unitandstrictqualitygatesPASS; onefreshcombinednative30+11campaignpending. Below preserves earlierprogresscheckpoint, notcurrentblocker.
 Read-only ordinary/pool sample template preview implemented; initialdbe02b66sourceBLOCKonNYX-TP-01acknowledgedpreference replacement race retained. Correctedfencecanonical67DOM/15unitcheckbuildPASS, freshsource/native30+11pending. ParallelisolatedSQLiteadvisoryrepair forRUSTSEC-2026-0459 (bundled3.50.2->3.54.1)workspacetests/Clippy/auditcleanvulnerabilitycategory, notyetintegratedorplatformqualified. No wholeappdoneclaim.
 

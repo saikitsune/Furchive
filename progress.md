@@ -1,5 +1,11 @@
 # Execution progress
 
+## Verified packaged filename preview and SQLite correction
+- Exact `b903757e4918e0f42947fac9d78d8edcb96cf384` / Actions `43401673459`: all nine jobs succeeded; owner downloaded and verified all nine actual artifact ZIPs, nested packages/executables, source fingerprints and native receipts. Every OS passed30+11product checks,6real native-account UI checks and36media frames (108total).
+- New filename preview exercised invalid refusal, exact Rust-rendered post/pool samples and unsaved-state reload in the actual webview. Patched SQLite3.54.1 dependency versions/linked-version regression verified on all three hosts. Native quality each139workspace+6catalog+9desktopRust=154namedRust,67component15unit/fmtstrictClippy/SveltecheckbuildPASS; downloadsLinux85/86macOS84/85Windows86/87+1doc/sevenlogs and standalone vault gatesPASS.
+- Initial render Windows58.4ms/Linux427ms/macOS664ms <=unchanged1000ms; scrollmax32.2/70/95ms <=250ms; mounted<=48. Original previewBLOCK/performance failures and Linux/Windows diagnostics retained. Functional milestonePASS is not production-installed, all-advisory-clean or whole-product acceptance. Evidence: `rust/test-artifacts/ci-run-43401673459/owner-report.md`. Original80baseline files unchanged.
+
+
 ## Integrated reviewed filename preview + SQLite security correction
 - Previewb4f5df7/tree0f41553csourceNyx+returnPASS afterNYX-TP-01correction, originaldbe02b66BLOCK/eightorderingprobespreserved. SQLite1bfb0479Bram+returnPASS0security0logic, exact11securitypathscomposedwithnooverlap; manifestrecomputedmatchesall31corepayloads/unchangedclosedtestIDs. Primary139workspace6catalog9desktopRust/67DOM15unitfmtstrictdefaultallfeatureClippySvelte0errors0warningsbuild+hostguardsPASS. PatchedSQLite3.54.1versionfloor/old-new-oldprofile+completedpublication/sidecarbytepreservationverified. Primaryroot+desktopaudit0vulnerabilitycategory;GLibunsound/unmaintained/npmdevLOWwarningsretained. Freshcombinednative30+11campaignpending, noinheritancefrom6ecfaf2. Original80baselinefilespreserved,no sandbox/main/release/license/providerprofile/userdatachange.
 
