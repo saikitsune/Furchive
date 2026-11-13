@@ -57,16 +57,16 @@
       "bytes": 395
     },
     "src/model.rs": {
-      "sha256": "dd61a064e2c7181278f34b80fbdc5351ceed859421d55d818036994ff38dde05",
-      "bytes": 17520
+      "sha256": "149918289e09b2a5dad305cfefb5fdeca66ab4abab8c9ce2d94bbc14a4f42115",
+      "bytes": 20522
     },
     "src/tests/native.rs": {
       "sha256": "62e394c8657cdfc7ab8212bc9459bac78b1aa5cb36f87a1f708c92b89a341929",
       "bytes": 6128
     },
     "src/tests.rs": {
-      "sha256": "3aef27dea4e2ef959fa508c21eaf38f47ba2413b881d5b729426421ff2851968",
-      "bytes": 67860
+      "sha256": "4713474671285ee6fabcd27dba34da77f63337bc675def5019d382d2cb2a02f7",
+      "bytes": 72202
     },
     "src/worker.rs": {
       "sha256": "0b71c76661b721790c97ae3038327b7ba004da2737e84a62cbe81bc4614b4e41",
@@ -117,30 +117,30 @@
       "bytes": 12697
     },
     "contracts/test-inventory.json": {
-      "sha256": "2d1cec179403b83a24f88e4b00b04f20238894975fde38cacd9a741df98167e7",
-      "bytes": 12580
+      "sha256": "011bfd540dd0ba6c2d76f46bd9ae0acb059fa796809c829ab846f54559f33759",
+      "bytes": 13096
     }
   },
   "inventory": {
     "linux": {
-      "count": 54,
-      "sha256": "786e455b443f41902865c6bcc8eca5606fc30c854c39ddeade6cad9833ba3519"
+      "count": 56,
+      "sha256": "f535ea733a7a04cd6523a22fd3594b9056bd23de7ada5c4bb228e6c96fa20049"
     },
     "darwin": {
-      "count": 53,
-      "sha256": "02544dad2dd70695ba8ecb839156584f8987a1ffc62fac9909e75adfc1afbad8"
+      "count": 55,
+      "sha256": "ab135511db6da86cc0620ebed70c6e7b6f832921f470295866afef1d717e9e84"
     },
     "win32": {
-      "count": 55,
-      "sha256": "6f27e03484d272461df643fe5ebcc729605e735d147acc1c89feda03cce47f31"
+      "count": 57,
+      "sha256": "f82c7621210e280a34db1f69c67eaa09190ed9131e0669b22724db626c3d7444"
     }
   },
   "verification": {
-    "linux": "whole-pool candidate final native gate pending integration",
-    "windows": "whole-pool native pending",
-    "macos": "whole-pool native pending"
+    "linux": "local-completed-media candidate local gate in progress",
+    "windows": "new local-reader native gate pending",
+    "macos": "new local-reader native gate pending"
   },
   "native_receipt": "test-artifacts/native-linux/receipt.json",
-  "previous_manifest_sha256": "5a3c067834afe6071d1774a87290f4755e97a67fbbab3fb792623fd314272d80",
+  "previous_manifest_sha256": "e3418b7edb5e6de0e1b626ea108a48563dd102a7957148cc8ff66e7faf194e60",
   "integration_base": "4c7290a7727eec5c726ee747865b0c8925cb0a46"
 }

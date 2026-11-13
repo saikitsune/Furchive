@@ -24,5 +24,8 @@ Applied runtime preferences are distinct from editable draft, generation-fenced 
 ## Account UI native qualification policy
 Selftestpairedphases3/4 isolatequalification-onlynativeentry, actualUIverify/save/restart/explicitrestore/logout plusseparateprobe exactread/absence. Memoryfixturephases1/2 remain labeledseparate. LinuxprivateSecretServiceHOME/XDG anddisposablehostedWindows/macOS namespaces, no active-account authority oruserstore reuse. Hostacceptedreceipt follows successfulcleanup, exactlytwoidentityrequests and no plaintextkeysettings; realkeyringprompts/lockedstores remainopen.
 
+## Local completed-media authority
+Local bytes require currentaccount/queryauthorization and explicitnativegrant anewafterrestart; durableCompletedrecord+publicationnativeidentity+SHA256+admittedURL match before boundedread. Changed/missinglocalpublication is visibleerror, no silentnetworkfallbackconcealingcorruption. No recursivecollectionscan/arbitraryrendererpath/implicitlegacygrant. Byte snapshot goes through existingMIME/dimensionvalidation/scopedloopback/cachegeneration checks.
+
 ## Decisions
 Desktop first; e621 only; safe first-run rating, account filters respected; no telemetry. Harmless generated media/HTTP fixtures only in repeatable tests. Native media support must be qualified per actual WebView engine.

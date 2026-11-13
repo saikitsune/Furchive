@@ -448,6 +448,123 @@ fn whole_group_extends_page_bound_without_partial_insert_or_automatic_fetch() {
     let engine = Engine::open(temp.database("whole"), temp.path()).unwrap();
     assert_eq!(engine.jobs().unwrap()[104].group_position, Some(104));
 }
+#[tokio::test]
+async fn completed_reader_returns_only_exact_published_bytes_with_bounded_authority() {
+    let temp = OwnedTemp::new();
+    let server = fixture(vec![response("owned artwork")]).await;
+    let engine = std::sync::Arc::new(
+        Engine::open_test(temp.database("q"), temp.path(), &server.origin).unwrap(),
+    );
+    let key = furchive_domain::PostKey::new("e621", "1").unwrap();
+    assert!(engine.completed_bytes(&key, 1024).unwrap().is_none());
+    engine
+        .enqueue_paused(intent("1", DuplicatePolicy::Skip))
+        .unwrap();
+    assert!(engine.completed_bytes(&key, 1024).unwrap().is_none());
+    let worker = engine.start().unwrap();
+    worker.control(1, Control::Resume).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while engine.jobs().unwrap()[0].state != State::Completed {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    assert_eq!(
+        engine.completed_bytes(&key, 1024).unwrap().unwrap(),
+        b"owned artwork"
+    );
+    let admitted = engine.jobs().unwrap()[0].intent.url.clone();
+    assert_eq!(
+        engine
+            .completed_bytes_for(&key, &admitted, 1024)
+            .unwrap()
+            .unwrap(),
+        b"owned artwork"
+    );
+    assert!(engine
+        .completed_bytes_for(
+            &key,
+            "https://static1.e621.net/data/aa/bb/aabb1111111111111111111111111111.jpg",
+            1024
+        )
+        .unwrap()
+        .is_none());
+    assert!(engine
+        .completed_bytes_for(&key, "file:///etc/passwd", 1024)
+        .is_err());
+    assert!(engine.completed_bytes(&key, 4).is_err());
+    assert!(engine.completed_bytes(&key, 0).is_err());
+    assert!(engine
+        .completed_bytes(&furchive_domain::PostKey::new("other", "1").unwrap(), 1024)
+        .unwrap()
+        .is_none());
+    std::fs::write(temp.path().join("1.jpg"), b"wrong artwork").unwrap();
+    assert!(engine.completed_bytes(&key, 1024).is_err());
+    std::fs::write(temp.path().join("1.jpg"), b"owned artwork").unwrap();
+    assert_eq!(
+        engine.completed_bytes(&key, 1024).unwrap().unwrap(),
+        b"owned artwork"
+    );
+    std::fs::rename(temp.path().join("1.jpg"), temp.path().join("original.jpg")).unwrap();
+    std::fs::write(temp.path().join("1.jpg"), b"owned artwork").unwrap();
+    assert!(
+        engine.completed_bytes(&key, 1024).is_err(),
+        "same bytes in replaced native object are not original publication"
+    );
+    std::fs::remove_file(temp.path().join("1.jpg")).unwrap();
+    assert!(engine.completed_bytes(&key, 1024).is_err());
+}
+#[tokio::test]
+async fn completed_reader_uses_renamed_publication_and_refuses_symlinked_leaf() {
+    let temp = OwnedTemp::new();
+    let server = fixture(vec![response("owned artwork")]).await;
+    std::fs::write(temp.path().join("1.jpg"), b"existing").unwrap();
+    let engine = std::sync::Arc::new(
+        Engine::open_test(temp.database("q"), temp.path(), &server.origin).unwrap(),
+    );
+    let key = furchive_domain::PostKey::new("e621", "1").unwrap();
+    engine
+        .enqueue(intent("1", DuplicatePolicy::Rename))
+        .unwrap();
+    let worker = engine.start().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while engine.jobs().unwrap()[0].state != State::Completed {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    worker.shutdown().await.unwrap();
+    assert_eq!(engine.jobs().unwrap()[0].relative_path, "1 (1).jpg");
+    assert_eq!(
+        engine.completed_bytes(&key, 1024).unwrap().unwrap(),
+        b"owned artwork"
+    );
+    assert_eq!(
+        std::fs::read(temp.path().join("1.jpg")).unwrap(),
+        b"existing"
+    );
+    std::fs::rename(
+        temp.path().join("1 (1).jpg"),
+        temp.path().join("published.jpg"),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        temp.path().join("published.jpg"),
+        temp.path().join("1 (1).jpg"),
+    )
+    .unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(
+        temp.path().join("published.jpg"),
+        temp.path().join("1 (1).jpg"),
+    )
+    .unwrap();
+    assert!(engine.completed_bytes(&key, 1024).is_err());
+}
 struct OwnedTemp {
     _temp: tempfile::TempDir,
     media: std::path::PathBuf,

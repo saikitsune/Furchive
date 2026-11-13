@@ -285,6 +285,31 @@ impl Downloads {
         }
         Ok(())
     }
+    /// Only a current explicit grant supplies filesystem authority. Offload bounded
+    /// descriptor-relative read/hash from the async/UI executor.
+    pub async fn completed_bytes(
+        &self,
+        key: &furchive_domain::PostKey,
+        expected_url: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let engine = {
+            let active = self.active.lock().await;
+            active.as_ref().map(|a| a.engine.clone())
+        };
+        let Some(engine) = engine else {
+            return Ok(None);
+        };
+        let key = key.clone();
+        let expected_url = expected_url.to_owned();
+        tokio::task::spawn_blocking(move || {
+            engine
+                .completed_bytes_for(&key, &expected_url, limit)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|_| "local media reader stopped".to_string())?
+    }
     pub async fn jobs(&self) -> Result<Vec<JobView>, String> {
         let active = self.active.lock().await;
         let Some(value) = active.as_ref() else {

@@ -1,5 +1,11 @@
 # Execution progress
 
+## Local completed-media repair in progress
+- Independent Nyx original frozen fc96441 found MAJOR NYX-LM-01: local miss re-entered publicprepare and mintednewgenerationgrant, including corruptionmasking case. Originalarchive/logs retained; no priorapprovaltransferred. Owner deterministicblockingpool regression RED2failed/2passed(exit101), repair keeps originalgrant+semaphore across networkfallback; GREEN4/4. No unauthorizedfilesystem/crossaccountdisclosure demonstrated; shippedUI separatefence retained. New candidate requires fresh independent review and allthree packagedproofs.
+
+## Local completed-media resolution in progress
+- New descriptor-relative completedreader requires exactsource/post/currentURL, persistedCompletedpublicationnativeidentity+digest, bounded64MiB snapshot, no rendererpath. CoreREDmissingAPI thenGREEN; renamedpublication/symlinkleaf/tamper/replacement/missing/limit cases exercised. Apprestart test shuts localHTTPserver before authorized read and succeeds afterexplicitrootregrant; noauthority/changedupstreamversion/revocation refuse. VersionmismatchREDoldbytes returned thenGREENURLbinding. Clippy caught clonefixturestyle, fixedwithoutallow. Nativepackagedoffline-readcampaignpending.
+
 ## Verified native account UI checkpoint
 - def39d8/run43355683771 all9jobsSUCCESS; owner independently downloaded9providerZIPs/exact3packages+binaries,26+9product+6accountUIchecksperOS,108hostframes,core/vault receipts. AccountUIlogin/protectedsave/maskedclear/separateexactread/anonymousrestart/explicitrestore/logout/delete/absence verified LinuxSecretService,WindowsCredentialManager,macOSKeychain samepackagedidentity. Currententrycleanup acknowledged; originalfailures untouched. Native logs119workspace+6catalog+9desktopRust/30DOM+15unit/fmt/strictClippy/check/build eachOS. Realuserlockedprompts/signing/upgradeidentity remainunverified; metadata/localresolution/crosspageviewer/platformbreadth/finalreviewopen. WholeappNOTCOMPLETE. Evidence rust/test-artifacts/ci-run-43355683771/owner-report.md.
 

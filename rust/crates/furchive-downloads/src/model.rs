@@ -477,6 +477,82 @@ impl Engine {
         })
         .collect()
     }
+    /// Bounded verified snapshot of the latest completed publication for this exact
+    /// source/post. No path comes from the caller; missing/changed files fail closed.
+    pub fn completed_bytes(&self, key: &PostKey, limit: usize) -> Result<Option<Vec<u8>>> {
+        self.read_completed(key, None, limit)
+    }
+    pub fn completed_bytes_for(
+        &self,
+        key: &PostKey,
+        expected_url: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        validate_url(expected_url)?;
+        self.read_completed(key, Some(expected_url), limit)
+    }
+    fn read_completed(
+        &self,
+        key: &PostKey,
+        expected_url: Option<&str>,
+        limit: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        use sha2::Digest;
+        use std::io::Read;
+        if limit == 0 || limit > 64 * 1024 * 1024 {
+            return Err(Error::Invalid(
+                "local media limit must be 1 byte–64MiB".into(),
+            ));
+        }
+        let Some(job) = self.jobs()?.into_iter().rev().find(|j| {
+            j.key == *key
+                && j.state == State::Completed
+                && expected_url.is_none_or(|url| j.intent.url == url)
+        }) else {
+            return Ok(None);
+        };
+        let (identity, digest) = job
+            .publication
+            .clone()
+            .ok_or_else(|| Error::Invalid("completed job lacks verified publication".into()))?
+            .parts();
+        if job.bytes > limit as u64 {
+            return Err(Error::Invalid("completed media exceeds read budget".into()));
+        }
+        let file = self.grant.destination(&job.relative_path)?;
+        if crate::files::identity(&file)? != identity || file.metadata()?.len() != job.bytes {
+            return Err(Error::Invalid(
+                "completed media identity or size changed".into(),
+            ));
+        }
+        let mut bytes = Vec::new();
+        file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+        if bytes.len() > limit
+            || bytes.len() as u64 != job.bytes
+            || job.intent.size.is_some_and(|n| n != bytes.len() as u64)
+            || job.total.is_some_and(|n| n != bytes.len() as u64)
+        {
+            return Err(Error::Invalid("completed media size changed".into()));
+        }
+        let actual = format!("{:x}", sha2::Sha256::digest(&bytes));
+        if actual != digest {
+            return Err(Error::Invalid("completed media digest changed".into()));
+        }
+        if let Some(expected) = job.intent.hash {
+            let matches = match expected {
+                ExpectedHash::Sha256(s) => s.eq_ignore_ascii_case(&actual),
+                ExpectedHash::Md5(s) => {
+                    s.eq_ignore_ascii_case(&format!("{:x}", md5::Md5::digest(&bytes)))
+                }
+            };
+            if !matches {
+                return Err(Error::Invalid(
+                    "completed media expected hash mismatch".into(),
+                ));
+            }
+        }
+        Ok(Some(bytes))
+    }
     pub(crate) fn check_destination(&self, relative: &str) -> Result<()> {
         if self.reserved_paths.iter().any(|p| {
             p.eq_ignore_ascii_case(relative)

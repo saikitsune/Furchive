@@ -193,6 +193,42 @@ impl MediaCache {
             .cloned()
             .ok_or("post not in current authorized results".into())
     }
+    /// Full-media only local-first path. Grants/generations are checked before I/O
+    /// and again on publication. A changed completed file is an explicit error,
+    /// never silent fallback that conceals local corruption.
+    pub async fn prepare_with_downloads(
+        &self,
+        id: &str,
+        variant: Variant,
+        downloads: &crate::downloads::Downloads,
+    ) -> Result<String, String> {
+        if variant == Variant::Preview {
+            return self.prepare(id, variant).await;
+        }
+        let grant = self.grant(id, variant)?;
+        let permit = self
+            .fetch
+            .acquire()
+            .await
+            .map_err(|_| "media fetcher closed")?;
+        let limit = {
+            let i = self.inner.lock().map_err(|_| "media cache poisoned")?;
+            if i.generation != grant.generation {
+                return Err("media selection changed".into());
+            }
+            i.budget.min(64 * 1024 * 1024)
+        };
+        let key = furchive_domain::PostKey::new("e621", id).map_err(|e| e.to_string())?;
+        if let Some(bytes) = downloads.completed_bytes(&key, &grant.url, limit).await? {
+            let mime = validate_bytes(&grant.url, &bytes)?;
+            return self.publish(grant, bytes, mime);
+        }
+        // Keep the original authority and semaphore admission across fallback.
+        // Re-entering prepare(id, variant) would mint a newer query's grant.
+        let result = self.prepare_granted(grant).await;
+        drop(permit);
+        result
+    }
     pub async fn prepare(&self, id: &str, variant: Variant) -> Result<String, String> {
         let grant = self.grant(id, variant)?;
         let _permit = self
@@ -200,6 +236,10 @@ impl MediaCache {
             .acquire()
             .await
             .map_err(|_| "media fetcher closed")?;
+        self.prepare_granted(grant).await
+    }
+    /// Called only while the caller owns one fetch permit; never renew authority.
+    async fn prepare_granted(&self, grant: Grant) -> Result<String, String> {
         {
             let i = self.inner.lock().map_err(|_| "media cache poisoned")?;
             if i.generation != grant.generation {
@@ -208,7 +248,7 @@ impl MediaCache {
             if let Some((handle, _)) = i
                 .entries
                 .iter()
-                .find(|(_, e)| e.grant.id == id && e.grant.variant == variant)
+                .find(|(_, e)| e.grant.id == grant.id && e.grant.variant == grant.variant)
             {
                 return Ok(handle.clone());
             }
@@ -239,7 +279,7 @@ impl MediaCache {
             .lock()
             .map_err(|_| "media cache poisoned")?
             .budget;
-        let limit = budget.min(match variant {
+        let limit = budget.min(match grant.variant {
             Variant::Preview => 4 * 1024 * 1024,
             Variant::Full => 64 * 1024 * 1024,
         });

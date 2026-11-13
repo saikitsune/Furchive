@@ -87,7 +87,10 @@ pub async fn prepare_media(
     variant: furchive_app::media_cache::Variant,
 ) -> Result<PreparedMedia, String> {
     let cache = state_cache(&app);
-    let handle = cache.prepare(&id, variant).await?;
+    let state = app.state::<AppState>();
+    let handle = cache
+        .prepare_with_downloads(&id, variant, &state.downloads)
+        .await?;
     let value = cache.get(&handle).ok_or("media was evicted")?;
     let server = app.state::<crate::media_loopback::MediaServer>();
     Ok(PreparedMedia {

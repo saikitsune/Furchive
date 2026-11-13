@@ -151,6 +151,6 @@ test('native campaign driver reaches both rendered phases with labeled in-memory
   if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Native fixture pool',post_ids:['10','2','30']},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{key:{source:'e621',id:'2'},title:'Post2'}},{id:'30',position:2,post:null}],total:3,next_offset:null};
   throw Error('unexpected command '+command);
  });
- for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?26:9);}finally{await unmount(app);}}
+ for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?26:10);if(phase===2)assert.ok(receipt.checks.includes('local-completed-media-restart'));}finally{await unmount(app);}}
  assert.deepEqual(searches,[]);assert.deepEqual(pins,[]);window.Element.prototype.setAttribute=oldSetAttribute;Object.defineProperty(window.HTMLImageElement.prototype,'src',imageSrc);Object.defineProperty(window.HTMLMediaElement.prototype,'src',videoSrc);window.HTMLMediaElement.prototype.play=oldPlay;window.HTMLMediaElement.prototype.pause=oldPause;window.HTMLMediaElement.prototype.load=oldLoad;window.happyDOM.abort();
 });
