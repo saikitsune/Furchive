@@ -2,10 +2,11 @@
  import {onMount,untrack} from 'svelte';
  import {createCatalog,LoadScope,imageAllowed,releaseVideo,type MediaItem} from './media';
  import {clampTransform,fitScale,navigateId} from './presentation';
- let {items,grants,selectedId,onselect=()=>{},onclose=()=>{}}:{items:readonly MediaItem[];grants:readonly string[];selectedId:string|null;onselect?:(id:string)=>void;onclose?:()=>void}=$props();
+ let {items,grants,selectedId,onselect=()=>{},onclose=()=>{},navigation=null,onstep=()=>{}}:{items:readonly MediaItem[];grants:readonly string[];selectedId:string|null;onselect?:(id:string)=>void;onclose?:()=>void;navigation?:{index:number;total:number}|null;onstep?:(delta:number)=>void}=$props();
  let catalog=$derived(createCatalog(items,grants));
  let item=$derived(catalog.find(i=>i.id===selectedId));
- let index=$derived(catalog.findIndex(i=>i.id===selectedId));
+ let index=$derived(navigation?.index??catalog.findIndex(i=>i.id===selectedId));
+ let total=$derived(navigation?.total??catalog.length);
  let stage=$state<HTMLDivElement>(),dialog=$state<HTMLDivElement>();
  let element=$state<HTMLImageElement|HTMLVideoElement|null>(null);
  let status=$state<'loading'|'ready'|'error'>('loading'),message=$state('');
@@ -51,7 +52,7 @@
  // Stage is conditional: observe each new open as well as initial mount.
  $effect(()=>{if(!stage)return;const node=stage;vw=node.clientWidth||640;vh=node.clientHeight||400;const observer=new ResizeObserver(()=>{vw=node.clientWidth||640;vh=node.clientHeight||400;});observer.observe(node);return ()=>observer.disconnect();});
  function close(){scope.close();onclose();}
- function navigate(key:string){const id=navigateId(catalog.map(i=>i.id),selectedId,key,1);if(id&&id!==selectedId)onselect(id);}
+ function navigate(key:string){if(navigation){const delta=key==='ArrowLeft'?-1:1;if(index+delta>=0&&index+delta<total)onstep(delta);return;}const id=navigateId(catalog.map(i=>i.id),selectedId,key,1);if(id&&id!==selectedId)onselect(id);}
  function key(event:KeyboardEvent){
   if(event.key==='Tab'&&dialog){
    const controls=[...dialog.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')];
@@ -78,7 +79,7 @@
  <div class="veil">
  <div class="viewer" data-viewer data-id={item.id} data-status={status} data-scale={transform.scale} data-pan-x={transform.x} data-pan-y={transform.y} role="dialog" aria-modal="true" aria-label="Media viewer" tabindex="-1" bind:this={dialog} onkeydown={key}>
   <div class="bar"><h2>{item.title}</h2><button aria-label="Close viewer" onclick={close}>Close ×</button></div>
-  <div class="bar controls"><button aria-label="Previous media" disabled={index<=0} onclick={()=>navigate('ArrowLeft')}>← Previous</button><span>{index+1} / {catalog.length}</span><button aria-label="Next media" disabled={index>=catalog.length-1} onclick={()=>navigate('ArrowRight')}>Next →</button></div>
+  <div class="bar controls"><button aria-label="Previous media" disabled={index<=0} onclick={()=>navigate('ArrowLeft')}>← Previous</button><span>{index+1} / {total}</span><button aria-label="Next media" disabled={index>=total-1} onclick={()=>navigate('ArrowRight')}>Next →</button></div>
   <div class="stage" data-stage bind:this={stage} role="img" aria-label="Media pan and zoom surface" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerEnd} onpointercancel={pointerEnd} onlostpointercapture={pointerEnd} onwheel={event=>{event.preventDefault();zoom(event.deltaY<0?1.2:1/1.2)}}></div>
   <p class="status" role="status">{status==='loading'?'Loading…':status==='error'?message:`${w} × ${h} · ${Math.round(transform.scale*100)}%${fit?' · fit':''}`}</p>
   <div class="bar controls"><button onclick={reset}>Fit / reset</button><button onclick={()=>{fit=false;scale=1;x=0;y=0}}>100%</button><button aria-label="Zoom out" onclick={()=>zoom(1/1.25)}>−</button><button aria-label="Zoom in" onclick={()=>zoom(1.25)}>+</button></div>

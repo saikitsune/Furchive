@@ -18,9 +18,12 @@
  let generation=0,suggestionGeneration=0,mediaGeneration=0;
  const requestedPreviews=new Set<string>();
  const placeholder='/placeholder.svg';
- let galleryItems=$derived<readonly MediaItem[]>((result?.items??[]).map(p=>({id:p.key.id,kind:'image',title:p.title,src:thumbnails[p.key.id]?.src??placeholder})));
+ let visiblePosts=$derived(pool?pool.entries.flatMap(e=>e.post?[e.post]:[]):result?.items??[]);
+ let galleryItems=$derived<readonly MediaItem[]>(visiblePosts.map(p=>({id:p.key.id,kind:'image',title:p.title,src:thumbnails[p.key.id]?.src??placeholder})));
  let galleryGrants=$derived([placeholder,...Object.values(thumbnails).map(p=>p.src)]);
- function visible(ids:string[]){const current=generation;void (async()=>{for(const id of ids){if(current!==generation)return;if(requestedPreviews.has(id)||!result?.items.find(p=>p.key.id===id)?.preview_url)continue;requestedPreviews.add(id);try{const media=await bridge.prepare(id,'preview');if(current===generation)thumbnails={...thumbnails,[id]:media};}catch{/* Thumbnail failure leaves a neutral bundled placeholder, never a direct URL. */}}})();}
+ function visible(ids:string[]){const current=generation;void (async()=>{for(const id of ids){if(current!==generation)return;if(requestedPreviews.has(id)||!visiblePosts.find(p=>p.key.id===id)?.preview_url)continue;requestedPreviews.add(id);try{const media=await bridge.prepare(id,'preview');if(current===generation)thumbnails={...thumbnails,[id]:media};}catch{/* Thumbnail failure leaves a neutral bundled placeholder, never a direct URL. */}}})();}
+ let poolOffset=$state(0);
+ let navigation=$derived({index:visiblePosts.findIndex(p=>p.key.id===selectedId),total:visiblePosts.length});
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
  onMount(()=>{void refresh();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;};});
@@ -34,7 +37,7 @@
  async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){const id=++generation;mediaGeneration++;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
   const intent=paginate&&submitted?submitted:{query:query(),username,poolId};
   const q=intent.query;if(q.ratings!=='any'&&!q.ratings.only.length)throw Error('Select at least one rating.');
-  if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;result=null;}
+  if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;poolOffset=offset;result=null;}
   else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
@@ -99,8 +102,9 @@
   <div class="results" aria-busy={busy}>
    {#if error}<p role="alert">{error}</p>{/if}
    {#if busy}<p role="status">Loading…</p>{/if}
-   {#if pool}<h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button>
+   {#if pool}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button>
     <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(e.id)}>Queue download</button>{/if}</li>{/each}</ol>
+    <button disabled={busy||poolOffset===0} onclick={()=>run('pool',1,Math.max(0,poolOffset-50),true)}>Previous pool page</button>
     {#if pool.next_offset!==null}<button disabled={busy} onclick={()=>run('pool',1,pool?.next_offset??0,true)}>Next pool page</button>{/if}
    {:else if result}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{mode==='favorites'?'Favorites':'Search results'} · page {page}</h1><p>{result.items.length} visible posts from {result.raw_count} upstream records. Account filters remain respected.</p>
     <ol class="posts">{#each result.items as p}<li data-post-id={p.key.id}><b>{p.title}</b><button onclick={()=>view(p.key.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(p.key.id)}>Queue download</button><p>{p.artists.join(', ')||'No artist supplied'} · {p.rating} · score {p.score}</p><details><summary>Tags &amp; description</summary><p>{p.description}</p>{#each Object.entries(p.tags) as [category,tags]}<p><b>{category}:</b> {tags.join(' ')}</p>{/each}</details></li>{/each}</ol>
@@ -108,7 +112,7 @@
    {:else}<h1>Your collection starts with a search.</h1><p>No network request is made until you search, browse favorites, request suggestions, or open a pool. Safe-only is the initial rating selection. Open a returned post to view validated media through the scoped Rust cache. Downloads and full gallery integration are still in progress.</p>{/if}
   </div>
  </div>
- <Viewer items={prepared} {grants} {selectedId} onclose={()=>{selectedId=null;mediaGeneration++;}}/>
+ <Viewer items={prepared} {grants} {selectedId} {navigation} onstep={delta=>{const post=visiblePosts[navigation.index+delta];if(post)void view(post.key.id);}} onclose={()=>{selectedId=null;mediaGeneration++;}}/>
 </section>
 <style>
  .browser{color:#e5e9ed}header{gap:16px;flex-wrap:wrap;height:auto;min-height:70px}header span{color:#98a7b6;font-size:12px}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{padding:20px;display:flex;flex-direction:column;gap:9px}h2{margin:15px 0 3px;font-size:15px}input,button,select{border-radius:5px;background:#202b36;color:#e5e9ed;border:1px solid #526271;padding:8px;font:inherit}input{min-width:0;width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.primary{background:#b76b31;border-color:#ebad6b}.chips{display:flex;flex-wrap:wrap;gap:4px}.chips button{background:#254934}.excludes button{background:#57303b}fieldset{border:1px solid #394857;margin:0;padding:8px;display:flex;flex-wrap:wrap;gap:8px}fieldset label{display:flex;flex-direction:row;gap:4px;align-items:center;font-size:12px}fieldset input{width:auto}.import-row{flex-direction:row;align-items:center}.import-row input{width:auto}code{overflow-wrap:anywhere}.results{padding:24px;min-width:0}.posts{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}.posts li{background:#1c252e;border:1px solid #354656;border-radius:6px;padding:16px;overflow-wrap:anywhere}.posts p{margin:8px 0}.saved{display:flex;gap:4px}.saved button:first-child{flex:1}nav{display:flex;gap:12px}[role=alert]{color:#ffbdc9;border:1px solid #a86470;padding:12px}.suggestions{display:flex;flex-wrap:wrap;gap:4px}@media(max-width:800px){.layout{grid-template-columns:230px minmax(0,1fr)}.results{padding:12px}}

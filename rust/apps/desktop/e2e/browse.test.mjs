@@ -51,6 +51,13 @@ test('product selection fetches only the current post key and exposes granted me
  }finally{await unmount(app);window.happyDOM.abort();}
 });
 
+test('product viewer navigates current ordered pool members without fetching hidden holes and supports previous pool page',async()=>{
+ const calls=[];const bridge=new BrowserBridge(async(command,args)=>{calls.push({command,args});if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Ordered fixtures',post_ids:['10','2','30','9']},entries:args.offset===0?[{id:'10',position:0,post:{key:{source:'e621',id:'10'},title:'First'}},{id:'2',position:1,post:null},{id:'30',position:2,post:{key:{source:'e621',id:'30'},title:'Third'}}]:[{id:'9',position:50,post:{key:{source:'e621',id:'9'},title:'Later'}}],total:51,next_offset:args.offset===0?50:null};if(command==='prepare_media')return {id:args.id,kind:'image',title:'Post '+args.id,src:'http://127.0.0.1:43123/'+'a'.repeat(64)+'/media/'+'b'.repeat(64)};throw Error(command);});
+ const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{
+  input('Pool ID','3');click('Open pool');await settle();click('View artwork');await settle();const next=document.querySelector('[aria-label="Next media"]');assert.equal(next.disabled,false);next.click();await settle();assert.equal(document.querySelector('[data-viewer]').dataset.id,'30');assert.deepEqual(calls.filter(c=>c.command==='prepare_media'&&c.args.variant==='full').map(c=>c.args.id),['10','30']);document.querySelector('[aria-label="Close viewer"]').click();flushSync();click('Next pool page');await settle();click('Previous pool page');await settle();assert.equal(calls.filter(c=>c.command==='pool_page').at(-1).args.offset,0);
+ }finally{await unmount(app);window.happyDOM.abort();}
+});
+
 test('account UI uses masked input, clears synthetic key after verification and clears results on logout',async()=>{
  const calls=[];const bridge=new BrowserBridge(async(command,args)=>{calls.push({command,args});if(command==='saved_searches'||command==='pinned_pools')return [];if(command==='account_login')return {id:123,name:'fixture_user'};if(command==='account_logout')return;if(command==='account_status')return null;throw Error(command);});
  const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{input('Account username','fixture_user');const key=input('Account API key','synthetic_test_only');assert.equal(key.type,'password');click('Verify and save account');await settle();assert.equal(key.value,'');assert.match(document.body.textContent,/Verified account: fixture_user/);click('Log out and remove key');await settle();assert.ok(calls.some(c=>c.command==='account_logout'));assert.doesNotMatch(document.body.textContent,/Verified account:/);}finally{await unmount(app);window.happyDOM.abort();}
@@ -94,9 +101,9 @@ test('native campaign driver reaches both rendered phases with labeled in-memory
   if(command==='set_pin'){pins=args.pinned?[{source:'e621',id:String(args.id)}]:[];return;}
   if(command==='suggestions')return [{name:'fox',post_count:12,category:'general'}];
   if(command==='search'||command==='favorites')return {items:args.page===2?[]:Array.from({length:50},(_,i)=>({key:{source:'e621',id:String(100+i)},title:'Post '+i,artists:[],tags:{},description:'fixture',rating:'safe',score:1,preview_url:'https://static1.e621.net/data/aa/bb/aabb0000000000000000000000000000.png'})),raw_count:args.page===2?0:50,next_page:args.page===2?null:2};
-  if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Native fixture pool',post_ids:['10','2','30']},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{title:'Post2'}},{id:'30',position:2,post:null}],total:3,next_offset:null};
+  if(command==='pool_page')return {pool:{key:{source:'e621',id:'3'},name:'Native fixture pool',post_ids:['10','2','30']},entries:[{id:'10',position:0,post:null},{id:'2',position:1,post:{key:{source:'e621',id:'2'},title:'Post2'}},{id:'30',position:2,post:null}],total:3,next_offset:null};
   throw Error('unexpected command '+command);
  });
- for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?20:6);}finally{await unmount(app);}}
+ for(const phase of [1,2]){const app=mount(Component,{target:document.body,props:{bridge}});flushSync();await settle();try{const receipt=await runBrowseCampaign(phase);assert.equal(receipt.ok,true);assert.equal(receipt.checks.length,phase===1?22:6);}finally{await unmount(app);}}
  assert.deepEqual(searches,[]);assert.deepEqual(pins,[]);window.Element.prototype.setAttribute=oldSetAttribute;Object.defineProperty(window.HTMLImageElement.prototype,'src',imageSrc);Object.defineProperty(window.HTMLMediaElement.prototype,'src',videoSrc);window.HTMLMediaElement.prototype.play=oldPlay;window.HTMLMediaElement.prototype.pause=oldPause;window.HTMLMediaElement.prototype.load=oldLoad;window.happyDOM.abort();
 });

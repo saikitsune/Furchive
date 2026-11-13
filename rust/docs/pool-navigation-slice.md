@@ -1,0 +1,9 @@
+# Product pool gallery and adjacent navigation slice
+
+ProductViewer now separates trusted presentation order from the single prepared full-media item. Previous/Next and arrowkeys request only currentpage neighbor postID through existing Rustprepare boundary; no eagerfullpagefetch or arbitraryURL. Poolvisibleposts preserve authoritativeorder while hidden/unavailable members remain metadataholes and are neverrequested. FullRustmembership/cacheauthority unchanged. Pool nowusesreusablevirtualizedgallery andpreviewpreparation; Previouspoolpage returnsto submittedpool/ratingcontext ratherthaneditedform.
+
+ObservedactualcompiledproducttestREDdisabledNext withone-itemcatalog thenGREEN pool10→30 (missing2neverfetched) andnextpage→previousoffset0. Existingtestdouble lackedpostkey thatrealRustalwaysprovides; fixeddouble, retainedfirstfailure, no productionguardrelaxation. Typechecker caughtdeclarationorder, corrected. All20compiledDOM+14unit/check0errors0warnings/VitePASS; nativecampaignaddsmandatory product-adjacent-navigation andpool-gallery checks (22+6). Crosspageviewerappend/cursor/infinitepoolnavigation stillseparateopenfeatures; thissliceprovidescurrentpageordering/navigationandexplicitpagebuttons.
+
+Nativevaultlane1e9b965/run43332837342: all3realOSvaultjobssuccess, ownerdownloadedZIPs/digests andverified write/exactread/delete/absentfourprocessreceipts each; SecretServiceprivatebus/privateHOME,WindowsCredentialManager,macOSKeychain. Onlysyntheticuniquetestentry; no userkeys. PrimaryGUI/corejobsstillrunningatthissourcecheckpoint; do notcanceltheexistingrun byprematurepush. Realuserlockedstore/prompts/fullaccountUI-nativevaultcombinedflow remainsunverified. Addedsupplementalexactbothfieldqualificationsandboxcontract; no keyreadslogged.
+
+Wholeapplicationstillincomplete: downloadgroups/concurrency/ETA/metadata,expandedmediacache/navigation,broaderplatform/install/accessibility/GPU/audio/memoryandfinalindependentreview.

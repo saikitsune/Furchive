@@ -24,12 +24,15 @@ export async function runBrowseCampaign(phase:number){
    document.querySelector<HTMLButtonElement>('[aria-label="Close viewer"]')!.click();await wait(()=>document.querySelector('[data-viewer]')===null);
    checks.push('product-'+id+'-'+kind);
   }
+  document.querySelector<HTMLButtonElement>('[data-post-id="100"] button')!.click();await wait(()=>document.querySelector<HTMLElement>('[data-viewer]')?.dataset.id==='100'&&document.querySelector<HTMLElement>('[data-viewer]')?.dataset.status==='ready');
+  document.querySelector<HTMLButtonElement>('[aria-label="Next media"]')!.click();await wait(()=>document.querySelector<HTMLElement>('[data-viewer]')?.dataset.id==='101'&&document.querySelector<HTMLElement>('[data-viewer]')?.dataset.status==='ready');document.querySelector<HTMLButtonElement>('[aria-label="Previous media"]')!.click();await wait(()=>document.querySelector<HTMLElement>('[data-viewer]')?.dataset.id==='100'&&document.querySelector<HTMLElement>('[data-viewer]')?.dataset.status==='ready');document.querySelector<HTMLButtonElement>('[aria-label="Close viewer"]')!.click();await wait(()=>document.querySelector('[data-viewer]')===null);checks.push('product-adjacent-navigation');
   input('Include tags','wolf');await tick();button('Add include');await tick();button('Next page');await wait(()=>idle()&&document.body.textContent?.includes('page 2')===true);checks.push('pagination-submitted-query');
   // Remove the unsubmitted chip before the next explicit search intent.
   document.querySelector<HTMLButtonElement>('[aria-label="Remove include wolf"]')?.click();await tick();
   input('Favorites username','fixture_user');await tick();button('Browse favorites');await wait(()=>idle()&&document.body.textContent?.includes('Favorites · page 1')===true);checks.push('favorites');
   input('Pool ID','3');await tick();button('Open pool');await wait(()=>idle()&&document.body.textContent?.includes('Native fixture pool')===true);
   const rows=[...document.querySelectorAll<HTMLElement>('[data-post-id]')];if(rows.map(r=>r.dataset.postId).join(',')!=='10,2,30'||rows.filter(r=>r.textContent?.includes('Unavailable or filtered')).length!==2)throw Error('native ordered pool projection mismatch');checks.push('ordered-pool-holes');
+  if(document.querySelectorAll('[data-gallery-tile]').length!==1)throw Error('pool gallery must omit unavailable media but preserve metadata holes');checks.push('pool-gallery');
   button('Pin pool');await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Unpin pool'));checks.push('pin-persist');
   input('Saved search name','Native fixture search');await tick();button('Save search');await wait(()=>document.querySelector('[aria-label="Delete Native fixture search"]')!==null);checks.push('saved-search-persist');
   button('Load preferences');await wait(()=>document.querySelector('[aria-label="Filename template"]')!==null);input('Filename template','{source}/{id}.{ext}');await tick();button('Save preferences');await wait(()=>document.body.textContent?.includes('Preferences saved')===true);checks.push('preferences-save');
