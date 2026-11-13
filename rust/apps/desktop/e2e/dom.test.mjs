@@ -76,6 +76,34 @@ test('engineering media transport request starts before expensive catalog constr
  try{active=mount(Engineering,{target:document.body,props:{nativeTest:false}});flushSync();await Promise.resolve();flushSync();assert.deepEqual(events.slice(0,2),['transport:qualification_media_base','catalog']);}finally{Array.from=original;if(active)await unmount(active);active=null;delete globalThis.__furchiveBootstrapEvents;}
 });
 
+test('native startup does not mount discarded browsing IPC before the engineering mode is known',async()=>{
+ const events=[];globalThis.__furchiveStartupEvents=events;
+ const invokeFile=path.join(output,'app-mode-invoke.mjs');await writeFile(invokeFile,`export async function invoke(name){globalThis.__furchiveStartupEvents.push(name);if(name==='media_test_mode')return true;throw Error('unexpected startup '+name);}`);
+ const viewFile=path.join(output,'app-mode-view.mjs');const code=compile(`<script>import {onMount} from 'svelte';let {kind}=$props();onMount(()=>{globalThis.__furchiveStartupEvents.push(kind);});</script><p>{kind}</p>`,{filename:'ModeView.svelte',generate:'client',dev:true}).js.code.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec)));await writeFile(viewFile,code);
+ async function modeComponent(name){const file=path.join(output,'app-mode-'+name+'.mjs');let c=compile(`<script>import V from '${pathToFileURL(viewFile).href}';</script><V kind="${name}"/>`,{filename:name+'.svelte',generate:'client',dev:true}).js.code.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec)));await writeFile(file,c);return pathToFileURL(file).href;}
+ const mappings={};for(const name of ['BrowsePanel','Qualification','Engineering'])mappings[name]=await modeComponent(name);
+ let appCode=compile(await readFile(new URL('../src/App.svelte',import.meta.url),'utf8'),{filename:'App.svelte',generate:'client',dev:true}).js.code;
+ appCode=appCode.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace("'@tauri-apps/api/core'",JSON.stringify(pathToFileURL(invokeFile).href)).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>{if(spec.endsWith('.svelte'))return `from '${mappings[spec.split('/').at(-1).replace('.svelte','')]}'`;return `from '${new URL('../src/'+spec.slice(2)+'.ts',import.meta.url)}'`;});
+ const appFile=path.join(output,'AppStartup.mjs');await writeFile(appFile,appCode);const App=(await import(pathToFileURL(appFile).href)).default;
+ try{active=mount(App,{target:document.body});flushSync();await new Promise(r=>setTimeout(r,0));flushSync();assert.ok(events.includes('Engineering'));assert.ok(!events.includes('BrowsePanel'),'discarded product browser queues avoidable database/preferences IPC during native media startup');assert.equal(events.filter(e=>e==='media_test_mode').length,1);}finally{if(active)await unmount(active);active=null;delete globalThis.__furchiveStartupEvents;}
+});
+
+for(const scenario of [
+ {name:'ordinary-browse',phase:0,qualification:false,expected:'BrowsePanel'},
+ {name:'qualification',phase:0,qualification:true,expected:'Qualification'},
+ {name:'browse-campaign',phase:1,qualification:false,expected:'BrowsePanel'},
+ {name:'account-campaign',phase:3,qualification:false,expected:'BrowsePanel'},
+])test('startup mode routes '+scenario.name+' without mounting a discarded pane',async()=>{
+ const events=[];globalThis.__furchiveModeRouteEvents=events;const key=scenario.name;
+ const invokeFile=path.join(output,'route-invoke-'+key+'.mjs');await writeFile(invokeFile,`export async function invoke(name,args){globalThis.__furchiveModeRouteEvents.push(name);if(name==='media_test_mode')return false;if(name==='browse_test_phase')return ${scenario.phase};if(name==='qualification_mode')return ${scenario.qualification};if(name==='qualification_result'){if(!args.result.ok)throw Error('campaign failed');return;}throw Error(name);}`);
+ const campaignFile=path.join(output,'route-campaign-'+key+'.mjs');await writeFile(campaignFile,`export async function runBrowseCampaign(phase){globalThis.__furchiveModeRouteEvents.push('browse:'+phase);return {ok:true};}export async function runAccountCampaign(phase){globalThis.__furchiveModeRouteEvents.push('account:'+phase);return {ok:true};}`);
+ const mappings={};for(const name of ['BrowsePanel','Qualification','Engineering']){const file=path.join(output,'route-'+name+'-'+key+'.mjs');let c=compile(`<script>import {onMount} from 'svelte';onMount(()=>{globalThis.__furchiveModeRouteEvents.push('${name}');});</script><p>${name}</p>`,{filename:name+'.svelte',generate:'client',dev:true}).js.code.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec)));await writeFile(file,c);mappings[name]=pathToFileURL(file).href;}
+ let code=compile(await readFile(new URL('../src/App.svelte',import.meta.url),'utf8'),{filename:'App.svelte',generate:'client',dev:true}).js.code;
+ code=code.replace(/(?:from|import) (['"])(svelte[^'"]*)\1/g,(all,q,spec)=>all.replace(spec,import.meta.resolve(spec))).replace("'@tauri-apps/api/core'",JSON.stringify(pathToFileURL(invokeFile).href)).replace(/from (['"])(\.\/[^'"]*)\1/g,(_,q,spec)=>{if(spec.endsWith('.svelte'))return `from '${mappings[spec.split('/').at(-1).replace('.svelte','')]}'`;if(spec.includes('campaign'))return `from '${pathToFileURL(campaignFile).href}'`;return `from '${new URL('../src/'+spec.slice(2)+'.ts',import.meta.url)}'`;});
+ const file=path.join(output,'AppRoute-'+key+'.mjs');await writeFile(file,code);const App=(await import(pathToFileURL(file).href)).default;
+ try{active=mount(App,{target:document.body});flushSync();await new Promise(r=>setTimeout(r,0));flushSync();await new Promise(r=>setTimeout(r,0));flushSync();assert.deepEqual(events.filter(e=>['BrowsePanel','Qualification','Engineering'].includes(e)),[scenario.expected]);if(scenario.phase)assert.ok(events.includes((scenario.phase>=3?'account:':'browse:')+scenario.phase));}finally{if(active)await unmount(active);active=null;delete globalThis.__furchiveModeRouteEvents;}
+});
+
 test('rendered Viewer fences stale image events and refuses corrupt or oversized media',async()=>{
  const Host=await viewerHost();
  const sample=[{id:'a',kind:'image',src:'/fixtures/a.png',title:'<b>literal</b>'},{id:'b',kind:'image',src:'/fixtures/b.png',title:'B'}];

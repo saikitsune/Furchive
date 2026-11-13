@@ -8,19 +8,20 @@
  import BrowsePanel from './lib/BrowsePanel.svelte';
  import {BrowserBridge} from './lib/browser-bridge';
  const bridge=new BrowserBridge(invoke);
- let mode=$state<'browse'|'qualification'|'engineering'>('browse'),nativeTest=$state(false);
+ let mode=$state<'starting'|'browse'|'qualification'|'engineering'>('starting'),nativeTest=$state(false);
  onMount(async()=>{
   // Parent may enable the bounded media driver only in a self-test build.
   try{nativeTest=await invoke<boolean>('media_test_mode');if(nativeTest){mode='engineering';return;}}catch{/* Older native shell has no media driver seam. */}
   try{
    const phase=await invoke<number>('browse_test_phase');
-   if(phase){await tick();try{await invoke('qualification_result',{result:await (phase>=3?runAccountCampaign(phase):runBrowseCampaign(phase))});}catch(e){await invoke('qualification_result',{result:{schema:1,ok:false,phase,error:String(e)}});}return;}
+   if(phase){mode='browse';await tick();try{await invoke('qualification_result',{result:await (phase>=3?runAccountCampaign(phase):runBrowseCampaign(phase))});}catch(e){await invoke('qualification_result',{result:{schema:1,ok:false,phase,error:String(e)}});}return;}
   }catch{/* Production build has no active test phase. */}
-  try{if(await invoke<boolean>('qualification_mode'))mode='qualification';}catch{/* Ordinary browser engineering harness. */}
+  try{if(await invoke<boolean>('qualification_mode')){mode='qualification';return;}}catch{/* Ordinary browser engineering harness. */}
+  mode='browse';
  });
 </script>
 <svelte:head><title>Furchive · Rust Alpha</title></svelte:head>
-{#if mode==='qualification'}<Qualification/>{:else if mode==='engineering'}<Engineering {nativeTest}/>{:else}
+{#if mode==='starting'}<p role="status">Starting Furchive…</p>{:else if mode==='qualification'}<Qualification/>{:else if mode==='engineering'}<Engineering {nativeTest}/>{:else}
  <BrowsePanel {bridge}/>
  <footer><button onclick={()=>mode='engineering'}>Harmless media test gallery</button><small>Alpha: download groups/concurrency, account settings and broader platform acceptance still in progress.</small></footer>
 {/if}
