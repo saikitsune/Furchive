@@ -17,7 +17,7 @@ image={version="0.25",default-features=false,features=["png","jpeg","gif","webp"
 keyring-core="1.0.1"
 serde={version="1",features=["derive"]}
 tempfile="3"
-rusqlite={version="0.37",features=["bundled","limits","hooks"]}
+rusqlite={version="=0.41.0",features=["bundled","limits","hooks"]}
 sha2="0.10"
 furchive-domain={path="../furchive-domain"}
 furchive-engine={path="../furchive-engine"}

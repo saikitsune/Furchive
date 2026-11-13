@@ -47,7 +47,9 @@ pub(super) fn initialize(connection: &mut Connection, application_id: i64) -> Re
     };
     for (index, sql) in steps.iter().enumerate().skip(version as usize) {
         tx.execute_batch(sql)?;
-        tx.pragma_update(None, "user_version", index + 1)?;
+        let next_version = u32::try_from(index + 1)
+            .map_err(|_| StorageError::Invalid("schema version overflow".into()))?;
+        tx.pragma_update(None, "user_version", next_version)?;
     }
     tx.pragma_update(None, "application_id", application_id)?;
     tx.commit()?;

@@ -68,7 +68,7 @@ fn snapshot(root: &Path, relative: &str) -> Result<Option<Snapshot>, String> {
         std::fs::write(directory.path().join("source.sqlite-wal"), wal)
             .map_err(|_| "cannot stage legacy WAL snapshot")?;
     }
-    let conn = sql(Connection::open_with_flags(
+    let mut conn = sql(Connection::open_with_flags(
         &private,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     ))?;
@@ -87,13 +87,13 @@ fn snapshot(root: &Path, relative: &str) -> Result<Option<Snapshot>, String> {
         sql(conn.set_limit(limit, value))?;
     }
     let mut ticks = 0usize;
-    conn.progress_handler(
+    sql(conn.progress_handler(
         1000,
         Some(move || {
             ticks += 1;
             ticks > 1000
         }),
-    );
+    ))?;
     sql(conn.pragma_update(None, "trusted_schema", false))?;
     sql(conn.pragma_update(None, "query_only", true))?;
     sql(conn.busy_timeout(std::time::Duration::ZERO))?;
@@ -234,11 +234,12 @@ pub(super) fn queue(root: &Path) -> Result<QueuePreview, String> {
     };
     require_table(&snapshot.conn, "downloads")?;
     // Count only; never read destination, URL, credentials, errors or media data.
-    let records: usize = sql(snapshot.conn.query_row(
+    let records: u32 = sql(snapshot.conn.query_row(
         "SELECT count(*) FROM (SELECT 1 FROM downloads LIMIT 1001)",
         [],
         |r| r.get(0),
     ))?;
+    let records = usize::try_from(records).map_err(|_| "legacy download count overflow")?;
     if records > MAX_RECORDS {
         return Err("legacy download record limit".into());
     }
