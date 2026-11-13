@@ -90,6 +90,20 @@ impl SettingsStore {
             .map_err(|_| "settings lock poisoned".into())
     }
     pub fn apply(&self, p: Preferences) -> Result<Settings, String> {
+        self.apply_inner(p, None)
+    }
+    pub fn apply_with_cache(
+        &self,
+        p: Preferences,
+        cache: &crate::media_cache::MediaCache,
+    ) -> Result<Settings, String> {
+        self.apply_inner(p, Some(cache))
+    }
+    fn apply_inner(
+        &self,
+        p: Preferences,
+        cache: Option<&crate::media_cache::MediaCache>,
+    ) -> Result<Settings, String> {
         let mut current = self.value.lock().map_err(|_| "settings lock poisoned")?;
         let next = Settings {
             version: current.version,
@@ -104,13 +118,22 @@ impl SettingsStore {
             save_metadata: p.save_metadata,
             start_muted: p.start_muted,
         };
-        next.save(&self.path)?;
+        next.validate()?;
+        if let Some(cache) = cache {
+            cache.resize_after(next.resident_media_budget(), || next.save(&self.path))?;
+        } else {
+            next.save(&self.path)?;
+        }
         *current = next.clone();
         Ok(next)
     }
 }
 
 impl Settings {
+    /// Resident compressed media is conservatively capped even for legacy large cache settings.
+    pub fn resident_media_budget(&self) -> usize {
+        self.cache_limit_bytes.min(512 * 1024 * 1024) as usize
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.version != 1 {
             return Err("unsupported settings version".into());

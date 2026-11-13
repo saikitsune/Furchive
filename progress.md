@@ -1,5 +1,8 @@
 # Execution progress
 
+## Latest settings behavior slice
+- Working: apply acknowledged gallery scale/mute/duplicates and bounded resident cache; defaults loaded locally on mount (no automatic network). New cache-resize/persistence tests RED missing APIs, then GREEN; new compiled preference UI test RED missing control then GREEN. Geometry adds rowHeight; existing empty-grid equality fixture updated for new explicit field (not weakened bounds). Late startup-read rollback reproduced RED then generation-fenced GREEN; duplicate select event seam caught by campaign and explicitly wired. StrictClippy caught test default-field reassignment (fixed, no suppression). Local119workspace/7nativeRust/26DOM+15unit/fmt/strictClippy/check/build PASS; native26+9 campaign pending.
+
 ## Latest whole-pool milestone
 - Prior4c7290a/run43339725218 all9jobs and9actualZIPs owner verified,24+7nativeUI eachOS/108frames/core/vault. Nyx boundedPASS with MINOR NYX-CONC-01 sampler reset; original failure preserved, no whole-release approval.
 - Whole-pool acquisition/admission/UI implemented with one account-held snapshot,100IDbatches,10000member cap, hidden/rating holes, single pausedgroup transaction/restart;5new service/browse/session tests,1coregroup test,1compiledDOM. Progressreset regression RED/GREEN covers single/group/shutdown at1/2/4 without pausedpoll.

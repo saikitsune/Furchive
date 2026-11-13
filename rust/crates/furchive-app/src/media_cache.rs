@@ -32,10 +32,10 @@ struct Inner {
     entries: HashMap<String, Entry>,
     order: VecDeque<String>,
     bytes: usize,
+    budget: usize,
 }
 pub struct MediaCache {
     inner: Mutex<Inner>,
-    budget: usize,
     http: reqwest::Client,
     #[cfg(feature = "fixture-media")]
     fixture_origin: Option<url::Url>,
@@ -93,8 +93,8 @@ impl MediaCache {
                 entries: HashMap::new(),
                 order: VecDeque::new(),
                 bytes: 0,
+                budget,
             }),
-            budget,
             http: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(std::time::Duration::from_secs(30))
@@ -234,7 +234,12 @@ impl MediaCache {
                 response.status().as_u16()
             ));
         }
-        let limit = self.budget.min(match variant {
+        let budget = self
+            .inner
+            .lock()
+            .map_err(|_| "media cache poisoned")?
+            .budget;
+        let limit = budget.min(match variant {
             Variant::Preview => 4 * 1024 * 1024,
             Variant::Full => 64 * 1024 * 1024,
         });
@@ -252,10 +257,10 @@ impl MediaCache {
         self.publish(grant, bytes, mime)
     }
     fn publish(&self, grant: Grant, bytes: Vec<u8>, mime: &str) -> Result<String, String> {
-        if bytes.is_empty() || bytes.len() > self.budget {
+        let mut i = self.inner.lock().map_err(|_| "media cache poisoned")?;
+        if bytes.is_empty() || bytes.len() > i.budget {
             return Err("media exceeds cache budget".into());
         }
-        let mut i = self.inner.lock().map_err(|_| "media cache poisoned")?;
         if i.generation != grant.generation || !i.authorized.contains_key(&grant.id) {
             return Err("media authority changed during fetch".into());
         }
@@ -265,7 +270,7 @@ impl MediaCache {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>();
-        while i.bytes + bytes.len() > self.budget {
+        while i.bytes + bytes.len() > i.budget {
             let Some(old) = i.order.pop_front() else {
                 return Err("cache accounting failure".into());
             };
@@ -297,6 +302,37 @@ impl MediaCache {
             .entries
             .get(handle)
             .map(|e| e.content.clone())
+    }
+    /// Change compressed resident storage only; cloned active response buffers and
+    /// webview decoded surfaces have separate lifetimes and are not counted here.
+    pub fn set_budget(&self, budget: usize) -> Result<(), String> {
+        self.resize_after(budget, || Ok(()))
+    }
+    pub(crate) fn resize_after(
+        &self,
+        budget: usize,
+        persist: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        if budget == 0 || budget > 512 * 1024 * 1024 {
+            return Err("media budget must be 1 byte–512MiB".into());
+        }
+        let mut i = self.inner.lock().map_err(|_| "media cache poisoned")?;
+        persist()?;
+        while i.bytes > budget {
+            let old = i.order.pop_front().ok_or("cache accounting failure")?;
+            if let Some(entry) = i.entries.remove(&old) {
+                i.bytes -= entry.content.bytes.len();
+            }
+        }
+        i.budget = budget;
+        Ok(())
+    }
+    pub fn budget_bytes(&self) -> Result<usize, String> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| "media cache poisoned")?
+            .budget)
     }
     pub fn resident_bytes(&self) -> Result<usize, String> {
         Ok(self.inner.lock().map_err(|_| "media cache poisoned")?.bytes)

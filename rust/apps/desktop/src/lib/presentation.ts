@@ -1,14 +1,18 @@
 // Pure UI geometry and selection; no domain or persistence authority.
 export const ROW_HEIGHT=184;
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,Number.isFinite(n)?n:min));
-export function gridWindow(count:number,width:number,scroll:number,height:number) {
-  const columns=Math.floor(clamp(Math.floor(width/180),1,12));
-  const rows=Math.ceil(count/columns);
+export function gridWindow(count:number,width:number,scroll:number,height:number,scale=1) {
+  if(!Number.isFinite(scale)||scale<.5||scale>2)throw Error('invalid gallery scale');
+  const rowHeight=ROW_HEIGHT*scale;
+  // Cap mounted cells regardless of tiny tiles and wide windows.
   const viewport=clamp(height,1,736);
-  const scrollTop=clamp(scroll,0,Math.max(0,rows*ROW_HEIGHT-viewport));
-  const first=Math.max(0,Math.floor(scrollTop/ROW_HEIGHT)-2);
-  const last=Math.min(rows,Math.ceil((scrollTop+viewport)/ROW_HEIGHT)+2);
-  return {columns,start:Math.min(count,first*columns),end:Math.min(count,last*columns),height:rows*ROW_HEIGHT,top:first*ROW_HEIGHT,scrollTop};
+  const maxRows=Math.ceil(viewport/rowHeight)+5;
+  const columns=Math.floor(clamp(Math.floor(width/(180*scale)),1,Math.min(12,Math.floor(108/maxRows))));
+  const rows=Math.ceil(count/columns);
+  const scrollTop=clamp(scroll,0,Math.max(0,rows*rowHeight-viewport));
+  const first=Math.max(0,Math.floor(scrollTop/rowHeight)-2);
+  const last=Math.min(rows,Math.ceil((scrollTop+viewport)/rowHeight)+2);
+  return {columns,start:Math.min(count,first*columns),end:Math.min(count,last*columns),height:rows*rowHeight,top:first*rowHeight,scrollTop,rowHeight};
 }
 export function navigateId(ids:readonly string[],selected:string|null,key:string,columns:number):string|null {
   if(!ids.length) return null;

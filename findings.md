@@ -18,5 +18,8 @@ Native directory identity, not lowercased path spelling, reserves active writers
 ## Whole-pool admission
 Whole-pool metadata holds account identity through batches/pausedcommit, with100IDs/request and10000member maximum. Exactbc7cf3d native evidence passesall3OS25+8checks; separateownerprobesverifydeactivationserializationandlater500noqueueeffects. Service refuses incomplete coverage, core validatesall beforeone transaction. Native campaign uses105members with hiddenholes at positions1/102. NYX-CONC-01 reset must follow control transitions independent of jobs polling.
 
+## Applied presentation/cache preferences
+Applied runtime preferences are distinct from editable draft, generation-fenced against late local settings reads. Gallery scale .5–2 retains <=108 tiles using row/column-aware bounds; video mute applies on next open with no autoplay. Cache preference bounds resident compressed bytes only, effective max512MiB even for legacy16GiB settings; active Arc response buffers and webview-decoded surfaces are not claimed within that resident count. Settings lock -> cache lock -> atomic persistence precedes memory/budget/eviction acknowledgment; persistence failure leaves prior runtime budget and settings unchanged. No new remote authority or session restoration.
+
 ## Decisions
 Desktop first; e621 only; safe first-run rating, account filters respected; no telemetry. Harmless generated media/HTTP fixtures only in repeatable tests. Native media support must be qualified per actual WebView engine.

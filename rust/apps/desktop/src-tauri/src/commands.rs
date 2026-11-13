@@ -45,6 +45,16 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         downloads
     };
     let account = furchive_app::account_session::AccountSession::new(api);
+    let settings =
+        SettingsStore::open(&root.join("settings.json")).map_err(std::io::Error::other)?;
+    app.state::<std::sync::Arc<furchive_app::media_cache::MediaCache>>()
+        .set_budget(
+            settings
+                .current()
+                .map_err(std::io::Error::other)?
+                .resident_media_budget(),
+        )
+        .map_err(std::io::Error::other)?;
     app.manage(AppState {
         downloads,
         pool_snapshot: std::sync::Mutex::new(None),
@@ -52,8 +62,7 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         account,
         #[cfg(feature = "self-test")]
         test_vault: furchive_app::credentials::Vault::fixture(),
-        settings: SettingsStore::open(&root.join("settings.json"))
-            .map_err(std::io::Error::other)?,
+        settings,
         legacy: furchive_app::legacy_session::LegacySession::new(),
         db,
     });
@@ -285,10 +294,14 @@ pub fn preferences(state: State<'_, AppState>) -> Result<Preferences, String> {
 }
 #[tauri::command]
 pub async fn save_preferences(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     preferences: Preferences,
 ) -> Result<Preferences, String> {
-    state.settings.apply(preferences).map(Into::into)
+    state
+        .settings
+        .apply_with_cache(preferences, &state_cache(&app))
+        .map(Into::into)
 }
 #[tauri::command]
 pub async fn search(

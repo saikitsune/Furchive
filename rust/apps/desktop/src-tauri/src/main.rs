@@ -24,6 +24,15 @@ fn qualification_mode() -> bool {
 fn qualification_result(app: tauri::AppHandle, result: serde_json::Value) -> Result<(), String> {
     #[cfg(feature = "self-test")]
     {
+        if std::env::var_os("FURCHIVE_BROWSE_TEST_OUTPUT").is_some() {
+            use tauri::Manager;
+            let state = app.state::<commands::AppState>();
+            let expected = state.settings.current()?.resident_media_budget();
+            let cache = app.state::<std::sync::Arc<furchive_app::media_cache::MediaCache>>();
+            if cache.budget_bytes()? != expected || cache.resident_bytes()? > expected {
+                return Err("actual cache budget not applied".into());
+            }
+        }
         let path = std::env::var_os("FURCHIVE_QUALIFICATION_OUTPUT")
             .ok_or("missing qualification output")?;
         std::fs::write(

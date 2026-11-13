@@ -53,6 +53,11 @@ test('rendered Gallery reports only mounted IDs to the thumbnail preparer',async
  assert.ok(visible.length>0&&visible.length<=108);assert.deepEqual(visible,[...document.querySelectorAll('[data-gallery-tile]')].map(n=>n.dataset.id));await unmount(active);active=null;
 });
 
+test('rendered Gallery scaled tiles retain bounded DOM and End selection at each scale',async()=>{
+ const Gallery=await component('Gallery');
+ for(const scale of [.5,1.5,2]){active=mount(Gallery,{target:document.body,props:{items,grants:['/fixtures/still.png'],scale}});flushSync();const gallery=document.querySelector('[data-gallery]');assert.equal(Number(gallery.dataset.rowHeight),184*scale);const tile=document.querySelector('[data-gallery-tile]');assert.equal(tile.style.height,(184*scale-8)+'px');gallery.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));await Promise.resolve();flushSync();assert.equal(gallery.dataset.selected,'id-9999');assert.ok(document.querySelectorAll('[data-gallery-tile]').length<=108);assert.ok(document.querySelector('#tile-id-9999'));await unmount(active);active=null;}
+});
+
 test('rendered Viewer fences stale image events and refuses corrupt or oversized media',async()=>{
  const Host=await viewerHost();
  const sample=[{id:'a',kind:'image',src:'/fixtures/a.png',title:'<b>literal</b>'},{id:'b',kind:'image',src:'/fixtures/b.png',title:'B'}];

@@ -33,6 +33,13 @@ test('validated immutable catalog is reused only while exact grants remain uncha
  assert.throws(()=>media.createCatalog(mutable,grants),/grant/,'untrusted mutable input must be revalidated');
 });
 
+test('scaled gallery geometry changes tile size while bounding DOM and refusing invalid values',async()=>{
+ const {gridWindow}=await import('../src/lib/presentation.ts');
+ const normal=gridWindow(10000,800,0,600),large=gridWindow(10000,800,0,600,2);assert.equal(large.rowHeight,368);assert.equal(large.columns,2);assert.ok(large.height>normal.height);
+ for(const scale of [.5,1,1.5,2])for(const width of [320,800,4000])for(const scroll of [0,10000,1e9]){const r=gridWindow(10000,width,scroll,736,scale);assert.ok(r.end-r.start<=108);assert.ok(r.end<=10000&&r.start>=0);assert.equal(r.rowHeight,184*scale);}
+ for(const scale of [NaN,Infinity,0,-1,3])assert.throws(()=>gridWindow(10,800,0,600,scale),/scale/);
+});
+
 test('load generations cancel pending work, release video and ignore late completions',()=>{
  assert.equal(typeof media.LoadScope,'function','load generation scope missing');
  const scope=new media.LoadScope(); let cancelled=0, released=0;

@@ -9,7 +9,7 @@ test('responsive window is bounded for 10,000 IDs at every scroll position',()=>
   assert.ok(r.columns>=1 && r.columns<=12); assert.ok(r.end-r.start<=108);
   assert.ok(r.start>=0 && r.end<=10000 && r.start<r.end);
  }
- assert.deepEqual(view.gridWindow(0,800,0,600),{columns:4,start:0,end:0,height:0,top:0,scrollTop:0});
+ assert.deepEqual(view.gridWindow(0,800,0,600),{columns:4,start:0,end:0,height:0,top:0,scrollTop:0,rowHeight:184});
 });
 
 test('keyboard selection stays clamped and uses stable ID through dataset reorder',()=>{

@@ -9,13 +9,13 @@
  let safe=$state(true),questionable=$state(false),explicit=$state(false),sort=$state<Query['sort']>('newest');
  let username=$state(''),poolId=$state(''),name=$state(''),saved=$state<SavedSearch[]>([]),pins=$state<{source:string;id:string}[]>([]),suggestions=$state<Suggestion[]>([]);
  let result=$state<SearchPage|null>(null),pool=$state<PoolPage|null>(null),error=$state(''),busy=$state(false),page=$state(1),mode=$state<'search'|'favorites'|'pool'>('search');
- let preferences=$state<Preferences|null>(null),preferenceNotice=$state('');
+ let preferences=$state<Preferences|null>(null),applied=$state<Preferences|null>(null),preferenceNotice=$state('');
  let legacy=$state<LegacyPreview|null>(null),importSearches=$state<string[]>([]),importPools=$state<string[]>([]),importNotice=$state('');
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
  let thumbnails=$state<Record<string,MediaItem>>({});
  let jobs=$state<DownloadJob[]>([]),downloadGranted=$state(false);
  let accountUser=$state(''),accountKey=$state(''),identity=$state<Identity|null>(null);
- let generation=0,suggestionGeneration=0,mediaGeneration=0;
+ let generation=0,suggestionGeneration=0,mediaGeneration=0,preferenceGeneration=0;
  const requestedPreviews=new Set<string>();
  const placeholder='/placeholder.svg';
  let visiblePosts=$derived(pool?pool.entries.flatMap(e=>e.post?[e.post]:[]):result?.items??[]);
@@ -27,7 +27,7 @@
  let navigation=$derived({index:visiblePosts.findIndex(p=>p.key.id===selectedId),total:visiblePosts.length});
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
- onMount(()=>{void refresh();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;};});
+ onMount(()=>{void refresh();void readAppliedPreferences();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;preferenceGeneration++;};});
  async function refresh(){try{[saved,pins]=await Promise.all([bridge.searches(),bridge.pins()]);}catch(e){error=String(e);}}
  function chip(which:'include'|'exclude',value:string){
   const token=value.trim();if(!token||/\s/.test(token)||token.startsWith('-')){error='Enter one unsigned tag at a time.';return;}
@@ -56,8 +56,9 @@
  async function control(id:number,verb:'pause'|'resume'|'cancel'){try{await bridge.control(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
  async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
- async function loadPreferences(){try{preferences=await bridge.preferences();preferenceNotice='';}catch(e){error=String(e);}}
- async function savePreferences(){if(!preferences)return;try{preferences=await bridge.savePreferences($state.snapshot(preferences));preferenceNotice='Preferences saved';}catch(e){error=String(e);}}
+ async function readAppliedPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request===preferenceGeneration)applied=value;}catch(e){if(request===preferenceGeneration)error=String(e);}}
+ async function loadPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request!==preferenceGeneration)return;preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='';}catch(e){if(request===preferenceGeneration)error=String(e);}}
+ async function savePreferences(){if(!preferences)return;const request=++preferenceGeneration;try{const value=await bridge.savePreferences($state.snapshot(preferences));if(request!==preferenceGeneration)return;preferences=structuredClone(value);applied=structuredClone(value);preferenceNotice='Preferences saved';}catch(e){if(request===preferenceGeneration)error=String(e);}}
  async function save(){error='';try{const value=name.trim();if(!value)throw Error('Name this search first.');await bridge.save({id:crypto.randomUUID(),name:value,query:query()});name='';await refresh();}catch(e){error=String(e);}}
  async function remove(id:string){try{await bridge.delete(id);await refresh();}catch(e){error=String(e);}}
  async function pin(){if(!pool)return;const id=Number(pool.pool.key.id);try{await bridge.pin(id,!pins.some(p=>p.id===String(id)));await refresh();}catch(e){error=String(e);}}
@@ -88,6 +89,11 @@
    {#if preferences}
     <label>Filename template<input aria-label="Filename template" bind:value={preferences.filename_template}></label>
     <label>Pool filename template<input aria-label="Pool filename template" bind:value={preferences.pool_filename_template}></label>
+    <label>Gallery scale<input aria-label="Gallery scale" type="number" min="0.5" max="2" step="0.25" bind:value={preferences.gallery_scale}></label>
+    <label>Resident media cache (MiB)<input aria-label="Resident media cache MiB" type="number" min="16" max="512" step="16" value={Math.min(512,preferences.cache_limit_bytes/1048576)} onchange={event=>{if(preferences)preferences.cache_limit_bytes=Number(event.currentTarget.value)*1048576;}}></label>
+    <label class="import-row"><input aria-label="Start videos muted" type="checkbox" bind:checked={preferences.start_muted}>Start videos muted</label>
+    <label>Duplicate downloads<select aria-label="Duplicate downloads" value={preferences.duplicates} onchange={event=>{const value=event.currentTarget.value;if(preferences&&(value==='skip'||value==='rename'||value==='overwrite'))preferences.duplicates=value;}}><option value="skip">Skip existing</option><option value="rename">Keep both (rename)</option><option value="overwrite">Replace after verified completion</option></select></label>
+    <p>Media cache is compressed resident bytes, capped at 512 MiB. Decoded webview surfaces and in-flight response buffers have separate lifetimes. Gallery and mute changes apply after acknowledged save; mute policy applies on next media open.</p>
     <label>Concurrent downloads<select aria-label="Concurrent downloads" value={preferences.concurrent_downloads} onchange={event=>{if(preferences)preferences.concurrent_downloads=Number(event.currentTarget.value);}}>{#each [1,2,3,4] as n}<option value={n}>{n}</option>{/each}</select></label>
     <p>Concurrency is applied when granting a download directory. Restart before changing an active worker. Jobs sharing the same native destination directory are conservatively serialized to protect aliases and Rename collisions. Account keys/directory grants/session restoration are not edited here.</p>
     <button onclick={savePreferences}>Save preferences</button>{#if preferenceNotice}<p role="status">{preferenceNotice}</p>{/if}
@@ -110,17 +116,17 @@
   <div class="results" aria-busy={busy}>
    {#if error}<p role="alert">{error}</p>{/if}
    {#if busy}<p role="status">Loading…</p>{/if}
-   {#if pool}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button><button disabled={!downloadGranted||busy} onclick={queuePoolPage}>Queue visible pool page</button><button disabled={!downloadGranted||busy||pool.total>10000} onclick={queueWholePool}>Queue whole pool ({pool.total} members)</button><p>Whole-pool metadata uses bounded batches, current account filters and submitted ratings. Hidden members retain positions; jobs start paused. Maximum 10,000 members.</p>
+   {#if pool}<Gallery scale={applied?.gallery_scale??1} items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{pool.pool.name}</h1><p>{pool.total} ordered members · hidden/unavailable members retain their original position.</p><button onclick={pin}>{pins.some(p=>p.id===pool?.pool.key.id)?'Unpin pool':'Pin pool'}</button><button disabled={!downloadGranted||busy} onclick={queuePoolPage}>Queue visible pool page</button><button disabled={!downloadGranted||busy||pool.total>10000} onclick={queueWholePool}>Queue whole pool ({pool.total} members)</button><p>Whole-pool metadata uses bounded batches, current account filters and submitted ratings. Hidden members retain positions; jobs start paused. Maximum 10,000 members.</p>
     <ol class="posts">{#each pool.entries as e}<li value={e.position+1} data-post-id={e.id}><b>#{e.position+1} · {e.id}</b><p>{e.post?.title??'Unavailable or filtered'}</p>{#if e.post}<button onclick={()=>view(e.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(e.id)}>Queue download</button>{/if}</li>{/each}</ol>
     <button disabled={busy||poolOffset===0} onclick={()=>run('pool',1,Math.max(0,poolOffset-50),true)}>Previous pool page</button>
     {#if pool.next_offset!==null}<button disabled={busy} onclick={()=>run('pool',1,pool?.next_offset??0,true)}>Next pool page</button>{/if}
-   {:else if result}<Gallery items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{mode==='favorites'?'Favorites':'Search results'} · page {page}</h1><p>{result.items.length} visible posts from {result.raw_count} upstream records. Account filters remain respected.</p>
+   {:else if result}<Gallery scale={applied?.gallery_scale??1} items={galleryItems} grants={galleryGrants} selectedId={selectedId} onselect={id=>void view(id)} onvisible={visible}/><h1>{mode==='favorites'?'Favorites':'Search results'} · page {page}</h1><p>{result.items.length} visible posts from {result.raw_count} upstream records. Account filters remain respected.</p>
     <ol class="posts">{#each result.items as p}<li data-post-id={p.key.id}><b>{p.title}</b><button onclick={()=>view(p.key.id)}>View artwork</button><button disabled={!downloadGranted} onclick={()=>queueDownload(p.key.id)}>Queue download</button><p>{p.artists.join(', ')||'No artist supplied'} · {p.rating} · score {p.score}</p><details><summary>Tags &amp; description</summary><p>{p.description}</p>{#each Object.entries(p.tags) as [category,tags]}<p><b>{category}:</b> {tags.join(' ')}</p>{/each}</details></li>{/each}</ol>
     <nav><button disabled={busy||page===1} onclick={()=>run(mode,page-1,0,true)}>Previous page</button><button disabled={busy||result.next_page===null} onclick={()=>run(mode,result?.next_page??1,0,true)}>Next page</button></nav>
    {:else}<h1>Your collection starts with a search.</h1><p>No network request is made until you search, browse favorites, request suggestions, or open a pool. Safe-only is the initial rating selection. Open a returned post to view validated media through the scoped Rust cache. Downloads and full gallery integration are still in progress.</p>{/if}
   </div>
  </div>
- <Viewer items={prepared} {grants} {selectedId} {navigation} onstep={delta=>{const post=visiblePosts[navigation.index+delta];if(post)void view(post.key.id);}} onclose={()=>{selectedId=null;mediaGeneration++;}}/>
+ <Viewer startMuted={applied?.start_muted??true} items={prepared} {grants} {selectedId} {navigation} onstep={delta=>{const post=visiblePosts[navigation.index+delta];if(post)void view(post.key.id);}} onclose={()=>{selectedId=null;mediaGeneration++;}}/>
 </section>
 <style>
  .browser{color:#e5e9ed}header{gap:16px;flex-wrap:wrap;height:auto;min-height:70px}header span{color:#98a7b6;font-size:12px}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{padding:20px;display:flex;flex-direction:column;gap:9px}h2{margin:15px 0 3px;font-size:15px}input,button,select{border-radius:5px;background:#202b36;color:#e5e9ed;border:1px solid #526271;padding:8px;font:inherit}input{min-width:0;width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.primary{background:#b76b31;border-color:#ebad6b}.chips{display:flex;flex-wrap:wrap;gap:4px}.chips button{background:#254934}.excludes button{background:#57303b}fieldset{border:1px solid #394857;margin:0;padding:8px;display:flex;flex-wrap:wrap;gap:8px}fieldset label{display:flex;flex-direction:row;gap:4px;align-items:center;font-size:12px}fieldset input{width:auto}.import-row{flex-direction:row;align-items:center}.import-row input{width:auto}code{overflow-wrap:anywhere}.results{padding:24px;min-width:0}.posts{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}.posts li{background:#1c252e;border:1px solid #354656;border-radius:6px;padding:16px;overflow-wrap:anywhere}.posts p{margin:8px 0}.saved{display:flex;gap:4px}.saved button:first-child{flex:1}nav{display:flex;gap:12px}[role=alert]{color:#ffbdc9;border:1px solid #a86470;padding:12px}.suggestions{display:flex;flex-wrap:wrap;gap:4px}@media(max-width:800px){.layout{grid-template-columns:230px minmax(0,1fr)}.results{padding:12px}}

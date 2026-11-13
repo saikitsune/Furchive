@@ -1,13 +1,13 @@
 <script lang="ts">
  import {onMount,tick,untrack} from 'svelte';
  import {createCatalog,type MediaItem} from './media';
- import {gridWindow,navigateId,ROW_HEIGHT} from './presentation';
- let {items,grants,selectedId=null,onselect=()=>{},onvisible=()=>{}}:{items:readonly MediaItem[];grants:readonly string[];selectedId?:string|null;onselect?:(id:string)=>void;onvisible?:(ids:string[])=>void}=$props();
+ import {gridWindow,navigateId} from './presentation';
+ let {items,grants,selectedId=null,onselect=()=>{},onvisible=()=>{},scale=1}:{items:readonly MediaItem[];grants:readonly string[];selectedId?:string|null;onselect?:(id:string)=>void;onvisible?:(ids:string[])=>void;scale?:number}=$props();
  let catalog=$derived(createCatalog(items,grants));
  $effect(()=>{const id=selectedId;if(id&&catalog.some(item=>item.id===id))focused=id;});
  let width=$state(800),height=$state(600),top=$state(0),focused=$state<string|null>(null);
  let viewport:HTMLDivElement;
- let range=$derived(gridWindow(catalog.length,width,top,height));
+ let range=$derived(gridWindow(catalog.length,width,top,height,scale));
  let rows=$derived(catalog.slice(range.start,range.end));
  let visibleKey=$derived(rows.map(item=>item.id).join('\n'));
  $effect(()=>{const ids=visibleKey;untrack(()=>onvisible(ids?ids.split('\n'):[]));});
@@ -20,21 +20,21 @@
  async function key(event:KeyboardEvent){
   if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){
    event.preventDefault();focused=navigateId(catalog.map(i=>i.id),active,event.key,range.columns);
-   const index=catalog.findIndex(i=>i.id===focused),row=Math.floor(index/range.columns)*ROW_HEIGHT;
+   const index=catalog.findIndex(i=>i.id===focused),row=Math.floor(index/range.columns)*range.rowHeight;
    if(row<viewport.scrollTop)viewport.scrollTop=row;
-   else if(row+ROW_HEIGHT>viewport.scrollTop+height)viewport.scrollTop=row+ROW_HEIGHT-height;
+   else if(row+range.rowHeight>viewport.scrollTop+height)viewport.scrollTop=row+range.rowHeight-height;
    top=viewport.scrollTop;await tick();
   }else if((event.key==='Enter'||event.key===' ')&&active){event.preventDefault();onselect(active);}
  }
  export function focus(){viewport?.focus();}
 </script>
-<div class="gallery" data-gallery data-selected={active} data-start={range.start} data-end={range.end} data-columns={range.columns} bind:this={viewport} role="listbox" aria-label="Media gallery" tabindex="0" aria-activedescendant={visibleActive&&active?'tile-'+active:undefined} onkeydown={key} onscroll={()=>top=viewport.scrollTop}>
+<div class="gallery" data-gallery data-selected={active} data-start={range.start} data-end={range.end} data-columns={range.columns} data-row-height={range.rowHeight} bind:this={viewport} role="listbox" aria-label="Media gallery" tabindex="0" aria-activedescendant={visibleActive&&active?'tile-'+active:undefined} onkeydown={key} onscroll={()=>top=viewport.scrollTop}>
  <div style:height={range.height+'px'} class="spacer">
   <div class="tiles" style:top={range.top+'px'} style:grid-template-columns={'repeat('+range.columns+',minmax(0,1fr))'}>
    {#each rows as item(item.id)}
-    <div id={'tile-'+item.id} role="option" aria-selected={active===item.id} data-gallery-tile data-id={item.id} class:chosen={active===item.id}>
+    <div id={'tile-'+item.id} role="option" aria-selected={active===item.id} data-gallery-tile data-id={item.id} class:chosen={active===item.id} style:height={range.rowHeight-8+'px'}>
      <button tabindex="-1" onclick={()=>{focused=item.id;onselect(item.id)}} aria-label={'Open '+item.title}>
-      {#if item.thumbnail || item.kind==='image'}<img src={item.thumbnail??item.src} alt="" loading="lazy" decoding="async">{:else}<span class="video-badge">VIDEO</span>{/if}
+      {#if item.thumbnail || item.kind==='image'}<img src={item.thumbnail??item.src} alt="" style:height={116*scale+'px'} loading="lazy" decoding="async">{:else}<span class="video-badge">VIDEO</span>{/if}
       <b>{item.title}</b><small>{item.kind}</small>
      </button>
     </div>
