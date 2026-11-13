@@ -14,7 +14,10 @@ Preserve old C# source, user data, art and history. No production/server changes
 - [in_progress] 4: Product UI/IPC integrated with packaged search/media/settings/legacy/account/download/group contracts; whole-pool native25+8/runtime proof atbc7cf3d/run43343132832 owner-verified; metadata and platform breadth acceptance open.
 - [pending] 5: Independent milestone review, native build/package matrix, release readiness (human release approval).
 
-## Active next milestone
+## Current verified local-media checkpoint
+05d1bf3/run43361536749 ownerverified9successfuljobs/9actualZIPs/3package+binaryidentities/26+10productUI+6realaccountchecksperOS/108frames/exactsource/core/vault. Freshprocesslocalimage decode succeedswithALLmediaHTTPdeniedafterexplicitrootregrantandnormalfilteredmetadataSearch. Independent correctedsource43afeefePASS, originalNYX-LM-01BLOCKremains. Metadataimplementationisolatedt_1850e170/returnt_6048ada1worktree next-metadata-sidecars; crosspageviewer/broaderplatform/finalwholeproduct acceptance stillopen. No completeappclaim.
+
+## Historical local-media repair
 Local completed-media URL/publication/nativeidentity/size/hash authority implemented and Linux-tested, currentpage and explicitrootregrant required. Nyx originalfc96441 review demonstrated MAJOR NYX-LM-01 stale-miss regrant; originalBLOCK preserved. Owner4test deterministicregression RED2fail/2pass thenGREEN4pass by retaining capturedgrantandsemaphore in fallback. Correctedcandidate fresh review/packagedmatrix pending. OriginalC# remains; metadata/crosspageviewer/platformbreadth/fullreview stayopen.
 
 ## Current ownership

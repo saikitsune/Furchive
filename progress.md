@@ -1,6 +1,9 @@
 # Execution progress
 
-## Local completed-media repair in progress
+## Verified local completed-media milestone
+- Exact05d1bf3/run43361536749 all9jobsSUCCESS; ownerdownloaded9ZIP/providerdigests/3actualpackages+executables,26+10productchecksperOS(includingfreshprocess/rootregrant/filteredmetadata/localdecodedimagewithallmediaHTTPdenied),6realnativeaccountUIchecksperOS,108hostframes,Range/IfRange/core/vault/sourcebindings. Eachnativejob139namedRust=124workspace+6catalog+9desktopRust,30DOM15unit/fmtstrictClippycheckbuild; dedicatedLinux56/57macOS55/56Windows57/58core+1doc each. NYX-LM-01 closedonlycorrectedreviewedtree43afeefe; originalBLOCKpreserved. This closesboundedlocalresolutionproof,notwholeoffline-library orreleaseacceptance. Metadata/crosspageviewer/platformbreadth/finalreview remain. Evidence rust/test-artifacts/ci-run-43361536749/owner-report.md.
+
+## Historical local completed-media repair
 - Independent Nyx original frozen fc96441 found MAJOR NYX-LM-01: local miss re-entered publicprepare and mintednewgenerationgrant, including corruptionmasking case. Originalarchive/logs retained; no priorapprovaltransferred. Owner deterministicblockingpool regression RED2failed/2passed(exit101), repair keeps originalgrant+semaphore across networkfallback; GREEN4/4. No unauthorizedfilesystem/crossaccountdisclosure demonstrated; shippedUI separatefence retained. New candidate requires fresh independent review and allthree packagedproofs.
 
 ## Local completed-media resolution in progress
