@@ -1,5 +1,11 @@
 # Execution progress
 
+## Cross-page repair in progress
+- Originalindependentreview134ae93fBLOCKtwoMAJOR:NYX-XPV-01metadatanullURLtrapsnavigation;NYX-XPV-02oldedgereceiptreopensclosedViewer/overridesnewselection. Ownerreproducedoriginal8DOMcases7fail1pass(exit1), preservedoriginalevidence. RepairRustviewable_idsprojectionanddualquery/viewerfence+oldpagesubmittedauthorityreconciliation; extra delayedreconciliationregressionREDthenGREEN. Expanded49DOM+15unit and131workspace/9desktopRust/fmtstrictClippy/check/buildPASS, freshreview/nativeproofpending. BrammetadataREY-META-01repairt_ecbcbd21/verificationt_8210a380isolated, original372d9b6BLOCK preserved.
+
+## Historical cross-page implementation
+- Rustownedsubmittedcursor+edgeID/signedstep bridge, bounded4pageemptyfiltertraversal,authoritativepoolordinals andcachegeneration compare-revoke; Viewerreleasesoldmediawhilecrosspagewaits,staleUIcompletionfenced. CursorlatepublishREDoldergeneration overwritesnewer thenGREENmonotonicreplacement. Local7Rustcursor/serviceproofs and32DOM+15unit/check/build/strictClippy pass; newnative28+10campaign implementednotyetexecuted. Metadataworkerisolatedseparate; wholeappNOTCOMPLETE.
+
 ## Verified local completed-media milestone
 - Exact05d1bf3/run43361536749 all9jobsSUCCESS; ownerdownloaded9ZIP/providerdigests/3actualpackages+executables,26+10productchecksperOS(includingfreshprocess/rootregrant/filteredmetadata/localdecodedimagewithallmediaHTTPdenied),6realnativeaccountUIchecksperOS,108hostframes,Range/IfRange/core/vault/sourcebindings. Eachnativejob139namedRust=124workspace+6catalog+9desktopRust,30DOM15unit/fmtstrictClippycheckbuild; dedicatedLinux56/57macOS55/56Windows57/58core+1doc each. NYX-LM-01 closedonlycorrectedreviewedtree43afeefe; originalBLOCKpreserved. This closesboundedlocalresolutionproof,notwholeoffline-library orreleaseacceptance. Metadata/crosspageviewer/platformbreadth/finalreview remain. Evidence rust/test-artifacts/ci-run-43361536749/owner-report.md.
 

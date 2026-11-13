@@ -195,6 +195,7 @@ fn main() {
             commands::legacy_preview,
             commands::legacy_confirm,
             commands::prepare_media,
+            commands::viewer_step,
             commands::preferences,
             commands::save_preferences,
             commands::search,

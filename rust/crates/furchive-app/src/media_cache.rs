@@ -129,6 +129,29 @@ impl MediaCache {
         let generation = self.begin_page()?;
         self.authorize_page(generation, posts)
     }
+    pub fn generation(&self) -> Result<u64, String> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| "media cache poisoned")?
+            .generation)
+    }
+    /// Compare-and-revoke: a delayed navigation cannot replace a newer query/account.
+    pub fn begin_page_if(&self, expected: u64) -> Result<u64, String> {
+        let mut i = self.inner.lock().map_err(|_| "media cache poisoned")?;
+        if i.generation != expected {
+            return Err("viewer navigation superseded".into());
+        }
+        i.generation = i
+            .generation
+            .checked_add(1)
+            .ok_or("media generation exhausted")?;
+        i.authorized.clear();
+        i.entries.clear();
+        i.order.clear();
+        i.bytes = 0;
+        Ok(i.generation)
+    }
     pub fn begin_page(&self) -> Result<u64, String> {
         let mut i = self.inner.lock().map_err(|_| "media cache poisoned")?;
         i.generation = i

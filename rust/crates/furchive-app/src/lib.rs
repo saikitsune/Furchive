@@ -7,6 +7,7 @@ pub mod legacy;
 pub mod legacy_session;
 pub mod media_cache;
 pub mod settings;
+pub mod viewer_cursor;
 use furchive_engine::storage::{CacheStore, SavedSearch, StateStore};
 use std::path::Path;
 use tokio::sync::{mpsc, oneshot};

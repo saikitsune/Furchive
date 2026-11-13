@@ -23,8 +23,11 @@
  let galleryGrants=$derived([placeholder,...Object.values(thumbnails).map(p=>p.src)]);
  function visible(ids:string[]){const current=generation;void (async()=>{for(const id of ids){if(current!==generation)return;if(requestedPreviews.has(id)||!visiblePosts.find(p=>p.key.id===id)?.preview_url)continue;requestedPreviews.add(id);try{const media=await bridge.prepare(id,'preview');if(current===generation)thumbnails={...thumbnails,[id]:media};}catch{/* Thumbnail failure leaves a neutral bundled placeholder, never a direct URL. */}}})();}
  let poolOffset=$state(0);
+ let viewableIds=$state<string[]>([]);
+ let desiredId:string|null=null;
+ let selectablePosts=$derived(viewableIds.flatMap(id=>{const p=visiblePosts.find(p=>p.key.id===id);return p?[p]:[]}));
  let downloadGroups=$derived([...new Set(jobs.flatMap(j=>j.group_id?[j.group_id]:[]))].map(id=>({id,label:jobs.find(j=>j.group_id===id)?.group_label??id,members:jobs.filter(j=>j.group_id===id)})));
- let navigation=$derived({index:visiblePosts.findIndex(p=>p.key.id===selectedId),total:visiblePosts.length});
+ let navigation=$derived({index:selectablePosts.findIndex(p=>p.key.id===selectedId),total:selectablePosts.length,hasPrevious:!busy&&(selectablePosts.findIndex(p=>p.key.id===selectedId)>0||(pool?poolOffset>0:page>1)),hasNext:!busy&&(selectablePosts.findIndex(p=>p.key.id===selectedId)<selectablePosts.length-1||(pool?pool.next_offset!==null:result?.next_page!=null))});
  let submitted:{query:Query;username:string;poolId:string}|null=null;
  const query=():Query=>({include:[...include],exclude:[...exclude],ratings:{only:[...(safe?['safe' as const]:[]),...(questionable?['questionable' as const]:[]),...(explicit?['explicit' as const]:[])]},artist:null,sort});
  onMount(()=>{void refresh();void readAppliedPreferences();return ()=>{generation++;suggestionGeneration++;mediaGeneration++;preferenceGeneration++;};});
@@ -34,15 +37,31 @@
   if(which==='include'){if(!include.includes(token))include=[...include,token];includeInput='';}else{if(!exclude.includes(token))exclude=[...exclude,token];excludeInput='';}suggestions=[];suggestionGeneration++;
  }
  async function complete(){const id=++suggestionGeneration;const prefix=includeInput.trim();if(prefix.length<2){suggestions=[];return;}try{const rows=await bridge.suggestions(prefix);if(id===suggestionGeneration)suggestions=rows;}catch(e){if(id===suggestionGeneration)error=String(e);}}
- async function view(id:string){const request=++mediaGeneration;error='';try{const item=await bridge.prepare(id,'full');if(request!==mediaGeneration)return;grants=[item.src];prepared=createCatalog([item],grants);selectedId=item.id;}catch(e){if(request===mediaGeneration)error=String(e);}}
- async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){const id=++generation;mediaGeneration++;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
+ async function view(id:string){desiredId=id;const request=++mediaGeneration;error='';try{const item=await bridge.prepare(id,'full');if(request!==mediaGeneration)return;grants=[item.src];prepared=createCatalog([item],grants);selectedId=item.id;}catch(e){if(request===mediaGeneration)error=String(e);}}
+ // A newer selection/close can occur after Rust committed an edge but before its
+ // receipt arrives. Re-establish the submitted old page; never reopen after close.
+ async function restoreAfterTurn(request:number,oldPage:number,oldOffset:number){
+  if(!submitted||request!==generation)return;const intent=submitted;
+  try{if(mode==='pool'){const p=await bridge.pool(Number(intent.poolId),oldOffset,intent.query.ratings);if(request!==generation)return;pool=p;result=null;viewableIds=p.viewable_ids;poolOffset=oldOffset;}
+   else{const p=mode==='favorites'?await bridge.favorites(intent.query,intent.username,oldPage):await bridge.search(intent.query,oldPage);if(request!==generation)return;result=p;pool=null;viewableIds=p.viewable_ids;page=oldPage;}
+   const desired=desiredId;mediaGeneration++;selectedId=null;prepared=[];grants=[];if(desired&&viewableIds.includes(desired))await view(desired);
+  }catch(e){if(request===generation)error=String(e);}
+ }
+ async function step(delta:number){
+  if(busy||!selectedId)return;const index=selectablePosts.findIndex(p=>p.key.id===selectedId);const next=selectablePosts[index+delta];if(next){await view(next.key.id);return;}
+  const id=selectedId,request=++generation,viewerRequest=++mediaGeneration,oldPage=page,oldOffset=poolOffset;selectedId=null;prepared=[];grants=[];busy=true;error='';
+  try{const nextPage=await bridge.step(id,delta);if(request!==generation)return;if(viewerRequest!==mediaGeneration){await restoreAfterTurn(request,oldPage,oldOffset);return;}if(!nextPage){error='No more viewable media in this direction.';return;}
+   thumbnails={};requestedPreviews.clear();pool=nextPage.pool?{...nextPage.pool,viewable_ids:nextPage.viewable_ids}:null;result=nextPage.search?{...nextPage.search,viewable_ids:nextPage.viewable_ids}:null;viewableIds=nextPage.viewable_ids;poolOffset=nextPage.offset;page=nextPage.page;await view(nextPage.selected_id);
+  }catch(e){if(request===generation)error=String(e);}finally{if(request===generation)busy=false;}
+ }
+ async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){const id=++generation;mediaGeneration++;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
   const intent=paginate&&submitted?submitted:{query:query(),username,poolId};
   const q=intent.query;if(q.ratings!=='any'&&!q.ratings.only.length)throw Error('Select at least one rating.');
-  if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;poolOffset=offset;result=null;}
-  else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;pool=null;}
+  if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;viewableIds=p.viewable_ids;poolOffset=offset;result=null;}
+  else{const p=nextMode==='favorites'?await bridge.favorites(q,intent.username,next):await bridge.search(q,next);if(id!==generation)return;result=p;viewableIds=p.viewable_ids;pool=null;}
   submitted=intent;mode=nextMode;page=next;
  }catch(e){if(id===generation)error=String(e);}finally{if(id===generation)busy=false;}}
- function clearAccountView(){generation++;mediaGeneration++;busy=false;result=null;pool=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();}
+ function clearAccountView(){generation++;mediaGeneration++;busy=false;result=null;pool=null;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();}
  async function login(){clearAccountView();error='';const key=accountKey;accountKey='';await tick();try{identity=await bridge.login(accountUser,key);}catch(e){error=String(e);}}
  async function restoreAccount(){clearAccountView();error='';try{identity=await bridge.restoreAccount();}catch(e){error=String(e);}}
  async function logout(){clearAccountView();identity=null;accountKey='';try{await bridge.logout();}catch(e){error=String(e);}}
@@ -126,7 +145,7 @@
    {:else}<h1>Your collection starts with a search.</h1><p>No network request is made until you search, browse favorites, request suggestions, or open a pool. Safe-only is the initial rating selection. Open a returned post to view validated media through the scoped Rust cache. Downloads and full gallery integration are still in progress.</p>{/if}
   </div>
  </div>
- <Viewer startMuted={applied?.start_muted??true} items={prepared} {grants} {selectedId} {navigation} onstep={delta=>{const post=visiblePosts[navigation.index+delta];if(post)void view(post.key.id);}} onclose={()=>{selectedId=null;mediaGeneration++;}}/>
+ <Viewer startMuted={applied?.start_muted??true} items={prepared} {grants} {selectedId} {navigation} onstep={delta=>void step(delta)} onclose={()=>{desiredId=null;selectedId=null;mediaGeneration++;}}/>
 </section>
 <style>
  .browser{color:#e5e9ed}header{gap:16px;flex-wrap:wrap;height:auto;min-height:70px}header span{color:#98a7b6;font-size:12px}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{padding:20px;display:flex;flex-direction:column;gap:9px}h2{margin:15px 0 3px;font-size:15px}input,button,select{border-radius:5px;background:#202b36;color:#e5e9ed;border:1px solid #526271;padding:8px;font:inherit}input{min-width:0;width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.primary{background:#b76b31;border-color:#ebad6b}.chips{display:flex;flex-wrap:wrap;gap:4px}.chips button{background:#254934}.excludes button{background:#57303b}fieldset{border:1px solid #394857;margin:0;padding:8px;display:flex;flex-wrap:wrap;gap:8px}fieldset label{display:flex;flex-direction:row;gap:4px;align-items:center;font-size:12px}fieldset input{width:auto}.import-row{flex-direction:row;align-items:center}.import-row input{width:auto}code{overflow-wrap:anywhere}.results{padding:24px;min-width:0}.posts{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}.posts li{background:#1c252e;border:1px solid #354656;border-radius:6px;padding:16px;overflow-wrap:anywhere}.posts p{margin:8px 0}.saved{display:flex;gap:4px}.saved button:first-child{flex:1}nav{display:flex;gap:12px}[role=alert]{color:#ffbdc9;border:1px solid #a86470;padding:12px}.suggestions{display:flex;flex-wrap:wrap;gap:4px}@media(max-width:800px){.layout{grid-template-columns:230px minmax(0,1fr)}.results{padding:12px}}

@@ -17,6 +17,7 @@ pub struct AppState {
     pub pool_snapshot: std::sync::Mutex<Option<PoolPage>>,
     pub downloads: furchive_app::downloads::Downloads,
     pub legacy: furchive_app::legacy_session::LegacySession,
+    pub viewer_cursor: furchive_app::viewer_cursor::ViewerCursor,
 }
 pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let root = app.path().app_data_dir()?;
@@ -57,6 +58,7 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .map_err(std::io::Error::other)?;
     app.manage(AppState {
         downloads,
+        viewer_cursor: Default::default(),
         pool_snapshot: std::sync::Mutex::new(None),
         browser: Browser::new(account.clone(), db.clone()),
         account,
@@ -72,6 +74,43 @@ fn state_cache(app: &tauri::AppHandle) -> std::sync::Arc<furchive_app::media_cac
     app.state::<std::sync::Arc<furchive_app::media_cache::MediaCache>>()
         .inner()
         .clone()
+}
+fn viewable_ids(posts: &[furchive_domain::MediaItem]) -> Vec<String> {
+    posts
+        .iter()
+        .filter(|p| {
+            p.full_url
+                .as_deref()
+                .is_some_and(|u| furchive_app::media_cache::canonical_media(u).is_ok())
+        })
+        .map(|p| p.key.id().to_owned())
+        .collect()
+}
+#[derive(serde::Serialize)]
+pub struct ViewablePage<T: serde::Serialize> {
+    #[serde(flatten)]
+    pub data: T,
+    pub viewable_ids: Vec<String>,
+}
+#[tauri::command]
+pub async fn viewer_step(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    delta: i8,
+) -> Result<Option<furchive_app::viewer_cursor::NavigationPage>, String> {
+    let cache = state_cache(&app);
+    let result = state
+        .viewer_cursor
+        .navigate(&state.browser, &cache, &id, delta)
+        .await?;
+    if let Some(result) = &result {
+        *state
+            .pool_snapshot
+            .lock()
+            .map_err(|_| "pool snapshot poisoned")? = result.pool.clone();
+    }
+    Ok(result)
 }
 #[derive(serde::Serialize)]
 pub struct PreparedMedia {
@@ -361,7 +400,7 @@ pub async fn search(
     state: State<'_, AppState>,
     query: SearchQuery,
     page: u32,
-) -> Result<SearchPage, String> {
+) -> Result<ViewablePage<SearchPage>, String> {
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
     *state
@@ -370,7 +409,17 @@ pub async fn search(
         .map_err(|_| "pool snapshot poisoned")? = None;
     let result = state.browser.search(&query, page).await?;
     cache.authorize_page(generation, &result.items)?;
-    Ok(result)
+    state.viewer_cursor.search(
+        generation,
+        furchive_app::viewer_cursor::Intent::Search(query),
+        page,
+        result.next_page,
+        viewable_ids(&result.items),
+    )?;
+    Ok(ViewablePage {
+        viewable_ids: viewable_ids(&result.items),
+        data: result,
+    })
 }
 #[tauri::command]
 pub async fn suggestions(
@@ -386,7 +435,7 @@ pub async fn favorites(
     query: SearchQuery,
     username: String,
     page: u32,
-) -> Result<SearchPage, String> {
+) -> Result<ViewablePage<SearchPage>, String> {
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
     *state
@@ -395,7 +444,17 @@ pub async fn favorites(
         .map_err(|_| "pool snapshot poisoned")? = None;
     let result = state.browser.favorites(&query, &username, page).await?;
     cache.authorize_page(generation, &result.items)?;
-    Ok(result)
+    state.viewer_cursor.search(
+        generation,
+        furchive_app::viewer_cursor::Intent::Favorites { query, username },
+        page,
+        result.next_page,
+        viewable_ids(&result.items),
+    )?;
+    Ok(ViewablePage {
+        viewable_ids: viewable_ids(&result.items),
+        data: result,
+    })
 }
 #[tauri::command]
 pub async fn pool_page(
@@ -405,14 +464,32 @@ pub async fn pool_page(
     offset: usize,
     limit: usize,
     ratings: RatingFilter,
-) -> Result<PoolPage, String> {
+) -> Result<ViewablePage<PoolPage>, String> {
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
     *state
         .pool_snapshot
         .lock()
         .map_err(|_| "pool snapshot poisoned")? = None;
+    if limit != 50 {
+        return Err("desktop pool page must contain 50 positions".into());
+    }
     let result = state.browser.pool_page(id, offset, limit, &ratings).await?;
+    state.viewer_cursor.pool(
+        generation,
+        id,
+        ratings,
+        offset,
+        result.total,
+        result.next_offset,
+        viewable_ids(
+            &result
+                .entries
+                .iter()
+                .filter_map(|e| e.post.clone())
+                .collect::<Vec<_>>(),
+        ),
+    )?;
     cache.authorize_page(
         generation,
         &result
@@ -425,7 +502,17 @@ pub async fn pool_page(
         .pool_snapshot
         .lock()
         .map_err(|_| "pool snapshot poisoned")? = Some(result.clone());
-    Ok(result)
+    let ids = viewable_ids(
+        &result
+            .entries
+            .iter()
+            .filter_map(|e| e.post.clone())
+            .collect::<Vec<_>>(),
+    );
+    Ok(ViewablePage {
+        data: result,
+        viewable_ids: ids,
+    })
 }
 #[tauri::command]
 pub async fn delete_search(state: State<'_, AppState>, id: String) -> Result<(), String> {
