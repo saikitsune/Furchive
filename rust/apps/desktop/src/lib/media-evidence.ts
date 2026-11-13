@@ -13,7 +13,7 @@ export function validateMediaEvidence(r:MediaEvidence) {
  demand(r.images?.length===imageNames.length,'image inventory');
  for(const [i,name]of imageNames.entries()){const row=r.images.find(x=>x.name===name);demand(row?.status===(i?'error':'ready')&&row.released===true,'image '+name);}
  const videoNames=['vp8.webm','vp9.webm','h264.mp4'];demand(r.videos?.length===3,'video inventory');
- for(const name of videoNames){const row=r.videos.find(x=>x.name===name);demand(row?.played===true&&row.seeked===true&&row.speed===2&&row.muted===true&&row.volume===.35&&row.time>=0.45&&row.released===true,'video '+name);}
+ for(const name of videoNames){const row=r.videos.find(x=>x.name===name);demand(row?.played===true&&row.seeked===true&&row.speed===2&&row.muted===true&&row.volume===.5&&row.time>=0.45&&row.released===true,'video '+name);}
  demand(r.lifecycle?.length===20,'20 lifecycle cycles');
  for(const [i,row]of r.lifecycle.entries())demand(row.cycle===i&&row.released===true&&row.staleIgnored===true&&row.closed===true&&row.remaining===0,'cleanup cycle '+i);
  demand(JSON.stringify(r.animationCheckpoints)===JSON.stringify(['gif','apng','webp']),'host animation checkpoints required');

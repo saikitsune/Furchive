@@ -1,5 +1,9 @@
 # Execution progress
 
+## Video volume native sample repair
+- d047ed1/run43423773747 remainsFAILLinuxmediaexact.35assertion;Windows/macOSall3codec.35pass,browse31+13/account6allOSpass,all6corevaultpass. NumericLinuxvolumeNOTlogged, noinventedrootcause. WebKitGStreamerfloatreadbackboundarymakes.35nonexact(.3499999940395355);.5exact. TESTcampaign/validatornowuseexact.5withsameequality/liveelement/mute/playseekrelease proof andrecordactualvolume/inputbeforeassertion;no productionViewer/Rust/permissionschange. Newfloat32boundaryregressionRED1=>GREEN;94component17unitNode24/Svelte0errorsbuildPASS, correctedsource/newnativepending. Originalfailedrunpreserved.
+
+
 ## Video volume presentation slice — local verification
 - Added explicit keyboard-accessible0..1Video volume control to livevideo; disabled untildecoded, finiteboundsrejectempty/NaN/infinite/outofrange, muteindependent, reset1forreplacement, stalecontrolsreleased. MissingcontrolcanonicalRED1=>GREEN; missingnativevolumereceiptRED1=>GREEN; full94component16unit/Svelte0errorsbuild plus149workspace9desktopRust/fmtstrictClippyPASS. Nativecampaignnowsetsactualcontrol.35andreadsactualvideo.volume whilemuted acrossall3requiredcodecs; previous31+13product/108capture/timing/assertionsunchanged. Noaudibleaudio/mixer/volume persistenceclaim. Freshsourceapproval/newnativeproofpending; currentverifiedc007fa5proofnottransferred.
 - Bramdefaultno-selftestpackage smokeimplementationt_4e7f99ff remainsisolatedatbase9ad9b5a; no sharedruntimeedits orduplicatedworker. Existingreturnt_91b1d40c currentDesktopsession20261113_032643_19196c verifiednotify+wake. No userdata/art/history/C#/license/main/provider/sandboxchanges.

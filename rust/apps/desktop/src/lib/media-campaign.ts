@@ -5,7 +5,7 @@ import manifest from '../../public/fixtures/viewer-manifest.json';
 
 export type Checkpoint='gif'|'apng'|'webp';
 export const campaignDiagnostics:Record<string,unknown>={stage:'starting',videos:[]};
-function videoState(v:HTMLVideoElement){return {src:v.currentSrc,paused:v.paused,ended:v.ended,ready:v.readyState,network:v.networkState,muted:v.muted,defaultMuted:v.defaultMuted,speed:v.playbackRate,time:v.currentTime,duration:v.duration,width:v.videoWidth,error:v.error?.code,errorMessage:v.error?.message,failureState:v.dataset.failureState,status:viewer()?.dataset.status,message:document.querySelector('[data-viewer] .status')?.textContent,playbackMessage:document.querySelector('[data-viewer] [data-playback-message]')?.textContent};}
+function videoState(v:HTMLVideoElement){return {src:v.currentSrc,paused:v.paused,ended:v.ended,ready:v.readyState,network:v.networkState,muted:v.muted,volume:v.volume,defaultMuted:v.defaultMuted,speed:v.playbackRate,time:v.currentTime,duration:v.duration,width:v.videoWidth,error:v.error?.code,errorMessage:v.error?.message,failureState:v.dataset.failureState,status:viewer()?.dataset.status,message:document.querySelector('[data-viewer] .status')?.textContent,playbackMessage:document.querySelector('[data-viewer] [data-playback-message]')?.textContent};}
 export type CaptureRequest={fixture:string;fixtureSha256:string;rect:{x:number;y:number;width:number;height:number};viewport:{width:number;height:number;dpr:number};frames:number;intervalMs:number};
 const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
 const painted=async()=>{await tick();await frame();await frame();};
@@ -50,7 +50,7 @@ export async function runMediaCampaign(capture:(checkpoint:Checkpoint,request:Ca
   let seeked=false;v.addEventListener('seeked',()=>seeked=true,{once:true});
   const seek=demand(document.querySelector<HTMLInputElement>('[aria-label="Seek video"]'),'seek');seek.value='0.5';seek.dispatchEvent(new Event('input',{bubbles:true}));
   await until(()=>seeked&&v.currentTime>=0.45,'video seek did not complete');
-  const volume=demand(document.querySelector<HTMLInputElement>('[aria-label="Video volume"]'),'volume');demand(!volume.disabled,'volume not enabled after decode');volume.value='0.35';volume.dispatchEvent(new Event('input',{bubbles:true}));await painted();demand(v.volume===.35&&v.muted,'volume adjustment changed mute intent or failed');
+  const volume=demand(document.querySelector<HTMLInputElement>('[aria-label="Video volume"]'),'volume');demand(!volume.disabled,'volume not enabled after decode');volume.value='0.5';volume.dispatchEvent(new Event('input',{bubbles:true}));await painted();campaignDiagnostics.afterVolume={input:volume.value,...videoState(v)};demand(v.volume===.5&&v.muted,'volume adjustment changed mute intent or failed');
   const row={name,played,seeked,speed:v.playbackRate,muted:v.muted,volume:v.volume,time:v.currentTime,released:false};
   campaignDiagnostics.afterSeek=videoState(v);await close();row.released=released(v);videos.push(row);campaignDiagnostics.videos=[...videos];
  }
