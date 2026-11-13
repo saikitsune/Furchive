@@ -14,9 +14,9 @@ This ledger separates implemented paths, bounded functional evidence and remaini
 | Preferences | validated atomic save/applied gallery/mute/cache/duplicate settings; source-reviewed sample template preview | preview fresh packaged execution; explicit session restore/cache-history privacy controls |
 | Legacy migration | immutable sanitized preview, explicitly selected saved-search/pin transaction/idempotence, source/art preservation | optional settings/session/completed-history/root remapping not supplied by this limited import |
 | Packaging | actual extracted engineering Debian/app/portableZIP campaigns; local default Debian build | default installed Windows/macOS/Linux launch, installer upgrade/uninstall/data retention, platform architecture/display matrix |
-| Dependencies/legal | pinned locks, project-owned cargo-audit and npm scans; resolved dependency/license inventory | SQLite fix independent review/integration/native matrix; GLib/unmaintained/devLOW triage; project license decision/signing/publication separately gated |
+| Dependencies/legal | pinned locks, project-owned cargo-audit and npm scans; resolved dependency/license inventory | SQLite fix fresh native matrix; GLib/unmaintained/devLOW triage; project license decision/signing/publication separately gated |
 
-Last verified runtime implementation6ecfaf2/run43393039602:9jobs/9ZIPs,29+11product+6accountchecks perOS,108mediaframes. Preview source b4f5df7 closesNYX-TP-01 on exact0f41553c tree but has not yet fresh-native-qualified. IsolatedSQLite3.54.1 source1bfb0479 is not yet primary integrated. Earlier BLOCKs and failed runs remain original outcomes, not reclassified by later corrected passes.
+Last verified runtime implementation6ecfaf2/run43393039602:9jobs/9ZIPs,29+11product+6accountchecks perOS,108mediaframes. Preview source b4f5df7 closesNYX-TP-01 on exact0f41553c tree but has not yet fresh-native-qualified. SQLite3.54.1 source1bfb0479 passed independent bounded review and was integrated without changing the reviewed11securitypayloads. Combinedprimary139workspace+6catalog+9desktopRust/67DOM15unit/fmtstrictClippycheckbuildPASS; freshnativeGUI30+11pending. Earlier BLOCKs and failed runs remain original outcomes, not reclassified by later corrected passes.
 
 ## Final acceptance prerequisites
 

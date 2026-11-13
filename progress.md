@@ -1,5 +1,8 @@
 # Execution progress
 
+## Integrated reviewed filename preview + SQLite security correction
+- Previewb4f5df7/tree0f41553csourceNyx+returnPASS afterNYX-TP-01correction, originaldbe02b66BLOCK/eightorderingprobespreserved. SQLite1bfb0479Bram+returnPASS0security0logic, exact11securitypathscomposedwithnooverlap; manifestrecomputedmatchesall31corepayloads/unchangedclosedtestIDs. Primary139workspace6catalog9desktopRust/67DOM15unitfmtstrictdefaultallfeatureClippySvelte0errors0warningsbuild+hostguardsPASS. PatchedSQLite3.54.1versionfloor/old-new-oldprofile+completedpublication/sidecarbytepreservationverified. Primaryroot+desktopaudit0vulnerabilitycategory;GLibunsound/unmaintained/npmdevLOWwarningsretained. Freshcombinednative30+11campaignpending, noinheritancefrom6ecfaf2. Original80baselinefilespreserved,no sandbox/main/release/license/providerprofile/userdatachange.
+
 ## Filename preview source correction and advisory triage
 - Implemented Rust-owned read-only ordinary/pool sample filename preview. Initialsource dbe02b66BLOCK MAJORNYX-TP-01delayedLoad/Save replacement stalepreview/error; originalreport/archive/eightorderingfails retained. Ownercanonicalregression4RED2pass then correctedacknowledgmentfence,67DOM15unitcheckbuildPASS. Native30+11UNRUN, correctedindependentreviewpending. Separatelycargo-auditfoundRUSTSEC-2026-0459baselinebundledSQLite3.50.2, isolatedmilestone/sqlite-advisorycandidate3.54.1workspace136/core86+doc/audit0vulnerabilitiespass; notintegrated, GLibunsound/unmaintained/devLOWwarningsstillopen. WholeappNOTCOMPLETE.
 
