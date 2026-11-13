@@ -4,7 +4,7 @@ No live artwork, accounts, browser surrogate, installs or sandbox changes.
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import threading,urllib.parse,json,subprocess,argparse,os,hashlib,sqlite3,time
-CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','filename-template-preview','presentation-preferences','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','whole-pool-queue','viewer-cross-page-search','viewer-cross-page-pool','download-pause-ack','download-complete','download-cancel','normalized-metadata-rename',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart','local-completed-media-restart','normalized-metadata-restart']}
+CHECKS={1:['include-exclude-ratings','autocomplete','pagination-submitted-query','favorites','ordered-pool-holes','pin-persist','saved-search-persist','preferences-save','filename-template-preview','presentation-preferences','product-gallery-thumbnails','legacy-preview-confirm','account-verify-logout','product-adjacent-navigation','pool-gallery','pool-download-group','bounded-parallel-downloads','whole-pool-queue','viewer-cross-page-search','viewer-cross-page-pool','download-pause-ack','download-complete','download-cancel','normalized-metadata-rename',*[f'product-{id}-{kind}' for id,kind in [(100,'image'),(101,'animation'),(102,'animation'),(103,'animation'),(104,'video'),(105,'video')]]],2:['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart','local-completed-media-restart','normalized-metadata-restart','cache-clear-preservation']}
 def validate(receipt,phase):
  if receipt.get('schema')!=1 or receipt.get('ok') is not True or receipt.get('phase')!=phase or sorted(receipt.get('checks',[]))!=sorted(CHECKS[phase]):raise ValueError('missing or invalid native browsing receipt')
  if phase==1 and receipt.get('template_preview')!={'filename':'preview/12345.png','pool_filename':'e621/pools/sample_artist/Sample_pool/7_12345.png','invalid_rejected':True,'unsaved':True}:raise ValueError('invalid native filename preview evidence')
@@ -89,6 +89,9 @@ def main():
    current_metadata=validate_metadata(downloads,jobs,(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures/still.png').read_bytes())
    if phase==1:metadata_before_restart=current_metadata
    elif current_metadata!=metadata_before_restart:raise ValueError('metadata changed across restart')
+  with sqlite3.connect(out/'profile/cache.sqlite') as cache:
+   for table in ['posts','pools','pool_posts']:
+    if cache.execute('SELECT count(*) FROM '+table).fetchone()[0]!=0:raise ValueError('acknowledged cache clear left persistent metadata')
   settings=json.loads((out/'profile/settings.json').read_text())
   if settings['gallery_scale']!=1.5 or settings['cache_limit_bytes']!=16777216 or settings['start_muted'] is not False or settings['duplicates']!='rename':raise ValueError('persisted presentation preference mismatch')
   with sqlite3.connect(out/'profile/state.sqlite') as db:

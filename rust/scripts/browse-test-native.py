@@ -5,6 +5,13 @@ spec=importlib.util.spec_from_file_location('browse',Path(__file__).with_name('b
 if spec is None or spec.loader is None:raise RuntimeError('missing browse driver')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Receipt(unittest.TestCase):
+ def test_cache_clear_native_restart_check_is_required(self):
+  self.assertIn('cache-clear-preservation',m.CHECKS[2])
+  good={'schema':1,'ok':True,'phase':2,'checks':list(m.CHECKS[2])}
+  self.assertTrue(m.validate(good,2))
+  for checks in [[n for n in good['checks'] if n!='cache-clear-preservation'],good['checks']+['cache-clear-preservation']]:
+   with self.assertRaises(ValueError):m.validate(dict(good,checks=checks),2)
+
  def test_template_preview_is_required_with_real_rendered_output_and_unsaved_state(self):
   self.assertIn('filename-template-preview',m.CHECKS[1])
   good={'schema':1,'ok':True,'phase':1,'checks':list(m.CHECKS[1]),'template_preview':{'filename':'preview/12345.png','pool_filename':'e621/pools/sample_artist/Sample_pool/7_12345.png','invalid_rejected':True,'unsaved':True}}
@@ -19,11 +26,11 @@ class Receipt(unittest.TestCase):
   self.assertTrue(m.validate(good,1))
   for bad in [{},dict(good,ok=False),dict(good,phase=2),dict(good,checks=good['checks'][:-1]),dict(good,checks=good['checks']+good['checks'][:1])]:
    with self.assertRaises(ValueError):m.validate(bad,1)
-  self.assertTrue(m.validate({'schema':1,'ok':True,'phase':2,'checks':['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart','local-completed-media-restart','normalized-metadata-restart']},2))
+  self.assertTrue(m.validate({'schema':1,'ok':True,'phase':2,'checks':['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart','local-completed-media-restart','normalized-metadata-restart','cache-clear-preservation']},2))
  def test_old_restart_receipt_cannot_pass_without_local_decode(self):
   old={'schema':1,'ok':True,'phase':2,'checks':['restart-state','saved-search-delete','unpin','preferences-restart','legacy-restart-delete','download-history-restart','pool-group-restart','whole-pool-restart','presentation-preferences-restart']}
   with self.assertRaises(ValueError):m.validate(old,2)
-  current=dict(old,checks=old['checks']+['local-completed-media-restart','normalized-metadata-restart'])
+  current=dict(old,checks=old['checks']+['local-completed-media-restart','normalized-metadata-restart','cache-clear-preservation'])
   self.assertTrue(m.validate(current,2))
   for bad in [dict(current,checks=current['checks']+['local-completed-media-restart']),dict(current,ok=False)]:
    with self.assertRaises(ValueError):m.validate(bad,2)

@@ -1,5 +1,11 @@
 # Execution progress
 
+## Cache privacy acceptance-driver correction
+- Original32ffe5beBLOCKonMAJORNYX-CP-01TESTdriverconsumedstalesuccessbeforefinalclearACK; originalsource/review/resolve-rejectfailsretained. Production15independentUIprobes/mediarevocation/DBrollback/downloadpreservationpassed. NarrowcampaignSvelteflush+currentfailurepropagation andcanonical3modefullcampaignregressionsRED1pass2fail=>GREEN3pass,71componentsPASS. Correctedwholemilestonefreshreview/native30+12pending;no reinterpretationoforiginalBLOCK.
+
+## Cache privacy control local implementation
+- Addedexplicitconfirmation clearcachedbrowsingdata through Rust: DBactor transactional metadata-only deletion/currentepochfence; hostexclusiveboundary drains admittedbrowse/prepare/queue readers then revokesmedia/cursor/poolsnapshot. UIclosesoldviewandrejectsstaleresponses;clearfailurehonest,nocredential/art/download/settings/search/pin deletion,no secureeraseclaim. Tests143workspace9desktopRust/69DOM15unitfmtstrictClippycheckbuildPASS;30+12native campaignpreparedwithhostpersistentcachecounts/preservation,actualGUIUNRUNpendingreview.
+
 ## Verified packaged filename preview and SQLite correction
 - Exact `b903757e4918e0f42947fac9d78d8edcb96cf384` / Actions `43401673459`: all nine jobs succeeded; owner downloaded and verified all nine actual artifact ZIPs, nested packages/executables, source fingerprints and native receipts. Every OS passed30+11product checks,6real native-account UI checks and36media frames (108total).
 - New filename preview exercised invalid refusal, exact Rust-rendered post/pool samples and unsaved-state reload in the actual webview. Patched SQLite3.54.1 dependency versions/linked-version regression verified on all three hosts. Native quality each139workspace+6catalog+9desktopRust=154namedRust,67component15unit/fmtstrictClippy/SveltecheckbuildPASS; downloadsLinux85/86macOS84/85Windows86/87+1doc/sevenlogs and standalone vault gatesPASS.

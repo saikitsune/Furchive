@@ -20,6 +20,7 @@ export class BrowserBridge {
  favorites(query:Query,username:string,page:number){return this.invoke<SearchPage>('favorites',{query,username,page});}
  pool(id:number,offset:number,ratings:RatingFilter){return this.invoke<PoolPage>('pool_page',{id,offset,limit:50,ratings});}
  suggestions(prefix:string){return this.invoke<Suggestion[]>('suggestions',{prefix});}
+ clearCache(){return this.invoke<void>('clear_cache');}
  preferences(){return this.invoke<Preferences>('preferences');}
  previewTemplates(filenameTemplate:string,poolFilenameTemplate:string){return this.invoke<{filename:string;pool_filename:string}>('preview_templates',{filenameTemplate,poolFilenameTemplate});}
  savePreferences(preferences:Preferences){return this.invoke<Preferences>('save_preferences',{preferences});}

@@ -13,6 +13,7 @@
  let templatePreview=$state<{filename:string;pool_filename:string}|null>(null),templateError=$state('');
  let templateGeneration=0;
  function invalidateTemplatePreview(){templateGeneration++;templatePreview=null;templateError='';}
+ let cacheConfirmed=$state(false),cacheClearing=$state(false),cacheNotice=$state('');
  let legacy=$state<LegacyPreview|null>(null),importSearches=$state<string[]>([]),importPools=$state<string[]>([]),importNotice=$state('');
  let prepared=$state<readonly MediaItem[]>([]),grants=$state<readonly string[]>([]),selectedId=$state<string|null>(null);
  let thumbnails=$state<Record<string,MediaItem>>({});
@@ -39,8 +40,8 @@
   const token=value.trim();if(!token||/\s/.test(token)||token.startsWith('-')){error='Enter one unsigned tag at a time.';return;}
   if(which==='include'){if(!include.includes(token))include=[...include,token];includeInput='';}else{if(!exclude.includes(token))exclude=[...exclude,token];excludeInput='';}suggestions=[];suggestionGeneration++;
  }
- async function complete(){const id=++suggestionGeneration;const prefix=includeInput.trim();if(prefix.length<2){suggestions=[];return;}try{const rows=await bridge.suggestions(prefix);if(id===suggestionGeneration)suggestions=rows;}catch(e){if(id===suggestionGeneration)error=String(e);}}
- async function view(id:string){desiredId=id;const request=++mediaGeneration;error='';try{const item=await bridge.prepare(id,'full');if(request!==mediaGeneration)return;grants=[item.src];prepared=createCatalog([item],grants);selectedId=item.id;}catch(e){if(request===mediaGeneration)error=String(e);}}
+ async function complete(){if(cacheClearing)return;const id=++suggestionGeneration;const prefix=includeInput.trim();if(prefix.length<2){suggestions=[];return;}try{const rows=await bridge.suggestions(prefix);if(id===suggestionGeneration)suggestions=rows;}catch(e){if(id===suggestionGeneration)error=String(e);}}
+ async function view(id:string){if(cacheClearing)return;desiredId=id;const request=++mediaGeneration;error='';try{const item=await bridge.prepare(id,'full');if(request!==mediaGeneration)return;grants=[item.src];prepared=createCatalog([item],grants);selectedId=item.id;}catch(e){if(request===mediaGeneration)error=String(e);}}
  // A newer selection/close can occur after Rust committed an edge but before its
  // receipt arrives. Re-establish the submitted old page; never reopen after close.
  async function restoreAfterTurn(request:number,oldPage:number,oldOffset:number){
@@ -51,13 +52,13 @@
   }catch(e){if(request===generation)error=String(e);}
  }
  async function step(delta:number){
-  if(busy||!selectedId)return;const index=selectablePosts.findIndex(p=>p.key.id===selectedId);const next=selectablePosts[index+delta];if(next){await view(next.key.id);return;}
+  if(cacheClearing||busy||!selectedId)return;const index=selectablePosts.findIndex(p=>p.key.id===selectedId);const next=selectablePosts[index+delta];if(next){await view(next.key.id);return;}
   const id=selectedId,request=++generation,viewerRequest=++mediaGeneration,oldPage=page,oldOffset=poolOffset;selectedId=null;prepared=[];grants=[];busy=true;error='';
   try{const nextPage=await bridge.step(id,delta);if(request!==generation)return;if(viewerRequest!==mediaGeneration){await restoreAfterTurn(request,oldPage,oldOffset);return;}if(!nextPage){error='No more viewable media in this direction.';return;}
    thumbnails={};requestedPreviews.clear();pool=nextPage.pool?{...nextPage.pool,viewable_ids:nextPage.viewable_ids}:null;result=nextPage.search?{...nextPage.search,viewable_ids:nextPage.viewable_ids}:null;viewableIds=nextPage.viewable_ids;poolOffset=nextPage.offset;page=nextPage.page;await view(nextPage.selected_id);
   }catch(e){if(request===generation)error=String(e);}finally{if(request===generation)busy=false;}
  }
- async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){const id=++generation;mediaGeneration++;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
+ async function run(nextMode:typeof mode,next=1,offset=0,paginate=false){if(cacheClearing)return;const id=++generation;mediaGeneration++;desiredId=null;selectedId=null;prepared=[];grants=[];thumbnails={};requestedPreviews.clear();result=null;pool=null;busy=true;error='';try{
   const intent=paginate&&submitted?submitted:{query:query(),username,poolId};
   const q=intent.query;if(q.ratings!=='any'&&!q.ratings.only.length)throw Error('Select at least one rating.');
   if(nextMode==='pool'){const value=Number(intent.poolId);if(!Number.isSafeInteger(value)||value<1)throw Error('Enter a positive pool ID.');const p=await bridge.pool(value,offset,q.ratings);if(id!==generation)return;pool=p;viewableIds=p.viewable_ids;poolOffset=offset;result=null;}
@@ -76,6 +77,7 @@
  async function controlGroup(id:string,verb:'pause'|'resume'|'cancel'){try{await bridge.controlGroup(id,verb);await refreshJobs();}catch(e){error=String(e);}}
  async function queueDownload(id:string){try{await bridge.queue(id);await refreshJobs();}catch(e){error=String(e);}}
  async function control(id:number,verb:'pause'|'resume'|'cancel'|'retry_metadata'){try{await bridge.control(id,verb);await refreshJobs();}catch(e){error=String(e);}}
+ async function clearCache(){if(!cacheConfirmed||cacheClearing)return;cacheConfirmed=false;cacheClearing=true;cacheNotice='';error='';clearAccountView();busy=true;viewableIds=[];submitted=null;suggestions=[];suggestionGeneration++;try{await bridge.clearCache();cacheNotice='Cleared cached browsing data. Artwork, downloads, account, saved searches and pins were preserved.';}catch(e){cacheNotice='Cache clear failed: '+String(e);}finally{cacheClearing=false;busy=false;}}
  async function previewLegacy(){error='';importNotice='';legacy=null;importSearches=[];importPools=[];try{legacy=await bridge.legacyPreview();}catch(e){error=String(e);}}
  async function confirmLegacy(){if(!legacy)return;const snapshot=legacy;legacy=null;try{const report=await bridge.legacyConfirm(snapshot.digest,[...importSearches],[...importPools]);importNotice=`Imported ${report.imported_searches} searches and ${report.imported_pins} pins; skipped ${report.skipped_searches+report.skipped_pins} existing records.`;await refresh();}catch(e){error=String(e);}}
  async function readAppliedPreferences(){const request=++preferenceGeneration;try{const value=await bridge.preferences();if(request===preferenceGeneration)applied=value;}catch(e){if(request===preferenceGeneration)error=String(e);}}
@@ -137,6 +139,8 @@
     {#if job.state==='Completed'&&job.metadata_status==='Failed'&&job.metadata_retry_available}<button data-retry-metadata onclick={()=>control(job.id,'retry_metadata')}>Retry metadata</button>{/if}
     <button disabled={!['Paused','Failed'].includes(job.state)} onclick={()=>control(job.id,'resume')}>Resume</button><button disabled={!['Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'pause')}>Pause</button><button disabled={!['Paused','Failed','Running','Queued'].includes(job.state)} onclick={()=>control(job.id,'cancel')}>Cancel</button>
    </div>{/each}
+   <h2>Privacy</h2><p>Clear discardable post/pool metadata and resident media, and close current results/viewer. Does not delete artwork, download history, saved searches, pins, settings or account keys. Logical deletion, not secure erasure: SQLite pages, journals, backups and OS/webview buffers may retain bytes. New explicit browsing may cache again.</p>
+   <label class="import-row"><input aria-label="Confirm cache clear" type="checkbox" bind:checked={cacheConfirmed} disabled={cacheClearing}>Confirm clearing cached browsing data</label><button disabled={!cacheConfirmed||cacheClearing} onclick={clearCache}>Clear cached browsing data</button>{#if cacheNotice}<p role="status" data-cache-notice>{cacheNotice}</p>{/if}
    <h2>Recover old data</h2><p>Choose the old Furchive data folder in the system picker. Preview first; artwork, keys, settings and queued downloads are never imported automatically.</p><button onclick={previewLegacy}>Preview legacy data</button>
    {#if legacy}<div aria-label="Legacy import preview"><p>Preview digest: <code>{legacy.digest}</code></p>{#each legacy.warnings as warning}<p>{warning}</p>{/each}
     {#each legacy.searches as search}<label class="import-row"><input type="checkbox" aria-label={'Import search '+search.name} bind:group={importSearches} value={search.id}>{search.name}</label>{/each}

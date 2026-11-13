@@ -17,6 +17,7 @@ pub struct AppState {
     pub pool_snapshot: std::sync::Mutex<Option<PoolPage>>,
     pub downloads: furchive_app::downloads::Downloads,
     pub legacy: furchive_app::legacy_session::LegacySession,
+    pub browse_boundary: furchive_app::CacheBoundary,
     pub viewer_cursor: furchive_app::viewer_cursor::ViewerCursor,
 }
 pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -58,6 +59,7 @@ pub fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .map_err(std::io::Error::other)?;
     app.manage(AppState {
         downloads,
+        browse_boundary: Default::default(),
         viewer_cursor: Default::default(),
         pool_snapshot: std::sync::Mutex::new(None),
         browser: Browser::new(account.clone(), db.clone()),
@@ -99,6 +101,7 @@ pub async fn viewer_step(
     id: String,
     delta: i8,
 ) -> Result<Option<furchive_app::viewer_cursor::NavigationPage>, String> {
+    let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let result = state
         .viewer_cursor
@@ -127,6 +130,7 @@ pub async fn prepare_media(
 ) -> Result<PreparedMedia, String> {
     let cache = state_cache(&app);
     let state = app.state::<AppState>();
+    let _boundary = state.browse_boundary.read().await;
     let handle = cache
         .prepare_with_downloads(&id, variant, &state.downloads)
         .await?;
@@ -319,6 +323,7 @@ pub async fn queue_download(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<i64, String> {
+    let _boundary = state.browse_boundary.read().await;
     let post = state_cache(&app).authorized_post(&id)?;
     state
         .downloads
@@ -330,6 +335,7 @@ pub async fn queue_pool_page(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
+    let _boundary = state.browse_boundary.read().await;
     let page = state
         .pool_snapshot
         .lock()
@@ -380,6 +386,19 @@ pub async fn download_control(
     state.downloads.control(id, &verb).await
 }
 #[tauri::command]
+pub async fn clear_cache(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // A write boundary drains currently admitted metadata operations before ACK.
+    let _boundary = state.browse_boundary.write().await;
+    let cache = state_cache(&app);
+    cache.begin_page()?;
+    state.viewer_cursor.clear()?;
+    *state
+        .pool_snapshot
+        .lock()
+        .map_err(|_| "pool snapshot poisoned")? = None;
+    state.db.clear_cache().await
+}
+#[tauri::command]
 pub fn preview_templates(
     filename_template: String,
     pool_filename_template: String,
@@ -408,6 +427,7 @@ pub async fn search(
     query: SearchQuery,
     page: u32,
 ) -> Result<ViewablePage<SearchPage>, String> {
+    let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
     *state
@@ -443,6 +463,7 @@ pub async fn favorites(
     username: String,
     page: u32,
 ) -> Result<ViewablePage<SearchPage>, String> {
+    let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
     *state
@@ -472,6 +493,7 @@ pub async fn pool_page(
     limit: usize,
     ratings: RatingFilter,
 ) -> Result<ViewablePage<PoolPage>, String> {
+    let _boundary = state.browse_boundary.read().await;
     let cache = state_cache(&app);
     let generation = cache.begin_page()?;
     *state

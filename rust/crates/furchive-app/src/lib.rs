@@ -11,15 +11,19 @@ pub mod viewer_cursor;
 use furchive_engine::storage::{CacheStore, SavedSearch, StateStore};
 use std::path::Path;
 use tokio::sync::{mpsc, oneshot};
+/// Shared adapter boundary: metadata publication/prepare readers versus cache-clear writer.
+pub type CacheBoundary = tokio::sync::RwLock<()>;
 type Reply<T> = oneshot::Sender<Result<T, String>>;
 enum Command {
     Save(SavedSearch, Reply<()>),
     Searches(Reply<Vec<SavedSearch>>),
     DeleteSearch(String, Reply<()>),
-    Posts(Vec<furchive_domain::MediaItem>, Reply<()>),
+    Posts(u64, Vec<furchive_domain::MediaItem>, Reply<()>),
+    CacheEpoch(Reply<u64>),
+    ClearCache(Reply<()>),
     Pin(furchive_domain::PoolKey, bool, Reply<()>),
     Pins(Reply<Vec<furchive_domain::PoolKey>>),
-    Pool(furchive_domain::Pool, Reply<()>),
+    Pool(u64, furchive_domain::Pool, Reply<()>),
     Import(legacy::ConfirmedImport, Reply<legacy::ImportReport>),
     Stop(Reply<()>),
 }
@@ -52,6 +56,7 @@ impl Database {
                         return;
                     }
                 };
+                let mut cache_epoch = 0u64;
                 while let Some(command) = rx.blocking_recv() {
                     match command {
                         Command::Save(s, r) => {
@@ -63,8 +68,26 @@ impl Database {
                         Command::DeleteSearch(id, r) => {
                             let _ = r.send(state.delete_search(&id).map_err(|e| e.to_string()));
                         }
-                        Command::Posts(items, r) => {
-                            let _ = r.send(cache.upsert_posts(&items).map_err(|e| e.to_string()));
+                        Command::CacheEpoch(r) => {
+                            let _ = r.send(Ok(cache_epoch));
+                        }
+                        Command::ClearCache(r) => {
+                            let result = (|| {
+                                let next =
+                                    cache_epoch.checked_add(1).ok_or("cache epoch exhausted")?;
+                                cache.clear().map_err(|e| e.to_string())?;
+                                cache_epoch = next;
+                                Ok(())
+                            })();
+                            let _ = r.send(result);
+                        }
+                        Command::Posts(epoch, items, r) => {
+                            let result = if epoch != cache_epoch {
+                                Err("cached request superseded by clear".into())
+                            } else {
+                                cache.upsert_posts(&items).map_err(|e| e.to_string())
+                            };
+                            let _ = r.send(result);
                         }
                         Command::Pin(key, pin, r) => {
                             let _ = r.send(state.set_pin(&key, pin).map_err(|e| e.to_string()));
@@ -72,8 +95,13 @@ impl Database {
                         Command::Pins(r) => {
                             let _ = r.send(state.pinned_pools().map_err(|e| e.to_string()));
                         }
-                        Command::Pool(pool, r) => {
-                            let _ = r.send(cache.reconcile_pool(&pool).map_err(|e| e.to_string()));
+                        Command::Pool(epoch, pool, r) => {
+                            let result = if epoch != cache_epoch {
+                                Err("cached request superseded by clear".into())
+                            } else {
+                                cache.reconcile_pool(&pool).map_err(|e| e.to_string())
+                            };
+                            let _ = r.send(result);
                         }
                         Command::Import(plan, r) => {
                             let result = (|| {
@@ -112,8 +140,20 @@ impl Database {
     pub async fn searches(&self) -> Result<Vec<SavedSearch>, String> {
         self.request(Command::Searches).await
     }
-    pub async fn store_posts(&self, p: Vec<furchive_domain::MediaItem>) -> Result<(), String> {
-        self.request(|r| Command::Posts(p, r)).await
+    /// Capture before any provider await; only current requests may cache results.
+    pub async fn cache_epoch(&self) -> Result<u64, String> {
+        self.request(Command::CacheEpoch).await
+    }
+    /// Logical deletion of discardable metadata only, not secure filesystem erasure.
+    pub async fn clear_cache(&self) -> Result<(), String> {
+        self.request(Command::ClearCache).await
+    }
+    pub async fn store_posts_at(
+        &self,
+        epoch: u64,
+        p: Vec<furchive_domain::MediaItem>,
+    ) -> Result<(), String> {
+        self.request(|r| Command::Posts(epoch, p, r)).await
     }
     pub async fn set_pin(&self, k: furchive_domain::PoolKey, pin: bool) -> Result<(), String> {
         self.request(|r| Command::Pin(k, pin, r)).await
@@ -121,8 +161,8 @@ impl Database {
     pub async fn pins(&self) -> Result<Vec<furchive_domain::PoolKey>, String> {
         self.request(Command::Pins).await
     }
-    pub async fn store_pool(&self, p: furchive_domain::Pool) -> Result<(), String> {
-        self.request(|r| Command::Pool(p, r)).await
+    pub async fn store_pool_at(&self, epoch: u64, p: furchive_domain::Pool) -> Result<(), String> {
+        self.request(|r| Command::Pool(epoch, p, r)).await
     }
     pub async fn import_legacy(
         &self,

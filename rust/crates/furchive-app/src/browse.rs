@@ -55,8 +55,9 @@ impl<P: Provider> Browser<P> {
         if page == 0 {
             return Err("page must be positive".into());
         }
+        let epoch = self.db.cache_epoch().await?;
         let result = self.provider.search(query, page, 50).await?;
-        self.db.store_posts(result.items.clone()).await?;
+        self.db.store_posts_at(epoch, result.items.clone()).await?;
         Ok(result)
     }
     pub async fn favorites(
@@ -89,6 +90,7 @@ impl<P: Provider> Browser<P> {
         }
         .e621_tags()
         .map_err(|e| e.to_string())?;
+        let epoch = self.db.cache_epoch().await?;
         let pool = self.provider.pool(id).await?;
         if pool.key.id() != id.to_string() {
             return Err("pool response identity mismatch".into());
@@ -100,9 +102,12 @@ impl<P: Provider> Browser<P> {
             self.provider.posts(ids).await?
         };
         let page = assemble_pool_page(pool, posts, offset, limit, ratings)?;
-        self.db.store_pool(page.pool.clone()).await?;
+        self.db.store_pool_at(epoch, page.pool.clone()).await?;
         self.db
-            .store_posts(page.entries.iter().filter_map(|e| e.post.clone()).collect())
+            .store_posts_at(
+                epoch,
+                page.entries.iter().filter_map(|e| e.post.clone()).collect(),
+            )
             .await?;
         Ok(page)
     }

@@ -86,3 +86,76 @@ async fn browser_favorites_preserves_include_exclude_ratings_and_raw_pagination(
     assert_eq!(fixture.calls.lock().unwrap().len(), 1);
     db.shutdown().await.unwrap();
 }
+
+#[derive(Clone)]
+struct DelayedFixture {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+impl Provider for DelayedFixture {
+    async fn search(&self, _: &SearchQuery, _: u32, _: usize) -> Result<SearchPage, String> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        Ok(SearchPage {
+            items: vec![MediaItem::new(PostKey::new("e621", "42").unwrap())],
+            next_page: None,
+            raw_count: 1,
+        })
+    }
+    async fn pool(&self, id: u64) -> Result<Pool, String> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        let mut pool = Pool::new(
+            PoolKey::new("e621", id.to_string()).unwrap(),
+            "Delayed".into(),
+        );
+        pool.post_ids = vec!["42".into()];
+        Ok(pool)
+    }
+    async fn posts(&self, _: &[String]) -> Result<Vec<MediaItem>, String> {
+        Ok(vec![MediaItem::new(PostKey::new("e621", "42").unwrap())])
+    }
+    async fn suggestions(&self, _: &str) -> Result<Vec<TagSuggestion>, String> {
+        Ok(vec![])
+    }
+}
+#[tokio::test]
+async fn requests_started_before_clear_cannot_repopulate_search_or_pool_cache() {
+    for pool in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(directory.path()).await.unwrap();
+        let fixture = DelayedFixture {
+            entered: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let browser = Browser::new(fixture.clone(), db.clone());
+        let operation = async {
+            if pool {
+                browser
+                    .pool_page(7, 0, 50, &RatingFilter::Any)
+                    .await
+                    .map(|_| ())
+            } else {
+                browser.search(&SearchQuery::default(), 1).await.map(|_| ())
+            }
+        };
+        let clear = async {
+            fixture.entered.notified().await;
+            db.clear_cache().await.unwrap();
+            fixture.release.notify_one();
+        };
+        let (result, ()) = tokio::join!(operation, clear);
+        assert!(result.unwrap_err().contains("superseded by clear"));
+        db.shutdown().await.unwrap();
+        let cache = rusqlite::Connection::open(directory.path().join("cache.sqlite")).unwrap();
+        for table in ["posts", "pools", "pool_posts"] {
+            assert_eq!(
+                cache
+                    .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                        .get::<_, u32>(0))
+                    .unwrap(),
+                0
+            );
+        }
+    }
+}
