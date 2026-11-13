@@ -247,8 +247,15 @@ pub async fn queue_pool_page(
         .await
 }
 #[tauri::command]
-pub async fn queue_whole_pool(state:State<'_,AppState>,id:u64,ratings:RatingFilter)->Result<String,String>{
-    state.account.queue_whole_pool(id,&ratings,&state.downloads,&state.settings.current()?).await
+pub async fn queue_whole_pool(
+    state: State<'_, AppState>,
+    id: u64,
+    ratings: RatingFilter,
+) -> Result<String, String> {
+    state
+        .account
+        .queue_whole_pool(id, &ratings, &state.downloads, &state.settings.current()?)
+        .await
 }
 #[tauri::command]
 pub async fn download_group_control(

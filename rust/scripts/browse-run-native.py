@@ -77,9 +77,11 @@ def main():
    ext='png' if id=='100' else 'gif';expected_parallel=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures'/fixture).read_bytes()
    if (downloads/f'e621/parallel/{id}/{id}.{ext}').read_bytes()!=expected_parallel:raise ValueError('parallel download bytes mismatch')
   with sqlite3.connect(out/'profile/downloads.sqlite') as db:
-   whole=[json.loads(row[0]) for row in db.execute('SELECT payload FROM jobs') if json.loads(row[0]).get('group_label')=='Whole fixture pool']
-   if len(whole)!=2 or [j['group_position'] for j in whole]!=[1,102] or any(j['state']!='Cancelled' for j in whole):raise ValueError('whole-pool persistence/position mismatch')
-  tags=[q['query'].get('tags',[''])[0] for q in requests if q['path']=='/posts.json'];required=['fox -comic rating:s order:id_desc','fox fav:fixture_user -comic rating:s order:id_desc','id:10,2,30']
+   whole=[json.loads(row[0]) for row in db.execute('SELECT payload FROM jobs ORDER BY id') if json.loads(row[0]).get('group_label')=='Whole fixture pool']
+   if len(whole)!=2 or [j['group_position'] for j in whole]!=[1,102] or [j['state'] for j in whole]!=['Cancelled','Completed']:raise ValueError('whole-pool persistence/position mismatch')
+  whole_bytes=(Path(__file__).resolve().parents[1]/'apps/desktop/public/fixtures/viewer-animation.webp').read_bytes()
+  if (downloads/'e621/pools/local_fixture/Whole_fixture_pool/103_103.webp').read_bytes()!=whole_bytes:raise ValueError('whole-pool original ordinal artifact mismatch')
+  tags=[q['query'].get('tags',[''])[0] for q in requests if q['path']=='/posts.json'];required=['fox -comic rating:s order:id_desc','fox fav:fixture_user -comic rating:s order:id_desc','id:10,2,30','id:'+','.join(map(str,range(1,101))),'id:101,102,103,104,105']
   if not all(t in tags for t in required) or any((q['authorization'] and q['path']!='/users/me.json') or 'filter_id' in q['query'] or not q['userAgent'].startswith('Furchive/') for q in requests):raise ValueError('native HTTP/query policy mismatch')
   (out/'accepted.json').write_text(json.dumps({'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'phases':[1,2],'peak_parallel_transfers':peak_transfers,'requests':requests,'scope':'native metadata browsing and restart only','full_app_complete':False},indent=2))
   print('NATIVE BROWSING PASS: actual UI/IPC/Rust/HTTP/restart contracts; media/download/settings product integration incomplete')
