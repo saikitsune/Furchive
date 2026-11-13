@@ -42,11 +42,25 @@ impl Server {
             while !s.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut socket, _)) => {
+                        socket.set_nonblocking(false).unwrap();
                         socket
                             .set_read_timeout(Some(Duration::from_secs(2)))
                             .unwrap();
-                        let mut b = [0; 8192];
-                        if socket.read(&mut b).unwrap_or(0) > 0 {
+                        socket
+                            .set_write_timeout(Some(Duration::from_secs(2)))
+                            .unwrap();
+                        // Consume a complete bounded GET header block before closing a
+                        // response; unread TCP request bytes can reset replies on Windows.
+                        let mut headers = Vec::new();
+                        let mut chunk = [0u8; 1024];
+                        while !headers.ends_with(b"\r\n\r\n") && headers.len() < 8192 {
+                            match socket.read(&mut chunk[..(8192 - headers.len()).min(1024)]) {
+                                Ok(0) => break,
+                                Ok(n) => headers.extend_from_slice(&chunk[..n]),
+                                Err(_) => break,
+                            }
+                        }
+                        if headers.ends_with(b"\r\n\r\n") {
                             c.fetch_add(1, Ordering::SeqCst);
                             let _ = write!(
                                 socket,
@@ -101,7 +115,16 @@ async fn stale(local_hit: bool, damage: bool) {
     let id = downloads.enqueue(&post(A), &settings).await.unwrap();
     downloads.control(id, "resume").await.unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
-        while downloads.jobs().await.unwrap()[0].state != "Completed" {
+        loop {
+            let jobs = downloads.jobs().await.unwrap();
+            assert_ne!(
+                jobs[0].state, "Failed",
+                "fixture admission download failed: {:?}",
+                jobs[0].error
+            );
+            if jobs[0].state == "Completed" {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
     })
@@ -144,6 +167,40 @@ async fn stale(local_hit: bool, damage: bool) {
         before,
         "stale local miss must not start new HTTP work"
     );
+}
+#[test]
+fn generation_fixture_waits_for_complete_split_headers() {
+    let server = Server::new();
+    let address = server
+        .origin
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+    let mut socket = std::net::TcpStream::connect(address).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    socket
+        .write_all(b"GET /data/aa/bb/aabb0000000000000000000000000000.png HTTP/1.1\r\n")
+        .unwrap();
+    let mut byte = [0];
+    let first = socket.read(&mut byte);
+    assert!(
+        matches!(first,Err(ref e)if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)),
+        "fixture replied/closed before complete headers: {first:?}"
+    );
+    assert_eq!(server.count.load(Ordering::SeqCst), 0);
+    socket
+        .write_all(b"Host: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut response = Vec::new();
+    socket.read_to_end(&mut response).unwrap();
+    let end = response.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+    assert_eq!(&response[end..], PNG);
+    assert_eq!(server.count.load(Ordering::SeqCst), 1);
 }
 #[test]
 fn delayed_local_miss_cannot_renew_grant() {
