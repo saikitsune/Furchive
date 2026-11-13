@@ -92,6 +92,33 @@ def default_features(features):
     return features
 
 
+def bind_packaged_binary(target, packaged, host):
+    """Only identical bytes or Tauri's unique Linux bundle marker substitution.
+
+    Never rewrite either binary, nor accept arbitrary build/package differences.
+    Compare bounded chunks; large debug executables need not fit in memory.
+    """
+    if digest(target) == digest(packaged):
+        return 'identical'
+    if host != 'Linux' or target.stat().st_size != packaged.stat().st_size:
+        raise ValueError('packaged executable differs from actual default build target')
+    import mmap
+    before = b'__TAURI_BUNDLE_TYPE_VAR_UNK'
+    after = b'__TAURI_BUNDLE_TYPE_VAR_DEB'
+    with target.open('rb') as source, packaged.open('rb') as output:
+        with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as original, mmap.mmap(output.fileno(), 0, access=mmap.ACCESS_READ) as bundled:
+            offset = original.find(before)
+            if (offset < 0 or original.find(before, offset + 1) >= 0
+                    or bundled[offset:offset + len(after)] != after):
+                raise ValueError('invalid or ambiguous Tauri Debian marker')
+            for start, end in ((0, offset), (offset + len(before), len(original))):
+                for pos in range(start, end, 1024 * 1024):
+                    stop = min(end, pos + 1024 * 1024)
+                    if original[pos:stop] != bundled[pos:stop]:
+                        raise ValueError('non-marker packaged executable delta')
+    return 'tauri-deb-marker'
+
+
 def build_receipt(text, binary):
     matches = []
     for line in text.splitlines():
@@ -325,8 +352,8 @@ def main():
             target_binary = args.target.resolve() / ('furchive-desktop.exe' if platform.system() == 'Windows' else 'furchive-desktop')
             build = build_receipt(args.build_log.read_text(), target_binary)
             package = prepare(args.target.resolve(), output, platform.system())
-            if digest(target_binary) != package['binary_sha256']:
-                raise ValueError('packaged executable differs from actual default build target')
+            package['build_binary_binding'] = bind_packaged_binary(target_binary, output / package['executable'], platform.system())
+            package['build_binary_sha256'] = digest(target_binary)
             package['compiler_features'] = build['features']
             package['build_log_sha256'] = digest(args.build_log)
             repo = Path(__file__).resolve().parents[2]

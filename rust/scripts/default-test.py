@@ -91,10 +91,18 @@ class PackageContracts(unittest.TestCase):
             'HOME':'/foreign', 'FURCHIVE_TEST_DATA_ROOT':'/foreign', 'HTTP_PROXY':'secret',
             'WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS':'1', 'DISPLAY':':99'})
         self.assertEqual(root, pathlib.Path('/owned/data/dev.furchive.desktop.alpha'))
-        self.assertEqual(env['HOME'], '/owned/home')
-        self.assertEqual(env['XDG_DATA_HOME'], '/owned/data')
+        self.assertEqual(env['HOME'], str(pathlib.Path('/owned') / 'home'))
+        self.assertEqual(env['XDG_DATA_HOME'], str(pathlib.Path('/owned') / 'data'))
         self.assertNotIn('HTTP_PROXY', env)
         self.assertFalse(any(k.startswith('FURCHIVE_') or k.startswith('WEBKIT_DISABLE_') for k in env))
+
+    def test_isolation_path_spelling_matches_the_host_path_object(self):
+        for cls in (pathlib.PurePosixPath, pathlib.PureWindowsPath):
+            owned = cls('/owned')
+            env, root = load().isolation('Linux', owned, {})
+            for key, suffix in [('HOME', 'home'), ('XDG_DATA_HOME', 'data')]:
+                self.assertEqual(env[key], str(owned / suffix))
+            self.assertEqual(root, owned / 'data' / 'dev.furchive.desktop.alpha')
 
     def test_stale_output_refused(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -146,6 +154,28 @@ class PackageContracts(unittest.TestCase):
                     dict(actual, errors=['diagnostic'])):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 smoke.named_receipt(bad, ['A.test_one', 'B.test_two'])
+
+    def test_package_binding_accepts_only_exact_tauri_deb_marker_rewrite(self):
+        smoke = load()
+        marker = b'__TAURI_BUNDLE_TYPE_VAR_UNK'
+        replacement = b'__TAURI_BUNDLE_TYPE_VAR_DEB'
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory); target = root / 'built'; packaged = root / 'packaged'
+            source = b'owned-header\x00__TAURI_BUNDLE_TYPE_VAR_DEB\x00' + marker + b'\x00owned-tail'
+            target.write_bytes(source); packaged.write_bytes(source)
+            self.assertEqual(smoke.bind_packaged_binary(target, packaged, 'Linux'), 'identical')
+            packaged.write_bytes(source.replace(marker, replacement))
+            self.assertEqual(smoke.bind_packaged_binary(target, packaged, 'Linux'), 'tauri-deb-marker')
+            for host in ('Windows', 'Darwin'):
+                with self.subTest(host=host), self.assertRaises(ValueError):
+                    smoke.bind_packaged_binary(target, packaged, host)
+            for bad in (b'X' + source[1:].replace(marker, replacement), source.replace(marker, replacement) + b'extra', source.replace(marker, b'__TAURI_BUNDLE_TYPE_VAR_RPM')):
+                packaged.write_bytes(bad)
+                with self.subTest(bad=bad), self.assertRaises(ValueError):
+                    smoke.bind_packaged_binary(target, packaged, 'Linux')
+            target.write_bytes(source + marker); packaged.write_bytes((source + marker).replace(marker, replacement))
+            with self.assertRaises(ValueError):
+                smoke.bind_packaged_binary(target, packaged, 'Linux')
 
     def test_build_receipt_rejects_missing_or_test_features(self):
         smoke = load()
@@ -279,11 +309,13 @@ if __name__ == '__main__':
         'PackageContracts.test_cosmetic_restore_refuses_semantic_manifest_change',
         'PackageContracts.test_default_feature_receipt_rejects_self_test_and_missing',
         'PackageContracts.test_inner_cleanup_preserves_real_direct_child_sigterm',
+        'PackageContracts.test_isolation_path_spelling_matches_the_host_path_object',
         'PackageContracts.test_linux_isolation_contains_all_user_paths_and_removes_test_authority',
         'PackageContracts.test_missing_default_implementation_is_not_success',
         'PackageContracts.test_named_receipt_binds_exact_actual_inventory',
         'PackageContracts.test_native_adapter_and_command_entrypoint_are_shipped',
         'PackageContracts.test_native_close_revalidates_window_before_any_os_action',
+        'PackageContracts.test_package_binding_accepts_only_exact_tauri_deb_marker_rewrite',
         'PackageContracts.test_positive_native_close_uses_ewmh_not_window_destroy',
         'PackageContracts.test_real_host_parent_child_grandchild_timeout_cleanup',
         'PackageContracts.test_safe_inventory_rejects_aliases_duplicates_links',
