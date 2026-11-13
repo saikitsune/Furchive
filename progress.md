@@ -1,5 +1,8 @@
 # Execution progress
 
+## Verified settings behavior checkpoint
+- 49f920f/run43347441407 all9jobs SUCCESS; owner downloaded and checked all9ZIP/providerdigests/threeactualpackages+executables/26+9nativeUIeachOS/108hostframes/sourcefingerprints/nativecore+vault. Native quality logs119workspace+6catalog+7desktopRust,27DOM+15unit plusfmt/strictClippy/check/build pass eachOS. macOSinitial722ms,maxscroll67ms; original1024msfailure remainshistoricalnonpass. FullproductNOTCOMPLETE; metadata/localresolution/crosspageviewer/UIvaultpairing/platformbreadth/finalreview open. Evidence rust/test-artifacts/ci-run-43347441407/owner-report.md.
+
 ## Latest settings behavior slice
 - Working: apply acknowledged gallery scale/mute/duplicates and bounded resident cache; defaults loaded locally on mount (no automatic network). New cache-resize/persistence tests RED missing APIs, then GREEN; new compiled preference UI test RED missing control then GREEN. Geometry adds rowHeight; existing empty-grid equality fixture updated for new explicit field (not weakened bounds). Late startup-read rollback reproduced RED then generation-fenced GREEN; duplicate select event seam caught by campaign and explicitly wired. StrictClippy caught test default-field reassignment (fixed, no suppression). Local119workspace/7nativeRust/26DOM+15unit/fmt/strictClippy/check/build PASS; run43345860631:8jobsPASS/macOSnativeFAIL; actualproduct26+9PASSall3OS but macOSmediainitial1024ms>unchanged1000msgate. Nooverallnativeacceptance. LinuxWindowsartifacts/72frames+allcorevaultverified; originalmacOSfailurepreserved. Addedunchangedclockphasediagnostics+nullselectionViewerREDscan/GREENguard (notclaimedsolecause); newnativecandidatepending.
 
