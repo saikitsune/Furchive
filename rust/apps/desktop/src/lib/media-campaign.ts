@@ -24,6 +24,7 @@ export async function runMediaCampaign(capture:(checkpoint:Checkpoint,request:Ca
  await painted();
  const grid=demand(document.querySelector<HTMLElement>('[data-gallery]'),'missing reusable gallery');
  const initialMs=performance.now()-initialStart;
+ campaignDiagnostics.initialPaintMs=initialMs;
  const samples:MediaEvidence['gallery']['samples']=[];
  for(const top of [0,2000,20000,100000,200000,0]){
   const started=performance.now();grid.scrollTop=top;grid.dispatchEvent(new Event('scroll'));await painted();

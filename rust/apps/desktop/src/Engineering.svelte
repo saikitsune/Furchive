@@ -7,6 +7,7 @@
  import {runMediaCampaign,campaignDiagnostics} from './lib/media-campaign';
  const initialStart=performance.now();
  let {nativeTest=false}:{nativeTest?:boolean}=$props();
+ campaignDiagnostics.initialization={componentStartMs:initialStart};
  const imageNames=['still.png','still.jpg','animation.gif','animation.apng','still.webp','viewer-animation.gif','viewer-animation.apng','viewer-animation.webp','viewer-large.png','viewer-oversized.png','viewer-corrupt.png','viewer-truncated.png'];
  const videoNames=['vp8.webm','vp9.webm','h264.mp4'];
  let mediaBase=$state(''),note=$state('Only generated fixtures. No accounts, remote art, restoration or product integration.');
@@ -19,11 +20,14 @@
  ],grants));
  const collectionGrants=['/fixtures/still.webp'];
  const items:readonly MediaItem[]=createCatalog(Array.from({length:10000},(_,i)=>({id:'fixture-'+i,kind:'image' as const,src:'/fixtures/still.webp',title:`Generated collection ${i+1}`})),collectionGrants);
+ (campaignDiagnostics.initialization as Record<string,number>).catalogReadyMs=performance.now();
  let viewerItems=$derived(selected?.startsWith('fixture-')?items:fixtures);
  async function close(){selected=null;await tick();gallery?.focus();}
  function choose(id:string){selected=id;}
  onMount(async()=>{
+  (campaignDiagnostics.initialization as Record<string,number>).onMountMs=performance.now();
   try{mediaBase=await invoke<string>('qualification_media_base');}catch{note+=' Browser mode: video uses bundled fixtures, not the native capability transport.';mediaBase='/fixtures/';}
+  (campaignDiagnostics.initialization as Record<string,number>).transportReadyMs=performance.now();
   if(nativeTest){
    try{await tick();const receipt=await runMediaCampaign(async(checkpoint,payload)=>invoke('media_test_checkpoint',{checkpoint,receipt:payload}),initialStart);await invoke('media_test_result',{result:receipt});}
    catch(error){note=String(error);await invoke('media_test_result',{result:{schema:1,ok:false,error:String(error),engine:navigator.userAgent,diagnostics:campaignDiagnostics}});}

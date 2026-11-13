@@ -58,6 +58,12 @@ test('rendered Gallery scaled tiles retain bounded DOM and End selection at each
  for(const scale of [.5,1.5,2]){active=mount(Gallery,{target:document.body,props:{items,grants:['/fixtures/still.png'],scale}});flushSync();const gallery=document.querySelector('[data-gallery]');assert.equal(Number(gallery.dataset.rowHeight),184*scale);const tile=document.querySelector('[data-gallery-tile]');assert.equal(tile.style.height,(184*scale-8)+'px');gallery.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));await Promise.resolve();flushSync();assert.equal(gallery.dataset.selected,'id-9999');assert.ok(document.querySelectorAll('[data-gallery-tile]').length<=108);assert.ok(document.querySelector('#tile-id-9999'));await unmount(active);active=null;}
 });
 
+test('closed Viewer does not scan a ten-thousand-item catalog before any selection',async()=>{
+ const Viewer=await component('Viewer');let scans=0;const originalFind=Array.prototype.find,originalIndex=Array.prototype.findIndex;
+ Array.prototype.find=function(...args){if(this===items)scans++;return originalFind.apply(this,args)};Array.prototype.findIndex=function(...args){if(this===items)scans++;return originalIndex.apply(this,args)};
+ try{active=mount(Viewer,{target:document.body,props:{items,grants:['/fixtures/still.png'],selectedId:null}});flushSync();assert.equal(scans,0,'a closed Viewer has no selection to search for');assert.equal(document.querySelector('[data-viewer]'),null);}finally{Array.prototype.find=originalFind;Array.prototype.findIndex=originalIndex;if(active)await unmount(active);active=null;}
+});
+
 test('rendered Viewer fences stale image events and refuses corrupt or oversized media',async()=>{
  const Host=await viewerHost();
  const sample=[{id:'a',kind:'image',src:'/fixtures/a.png',title:'<b>literal</b>'},{id:'b',kind:'image',src:'/fixtures/b.png',title:'B'}];

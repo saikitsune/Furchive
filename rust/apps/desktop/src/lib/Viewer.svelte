@@ -4,8 +4,8 @@
  import {clampTransform,fitScale,navigateId} from './presentation';
  let {items,grants,selectedId,onselect=()=>{},onclose=()=>{},navigation=null,onstep=()=>{},startMuted=true}:{items:readonly MediaItem[];grants:readonly string[];selectedId:string|null;onselect?:(id:string)=>void;onclose?:()=>void;navigation?:{index:number;total:number}|null;onstep?:(delta:number)=>void;startMuted?:boolean}=$props();
  let catalog=$derived(createCatalog(items,grants));
- let item=$derived(catalog.find(i=>i.id===selectedId));
- let index=$derived(navigation?.index??catalog.findIndex(i=>i.id===selectedId));
+ let item=$derived(selectedId===null?undefined:catalog.find(i=>i.id===selectedId));
+ let index=$derived(navigation?.index??(selectedId===null?-1:catalog.findIndex(i=>i.id===selectedId)));
  let total=$derived(navigation?.total??catalog.length);
  let stage=$state<HTMLDivElement>(),dialog=$state<HTMLDivElement>();
  let element=$state<HTMLImageElement|HTMLVideoElement|null>(null);
