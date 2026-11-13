@@ -38,15 +38,32 @@ impl Server {
             while !s.load(Ordering::SeqCst) {
                 match l.accept() {
                     Ok((mut socket, _)) => {
+                        // Accepted sockets may inherit nonblocking state on Windows.
+                        // A single TCP read is not a complete HTTP header block: closing
+                        // with unread request bytes can reset an otherwise valid reply.
+                        socket.set_nonblocking(false).unwrap();
                         socket
                             .set_read_timeout(Some(Duration::from_secs(2)))
                             .unwrap();
-                        let mut buf = [0; 8192];
-                        let n = socket.read(&mut buf).unwrap_or(0);
-                        if n == 0 {
+                        socket
+                            .set_write_timeout(Some(Duration::from_secs(2)))
+                            .unwrap();
+                        let mut buf = Vec::new();
+                        let mut chunk = [0u8; 1024];
+                        while !buf.ends_with(b"\r\n\r\n") {
+                            if buf.len() >= 8192 {
+                                break;
+                            }
+                            match socket.read(&mut chunk[..(8192 - buf.len()).min(1024)]) {
+                                Ok(0) => break,
+                                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                                Err(_) => break,
+                            }
+                        }
+                        if !buf.ends_with(b"\r\n\r\n") {
                             continue;
                         }
-                        let request = String::from_utf8_lossy(&buf[..n]);
+                        let request = String::from_utf8_lossy(&buf);
                         assert!(!request.to_lowercase().contains("authorization:"));
                         let bytes = if request.starts_with("GET /posts.json") {
                             assert!(request.contains("page=2"));
@@ -84,6 +101,38 @@ impl Drop for Server {
         self.stop.store(true, Ordering::SeqCst);
         self.thread.take().unwrap().join().unwrap();
     }
+}
+#[test]
+fn fixture_waits_for_complete_split_headers_before_responding() {
+    let server = Server::new();
+    let address = server
+        .origin
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+    let mut socket = std::net::TcpStream::connect(address).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
+    socket
+        .write_all(b"GET /posts.json?page=2 HTTP/1.1\r\n")
+        .unwrap();
+    let mut byte = [0];
+    let first = socket.read(&mut byte);
+    assert!(
+        matches!(first,Err(ref e) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)),
+        "fixture responded before headers completed: {first:?}"
+    );
+    socket
+        .write_all(b"Host: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut response = Vec::new();
+    socket.read_to_end(&mut response).unwrap();
+    let response = String::from_utf8(response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(response.contains("Harmless next-page fixture"));
 }
 #[tokio::test]
 async fn next_page_download_sidecar_and_offline_local_read_preserve_original_after_restart() {

@@ -1,5 +1,8 @@
 # Execution progress
 
+## Combined native attempt1 Windows fixture correction
+- 718b837/run43386543938overallFAIL:LinuxmacOSactual29+11+6accountUI72framesPASS/all6dedicatedcorevaultPASS;WindowsproductprepackageFAILinnewcompositionHTTPfixture(e621network/timeout). Ownerverified8actualZIP/provider/package/binary/source/receipts,failedWindowslogpreserved. NewdeterministicsplitheadersfixtureREDprematureresponseOk1(exit101),TESTONLYblockingacceptedmode+boundedcompleteheadersreaderGREEN2;134workspace/50DOM15unitfmtstrictClippycheckbuildPASS. ExacthistoricalWindowsinterleavingunproven, freshsameheadnativeproofrequired; notallappdone.
+
 ## Combined cross-page viewer and metadata candidate
 - Correctedcrosspagec09b3f4SOURCEPASS(NYX-XPV-01/02closed),metadata5449de4SOURCEPASS(REY-META-01closed); originalBLOCKs/evidence retained. NeutralLyrafourhunkdisjointunionaudited, ownermechanics/testsexecutedwithoutprofile/tool/modelchange. Combined133workspace/85default86fixturecore+doc/9nativeRust/50DOM15unit/fmtstrictClippycheckbuildPASS; newcomposedHTTPpage->Rename+sidecar->offlineRestartlocalread/originalpreservationPASS.29+11nativeproduct+6realaccount/108frames freshcampaignpending.WholeappNOTCOMPLETE; see rust/docs/combined-viewer-metadata-milestone.md.
 

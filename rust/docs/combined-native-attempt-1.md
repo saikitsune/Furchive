@@ -1,0 +1,17 @@
+# Combined native attempt1 — Windows composition fixture refusal
+
+Candidate `718b837201063e5a0eee9ffca992f2b048d33ffb` / run `43386543938` is **FAILED OVERALL**.
+
+Owner fresh API readback:9jobs,8successful/1failed;8actualartifacts. All8ZIP/providerdigests/pathinventories and containedpackage/binary/source/receipts verified. LinuxandmacOS actualextractedproduct29+11checks,6realnativeaccountUIchecksand72combinedhostframes pass. All3core and3standalonevaultjobs pass:Linux85default86fixture/macOS84+85/Windows86+87,1doctesteach,exactnamedinventories/sourcehashes/7cleanlogseach. No Windows productpackageartifact exists becauseitsworkspace suitefailedbeforepackaging. Differentcandidatepassesarenotcombinedintoapproval.
+
+RawWindowsfailedjob131756254780 logpreserved in same-runartifacts. Failure at viewer_metadata_integration.rs:118 navigateawaitunwrap: `e621 request failed (network or timeout)`; testterminal0passed/1failed exit101 after0.07s. No separatechild-threadpanicrecorded. This is an actual failed required campaign—not waived becauseotherjobspassed.
+
+## Tight reproduction and narrow correction
+
+The owned HTTPfixture acceptednonblockingsocketfromnonblockinglistener, readrequestonce andimmediatelyresponded/closed. A singleTCPreadneednotcontaincompleteheaders; someplatforms canresetreplyifrequestbytesremainunread. Also acceptedblockingmodeinheritanceisplatformdependent. These werefixtureassumptions,notreasonstochangetheproductionHTTPclient.
+
+Newtest `fixture_waits_for_complete_split_headers_before_responding` sendsrequestlinealone,assertsNOresponsebeforeheadersfinish,thencompletesheadersandrequires200+actualmetadataJSON. Originalfixturefailsreproexit101 `fixture responded before headers completed: Ok(1)` (rawfixture-split-RED.log). Correction explicitlynormalizesacceptedblockingmode,reads<=8192bytesuntilCRLFCRLFwith2sread/writetimeouts,refusesincomplete/oversizedrequestswithoutresponse,andretainsallauth/filter/requestassertions. This is TESTONLYcode. SameproofandrealHTTPcursor/Renamedownload/sidecar/offlineRestarttestbothpassafterfix. ExacthistoricalWindowsinterleavingnotcaptured; freshnativeWindowsrunrequiredtotestwhetherthiscorrectionfullyresolvesit.
+
+Localaftercorrection:134workspace(named),50component15unit,6catalog,fmt/strictClippy/check/build,hostguards pass. Earlier9desktopRust/core85+86+doc gates correspondtoUNCHANGEDproductionruntime/core; no production code changed by this fixture correction. A docs-only priorcommit03c66d6restoredtask_planlocalmediacheckpointlostincomposition; it wasnotpushedwhileoldCIactive.
+
+Originalsource/failedrun/eightZIPs andsource-onlyreviews remain preserved. WholeappNOTCOMPLETE; nativefreshsameheadninejobmatrix+actualartifactsmandatory. No user actionneeded, no model/provider/profile/safety/sandboxchanges, no release/main/license/userdata/credentials effects.
